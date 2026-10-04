@@ -1,0 +1,20 @@
+# Kinds of change, in the order compare.py lists them on the PR index (runs/index.html).
+# "Touches shared UI or 2+ apps" is a flag, not a kind; the context pack's reach section carries it.
+# The `[prs]` entries are made up. The real archetypes.toml is specific to one repository: copy this
+# file to archetypes.toml (git-ignored), then map your own PR numbers to a kind. A PR with no entry is
+# listed under Unclassified; without the file the index is a plain list.
+order = [
+  "Client-only feature",
+  "Bumps, tests, docs, formatter runs",
+  "API in place",
+  "System or integration",
+  "Thread a field or parameter",
+  "Mechanical series or refactor",
+  "Infra and deploy",
+  "New operation",
+  "Shared UI change",
+]
+
+[prs]
+101 = "Client-only feature"
+102 = "API in place"

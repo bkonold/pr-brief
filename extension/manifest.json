@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "PR Describe Review Focus",
+  "version": "0.1.0",
+  "description": "Focuses a GitHub pull request's Files changed page on one review chunk from a local pr-describe run. Reads only; posts nothing.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["github_page.js", "source.js", "variants.js", "boxes.js", "focus.js", "tree.js", "diagram.js", "content.js"],
+      "css": ["focus.css", "tree.css", "diagram.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

@@ -1,0 +1,49 @@
+# Copy this file to local.toml (git-ignored) and fill in what you have. Every key is optional:
+# the context-pack section that needs a missing key is skipped, and run.json records why.
+# Use paths as they appear in the repository, relative to its root, with forward slashes.
+
+# The GitHub repository run.py reads, as "owner/name". Passing --repo overrides it; with neither,
+# run.py exits and asks for one.
+repo = "example-org/example-repo"
+
+# Sections "callers" and "contract" search a bare mirror of the repository kept in .cache/.
+# source_checkout is a local clone the mirror is first cloned from; without it no mirror is created.
+source_checkout = "/path/to/your/clone/of/example-repo"
+# github_url is where commits missing from the mirror are fetched, using the `gh` credential helper;
+# without it nothing is fetched and a PR whose commits the mirror lacks loses these two sections.
+github_url = "https://github.com/example-org/example-repo.git"
+# Folder name of the mirror inside .cache/ (default "mirror.git").
+mirror_name = "example-repo.git"
+
+# Section "wiki": a checkout of a markdown wiki whose pages carry front matter with `resource: repo://<path>`
+# lines. wiki_dir is the folder of pages inside it (default: the checkout's root). Read only.
+wiki_repo = "/path/to/your/wiki-checkout"
+wiki_dir = "docs"
+
+# Section "contract": the OpenAPI document, compared between the base and head commits when the PR changes it.
+openapi_path = "api/openapi.json"
+
+# Section "migrations": a new file whose path contains one of these is scanned for destructive SQL.
+migration_dirs = ["db/migrations/"]
+
+# Precise caller matching for TypeScript. All four are optional; without them only relative imports are resolved.
+# A client package that is generated in-repo: its folder, and the specifier other packages import it by.
+sdk_dir = "web/sdk/"
+sdk_specifier = "@example/sdk"
+# How a workspace package specifier maps to a folder: workspace_alias is a regular expression whose
+# group 1 is the package name and optional group 2 the path inside it; the import then resolves to
+# <workspace_root>/<group 1>/<group 2>.
+workspace_alias = '^@example/([\w-]+)(?:/(.*))?$'
+workspace_root = "web"
+
+# Directory markers (substrings of a path) that make a file a test, in addition to the built-in
+# "/src/test/", ".test." and "Test.java". Test files are never listed as callers.
+test_dirs = ["/src/integrationTest/"]
+
+# Pathspec globs (git grep syntax without the leading ":!") excluded from the callers search when a
+# variant sets callers_code_only, in addition to markdown, lock and similar files.
+callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
+
+# A React Router flat-routes folder. Files under it are labelled by their route URL
+# (`_layout.items.$id` becomes /items/:id) in the grouped file list. Leave unset for other layouts.
+routes_dir = "web/app/routes/"

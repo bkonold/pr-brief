@@ -1,0 +1,24 @@
+# Minimum review level per changed file, used by the `chunks` render.
+# A chunk's level is the highest of the model's level and the floors of its files.
+# Levels, lowest to highest: skim, read, read carefully.
+# Globs: `*` matches within one path segment, `**/` matches any number of directories, `**` matches anything.
+# These entries are made up. The real review_floor.toml is specific to one repository: copy this file to
+# review_floor.toml (git-ignored) and list the paths where a mistake costs the most. Without a real file,
+# this example is used.
+
+[[floor]]
+name = "DB migration"
+level = "read"
+level_if_deleted = "read carefully"
+globs = ["**/db/migrations/**"]
+
+[[floor]]
+name = "public API controller"
+level = "read"
+level_if_deleted = "read carefully"
+globs = ["**/controllers/**"]
+
+# Shown on the file row; no floor.
+[[tag]]
+name = "generated"
+globs = ["**/*.generated.*", "api/openapi.json"]

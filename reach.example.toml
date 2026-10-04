@@ -1,0 +1,12 @@
+# Maps changed and caller files to the apps they ship in. Used by the "reach" section of the context pack.
+# These two entries are made up. The real reach.toml is specific to one repository: copy this file to
+# reach.toml (git-ignored), then list your apps. `globs` match repository-relative paths; `*` stays within
+# one path segment and `**` crosses directories.
+
+[[app]]
+name = "web app"
+globs = ["web/app/**"]
+
+[[app]]
+name = "API"
+globs = ["api/**", "model/**"]

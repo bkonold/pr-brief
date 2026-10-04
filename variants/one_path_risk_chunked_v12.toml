@@ -1,0 +1,10 @@
+description = "V13's answer (prompt rule that every chunk owns a box) plus the renderer fallback that adds a box for any chunk still without one"
+render_from = "one_path_risk_chunked_v13"
+
+[render]
+diagram = "force_td"
+wrapping_width = 400
+files = "chunks"
+numbering = "boxes"
+start_line = true
+chunk_box_fallback = true

@@ -1,0 +1,58 @@
+description = "V15 without a context pack: the one to use on repos with no local.toml. Chunks, boxes and start lines come from the diff alone"
+extra_instructions = """
+For changes_diagram:
+- Always fill it in; never leave it empty.
+- Draw one main path, top to bottom (flowchart TD), of at most 7 nodes, in the order a user or a request moves through the change.
+- Title each box with the user's step (for example `List items`).
+- Put a second line under the title (separate lines with <br/>) in the form `<code name>: <what changed>`, where the code name is the code's own name: the class or component name (for example `ItemListRepository`), `METHOD /path` for an endpoint (for example `PATCH /items/{id}`), or the table name for a table, and what changed is what changed in that box, in five words or fewer, in plain English (for example `filters on deleted flag`).
+- Every chunk must own at least one box: list that box's id in the chunk's `nodes`, so no chunk has an empty `nodes`. A box may be shared by several chunks.
+- Put a chunk's box where that chunk's code sits on the path, for example a regenerated SDK goes between the web route that calls it and the endpoint it calls. The 7-box cap applies to the main path only.
+- Only when a chunk's code is truly off the path (build config, dependency bumps, docs, or tests only), put its box in a subgraph declared exactly as `subgraph also["Also in this PR"]`, placed after the path and its edges, with no edges to or from the boxes inside it. Use that subgraph for nothing else.
+- Every box, on the path or in that subgraph, keeps the box format above (step title, then `<code name>: <what changed>`) and appears in `node_files` with the changed files it covers.
+- Never add a shared node (such as one "API" or one "database" node) that several nodes link to.
+- Mark nodes that write data with `:::save`, for example: step3["..."]:::save
+- Use a dashed edge only for a return to an earlier box.
+- Label an arrow only when the two boxes alone don't say what moves along it or why it fires. Use one to four words for one of these: a user action (`pick report type`), a condition (`flag on`, `no match`, `on POST`), the data handed over (`value or null`), a write (`insert row`), or a return to an earlier box (`redirect back`). Leave the arrow unlabelled when it is a plain call to the next box and that box's name already says what happens. Never use filler labels such as "calls", "uses" or "then". Each arrow joins two boxes that are really connected in the flow.
+- Do not number the nodes or put chunk numbers in their labels.
+
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes, destructive migration statements and background from the codebase wiki. Use it to judge blast radius when you set each chunk's review level and why. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Treat wiki text as background that may be out of date, and trust the diff where they disagree. Do not summarize the Repository context in the description.
+"""
+schema_additions = """
+    chunks: List[dict] = Field(description="the changed files grouped into review chunks, ordered riskiest first. Each item is an object with the keys: name (str: a few words naming one unit of change, e.g. 'Item list screen' or 'Remove legacy export format'); review (str: exactly one of 'read carefully', 'read', 'skim'); why (str: one short sentence, at most 20 words, on what is at stake if this chunk is wrong: who or what is affected and how widely, e.g. 'every connected calendar user', 'mobile builds already in the field', 'accounts exporting to a billing system'. Prefer the consequence over the mechanism. For 'skim', at most 12 words on why little is at stake. No second sentence); nodes (List[str]: the ids of the nodes in changes_diagram that the chunk's code covers, such as 'step3'; empty when nothing in the chunk is on the diagram, e.g. a regenerated SDK); files (List[str]: the full paths of the files in the chunk). start (object with the keys file, line_text and why, naming the one line a reviewer should read first in this chunk. file: str, the full path of one of the chunk's files. line_text: str, a single diff line of that file copied verbatim from the diff without its leading '+', '-' or space. Pick the line where the chunk's risk is decided: the condition, the query, the write or the deletion, not an import or a method signature unless that is the risk. It may be a removed line when the deletion is the risk. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. why: str, one sentence, at most 15 words, saying what the reviewer should check on this line. Name the concrete thing to verify, not the chunk's general stake, and don't restate the file, line number or code, e.g. 'whether deleted items still reach the dropdown' or 'that the owner filter survives the join'). Every changed file appears in exactly one chunk, and test files go in the chunk whose code they cover.")
+    node_files: Dict[str, List[str]] = Field(description="for every node id of changes_diagram, the full paths of the changed files that box covers, as an object from node id to a list of paths. Use an empty list for a box that is unchanged context. Use only paths that appear in the diff. A file may be listed under several boxes; test files go with the box whose code they test.")
+"""
+example_additions = """
+chunks:
+- name: |
+    ...
+  review: |
+    read carefully
+  why: |
+    ...
+  nodes:
+  - |
+    ...
+  files:
+  - |
+    ...
+  start:
+    file: |
+      ...
+    line_text: |
+      ...
+    why: |
+      ...
+node_files:
+  step1:
+  - |
+    ...
+  step2: []
+"""
+
+[render]
+diagram = "force_td"
+wrapping_width = 400
+files = "chunks"
+numbering = "boxes"
+start_line = true
+chunk_box_fallback = true

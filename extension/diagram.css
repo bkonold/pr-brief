@@ -1,0 +1,272 @@
+/* The panel sits between GitHub's file pane and the diffs in the pane's flex row, so the chunk list and the
+   diagram read as one region. It shares the pane's surface, has no rule on its left, and ends at a single
+   divider before the code. Its footprint is the width plus a 16px margin (36px when collapsed), as before. */
+.prd-panel {
+  position: sticky;
+  flex: 0 0 var(--prd-width, 280px);
+  align-self: flex-start;
+  box-sizing: border-box;
+  width: var(--prd-width, 280px);
+  height: calc(100vh - var(--prd-top, 60px));
+  margin-left: 16px;
+  padding-right: 11px;
+  overflow-y: auto;
+  color: var(--fgColor-default, #1f2328);
+  font-size: 12px;
+  background: var(--bgColor-default, #ffffff);
+  border-right: 1px solid var(--borderColor-default, #d0d7de);
+}
+
+.prd-panel.prd-collapsed {
+  flex-basis: 28px;
+  width: 28px;
+  margin-left: 8px;
+  padding-right: 0;
+}
+
+.prd-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 6px;
+  cursor: col-resize;
+  border-radius: 3px;
+  touch-action: none;
+}
+
+.prd-handle:hover,
+.prd-dragging .prd-handle {
+  background: #0969da;
+  opacity: 0.6;
+}
+
+.prd-dragging {
+  user-select: none;
+}
+
+.prd-collapsed .prd-handle {
+  display: none;
+}
+
+.prd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  font-weight: 600;
+}
+
+.prd-collapsed .prd-title {
+  display: none;
+}
+
+.prd-chevron {
+  padding: 0 6px;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.prd-card {
+  padding: 8px;
+  color: #333;
+  background: #ffffff;
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.prd-collapsed .prd-card {
+  display: none;
+}
+
+.prd-card svg,
+.prd-overlay-card svg {
+  display: block;
+  width: 100%;
+  max-width: none !important;
+  height: auto;
+}
+
+.prd-off {
+  opacity: 0.25;
+}
+
+.prd-none svg {
+  opacity: 0.5;
+}
+
+.prd-card g.node.prd-on > rect:not(.prd-pulse),
+.prd-card g.node.prd-on > polygon,
+.prd-card g.node.prd-on > path,
+.prd-card g.node.prd-active > rect:not(.prd-pulse),
+.prd-overlay g.node.prd-on > rect:not(.prd-pulse),
+.prd-overlay g.node.prd-on > polygon,
+.prd-overlay g.node.prd-on > path,
+.prd-overlay g.node.prd-active > rect:not(.prd-pulse) {
+  stroke: #534ab7 !important;
+  stroke-width: 2px !important;
+}
+
+.prd-card g.node.save.prd-on > rect:not(.prd-pulse),
+.prd-card g.node.save.prd-active > rect:not(.prd-pulse),
+.prd-overlay g.node.save.prd-on > rect:not(.prd-pulse),
+.prd-overlay g.node.save.prd-active > rect:not(.prd-pulse) {
+  stroke: #b26a00 !important;
+}
+
+.prd-card g.node.prd-active > rect:not(.prd-pulse),
+.prd-overlay g.node.prd-active > rect:not(.prd-pulse) {
+  fill: rgba(83, 74, 183, 0.14) !important;
+}
+
+.prd-card g.node.save.prd-active > rect:not(.prd-pulse),
+.prd-overlay g.node.save.prd-active > rect:not(.prd-pulse) {
+  fill: rgba(178, 106, 0, 0.18) !important;
+}
+
+.prd-pulse {
+  --prd-accent: 83, 74, 183;
+  fill: none;
+  stroke: rgb(var(--prd-accent)) !important;
+  pointer-events: none;
+  animation: prd-pulse 600ms ease-in-out;
+}
+
+g.node.save .prd-pulse {
+  --prd-accent: 178, 106, 0;
+}
+
+@keyframes prd-pulse {
+  0%,
+  100% {
+    fill: rgba(var(--prd-accent), 0);
+    stroke-width: 2px;
+  }
+
+  40% {
+    fill: rgba(var(--prd-accent), 0.25);
+    stroke-width: 3px;
+  }
+}
+
+.prd-card path.prd-on,
+.prd-overlay path.prd-on {
+  stroke: #534ab7 !important;
+  stroke-width: 2px !important;
+}
+
+.prd-card g.node {
+  cursor: pointer;
+}
+
+.prd-card g.node.context {
+  cursor: default;
+}
+
+.prd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 35, 40, 0.5);
+}
+
+.prd-overlay-card {
+  box-sizing: border-box;
+  width: 70vw;
+  max-height: 85vh;
+  padding: 24px;
+  overflow: auto;
+  background: #ffffff;
+  border-radius: 8px;
+}
+
+.prd-overlay-card svg {
+  max-width: none !important;
+}
+
+.prd-card svg,
+.prd-card g.node,
+.prd-card g.node > rect,
+.prd-card g.node > polygon,
+.prd-card g.node > path,
+.prd-card g.node > circle,
+.prd-card g.node > ellipse,
+.prd-card path.flowchart-link,
+.prd-card .edgeLabel,
+.prd-card foreignObject {
+  transition:
+    opacity 250ms ease-out,
+    fill 250ms ease-out,
+    stroke 250ms ease-out,
+    stroke-width 250ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prd-card svg,
+  .prd-card g.node,
+  .prd-card g.node > *,
+  .prd-card path.flowchart-link,
+  .prd-card .edgeLabel,
+  .prd-card foreignObject {
+    transition: none;
+  }
+}
+
+.prd-measure {
+  position: absolute;
+  left: -9999px;
+  width: 300px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.prd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  color: var(--fgColor-muted, #59636e);
+  font-size: 11px;
+  list-style: none;
+}
+
+.prd-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.prd-swatch {
+  box-sizing: border-box;
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 10px;
+  border: 1.5px solid;
+  border-radius: 5px;
+}
+
+.prd-swatch-selected {
+  background: none;
+  border: 2px solid #534ab7;
+}
+
+.prd-collapsed .prd-legend {
+  display: none;
+}
+
+.prd-overlay .prd-legend {
+  margin-top: 16px;
+  color: #59636e;
+  font-size: 13px;
+}
