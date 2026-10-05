@@ -36,6 +36,16 @@ the context-pack section that needs it is skipped, with the reason recorded unde
 `run.json`; nothing is cloned, fetched or crashed. `--repo` on `run.py` defaults to `local.toml`'s `repo`
 and is required when that is unset. Without any of these files, use the `v15_nocontext` variant.
 
+### Keeping settings and runs outside the tool
+
+Set `PR_DESCRIBE_HOME` to a folder and the tool reads and writes everything there instead of in its own
+folder: `local.toml`, `reach.toml`, `archetypes.toml`, `review_floor.toml` (and their `.example.toml`
+fallbacks), `compare.toml`, `runs/` and the `.cache/` mirror. Variants are looked up in
+`$PR_DESCRIBE_HOME/variants/` first, then in the tool's own `variants/`, so a variant of the same name there
+shadows the tool's. Code, `vendor/` and `extension/` always come from the tool. Unset, the variable defaults
+to the tool's folder and nothing changes. This lets a repository-specific overlay hold its config and runs
+and carry this tool as a submodule.
+
 ## Commands
 
 ```bash
@@ -79,7 +89,7 @@ extension finds `runs/<n>/<variant>/review.json` on that server; it shows nothin
 
 ## Variants
 
-One TOML per variant in `variants/`. Keys: `description`, `context` (see Context packs),
+One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own). Keys: `description`, `context` (see Context packs),
 `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or

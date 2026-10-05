@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 import yaml
 
-from config import ROOT, config_file, load_local
+from config import ROOT, config_file, load_local, variant_file
 
 sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, insert_br_after_x_chars, replace_code_tags, sanitize_diagram  # noqa: E402
@@ -994,7 +994,10 @@ def main() -> int:
     run_dir: Path = Path(sys.argv[1]).resolve()
     run: dict[str, Any] = json.loads((run_dir / "run.json").read_text())
     pr: dict[str, Any] = json.loads((run_dir / "pr.json").read_text())
-    cfg: dict[str, Any] = tomllib.loads((ROOT / "variants" / f"{run['variant']}.toml").read_text()).get("render", {})
+    variant_path: Path | None = variant_file(run["variant"])
+    if variant_path is None:
+        raise SystemExit(f"no variant {run['variant']!r} in $PR_DESCRIBE_HOME/variants or the tool's variants")
+    cfg: dict[str, Any] = tomllib.loads(variant_path.read_text()).get("render", {})
     floor_file: Path | None = config_file("review_floor", fall_back_to_example=True)
     floor_cfg: dict[str, Any] = tomllib.loads(floor_file.read_text()) if floor_file else {}
     raw: str = (run_dir / "answer.yaml").read_text()

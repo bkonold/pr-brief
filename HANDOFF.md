@@ -31,6 +31,10 @@ Two risks are known and unresolved, so the brief should be treated as a guide an
    - applies the `chunk_box_fallback` (a box for every chunk the model left without one).
 4. `compare.py` builds side-by-side pages per PR and `variants.json` for the extension's dropdown.
 
+`PR_DESCRIBE_HOME` (default: the tool's folder) moves config, `compare.toml`, `runs/`, `.cache/` and extra
+variants out of the tool, so a repository can keep them in its own overlay repo with this tool as a submodule
+(variants there shadow same-named ones here). Code and `vendor/` stay with the tool.
+
 Config that names a repository is git-ignored: `local.toml`, `reach.toml`, `archetypes.toml`,
 `review_floor.toml` (each has a `*.example.toml`). `runs/` is git-ignored too.
 

@@ -22,10 +22,10 @@ from typing import Any
 
 import yaml
 
-from config import ROOT, config_file, load_local
+from config import HOME, config_file, load_local
 
 LOCAL: dict[str, Any] = load_local()
-CACHE = ROOT / ".cache"
+CACHE = HOME / ".cache"
 MIRROR = CACHE / LOCAL.get("mirror_name", "mirror.git")
 LOCK = CACHE / "mirror.lock"
 SOURCE_CHECKOUT: str | None = LOCAL.get("source_checkout")

@@ -6,7 +6,7 @@ usage: run.py <pr> --variant NAME [--with-body] [--model opus]
 
 --repo is required unless local.toml sets `repo`.
 
-Reads from GitHub only (`gh pr view`, `gh pr diff`). Writes runs/<pr>/<variant>/.
+Reads from GitHub only (`gh pr view`, `gh pr diff`). Writes runs/<pr>/<variant>/ under PR_DESCRIBE_HOME (default: the tool's folder).
 A variant with `render_from = "<other variant>"` makes no model call and no GitHub call: it
 copies the other variant's prompt, answer and PR data from runs/<pr>/ and renders them with its own settings.
 """
@@ -24,10 +24,9 @@ from typing import Any
 
 from jinja2 import Environment
 
-from config import load_local
+from config import HOME, ROOT, load_local, variant_file
 from context_pack import Pack, build, ensure_commits
 
-ROOT = Path(__file__).parent
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
 COLLAPSIBLE_FILE_LIST_THRESHOLD = 6
 
@@ -90,7 +89,7 @@ def now() -> datetime:
 
 def render_only(pr: str, name: str, variant_path: Path, source_name: str) -> int:
     """Copy the source variant's run into this variant's folder and render it with this variant's settings."""
-    source_dir: Path = ROOT / "runs" / pr / source_name
+    source_dir: Path = HOME / "runs" / pr / source_name
     copied: tuple[str, ...] = ("prompt.txt", "answer.yaml", "pr.json", "run.json")
     optional: tuple[str, ...] = ("context.md",)
     absent: list[str] = [f for f in copied if not (source_dir / f).exists()]
@@ -98,7 +97,7 @@ def render_only(pr: str, name: str, variant_path: Path, source_name: str) -> int
         raise SystemExit(f"{name} renders from {source_name}, but {source_dir} has no {', '.join(absent)}. "
                          f"Run `run.py {pr} --variant {source_name}` first.")
     source: dict[str, Any] = json.loads((source_dir / "run.json").read_text())
-    run_dir: Path = ROOT / "runs" / pr / name
+    run_dir: Path = HOME / "runs" / pr / name
     run_dir.mkdir(parents=True, exist_ok=True)
     for stale in ("error.txt", "body.md", "body.html", *optional):
         (run_dir / stale).unlink(missing_ok=True)
@@ -123,7 +122,9 @@ def main() -> int:
     p.add_argument("--prompt-only", action="store_true", help="print the rendered prompt and stop")
     a = p.parse_args()
 
-    variant_path: Path = ROOT / "variants" / f"{a.variant}.toml"
+    variant_path: Path | None = variant_file(a.variant)
+    if variant_path is None:
+        raise SystemExit(f"no variant {a.variant!r} in {HOME / 'variants'} or {ROOT / 'variants'}")
     variant: dict[str, Any] = tomllib.loads(variant_path.read_text())
 
     if "render_from" in variant:
@@ -150,7 +151,7 @@ def main() -> int:
             print(f"repo context: {len(context_md)} chars, ~{pack.stats()['estimated_tokens']} tokens", file=sys.stderr)
         return 0
 
-    run_dir: Path = ROOT / "runs" / a.pr / a.variant
+    run_dir: Path = HOME / "runs" / a.pr / a.variant
     run_dir.mkdir(parents=True, exist_ok=True)
     for stale in ("error.txt", "body.md", "body.html", "context.md"):
         (run_dir / stale).unlink(missing_ok=True)

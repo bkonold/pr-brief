@@ -17,9 +17,9 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from config import ROOT, config_file
+from config import HOME, config_file, variant_file
 
-RUNS = ROOT / "runs"
+RUNS = HOME / "runs"
 ARCHETYPES: Path | None = config_file("archetypes")
 UNCLASSIFIED = "Unclassified"
 
@@ -57,12 +57,12 @@ def variant_order(name: str) -> tuple[int, str]:
 
 
 def variant_description(name: str) -> str:
-    variant_file: Path = ROOT / "variants" / f"{name}.toml"
-    return tomllib.loads(variant_file.read_text()).get("description", "") if variant_file.exists() else ""
+    path: Path | None = variant_file(name)
+    return tomllib.loads(path.read_text()).get("description", "") if path else ""
 
 
 def variants_json(pr_dir: Path) -> list[dict[str, str]]:
-    names: list[str] = tomllib.loads((ROOT / "compare.toml").read_text())["variants"]
+    names: list[str] = tomllib.loads((HOME / "compare.toml").read_text())["variants"]
     return [{"variant": name, "label": VARIANT_LABELS.get(name, name), "description": variant_description(name)}
             for name in names if (pr_dir / name / "review.json").exists()]
 
@@ -131,7 +131,7 @@ def main() -> int:
     if args.all:
         run_dirs: list[Path] = sorted(on_disk, key=lambda d: variant_order(d.name))
     else:
-        names: list[str] = args.variants.split(",") if args.variants else tomllib.loads((ROOT / "compare.toml").read_text())["variants"]
+        names: list[str] = args.variants.split(",") if args.variants else tomllib.loads((HOME / "compare.toml").read_text())["variants"]
         by_name: dict[str, Path] = {d.name: d for d in on_disk}
         missing: list[str] = [n for n in names if n not in by_name]
         if missing:
