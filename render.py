@@ -341,27 +341,35 @@ def diff_lines_by_path(diff: str) -> dict[str, list[DiffLine]]:
 
 
 def resolve_start(raw: Any, name: str, files: list[str], diff_lines: dict[str, list[DiffLine]],
-                  notes: list[str]) -> dict[str, Any] | None:
-    """The chunk's start line when its quoted text matches exactly one line of the quoted file's diff."""
+                  notes: list[str], file_start: bool = False) -> dict[str, Any] | None:
+    """The chunk's start line when its quoted text matches exactly one line of the quoted file's diff.
+
+    With `file_start`, a start that quotes no line, or whose line is not found exactly once, points at the file
+    alone: its side and line are None."""
     if raw is None:
         return None
     path: str = clean_path(raw.get("file", "")) if isinstance(raw, dict) else ""
     text: str = str(raw.get("line_text", "")).strip() if isinstance(raw, dict) else ""
-    if not path or not text:
+    if not path or not (text or file_start):
         notes.append(f"chunk '{name}': start line not found")
         return None
     if path not in files:
         notes.append(f"chunk '{name}': start file is not one of the chunk's files: {path}")
         return None
-    found: list[DiffLine] = [line for line in diff_lines.get(path, []) if line[2] == text]
-    if not found:
-        notes.append(f"chunk '{name}': start line not found")
-        return None
-    if len(found) > 1:
-        notes.append(f"chunk '{name}': start line matched {len(found)} lines")
-        return None
-    side, number, _ = found[0]
-    start: dict[str, Any] = {"path": path, "side": side, "line": number, "text": text}
+    start: dict[str, Any] | None = None
+    if text:
+        found: list[DiffLine] = [line for line in diff_lines.get(path, []) if line[2] == text]
+        problem: str = "start line not found" if not found else f"start line matched {len(found)} lines"
+        if len(found) == 1:
+            side, number, _ = found[0]
+            start = {"path": path, "side": side, "line": number, "text": text}
+        elif file_start:
+            notes.append(f"chunk '{name}': {problem}, pointing at the file")
+        else:
+            notes.append(f"chunk '{name}': {problem}")
+            return None
+    if start is None:
+        start = {"path": path, "side": None, "line": None}
     why: str | None = start_why(raw.get("why"), name, notes)
     if why:
         start["why"] = why
@@ -437,7 +445,7 @@ def order_files(files: list[str], start: dict[str, Any] | None) -> list[str]:
 
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
                  notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None,
-                 flow_order: bool = False) -> list[Chunk]:
+                 flow_order: bool = False, file_start: bool = False) -> list[Chunk]:
     chunks: list[Chunk] = []
     seen: set[str] = set()
     for item in raw_chunks if isinstance(raw_chunks, list) else []:
@@ -462,7 +470,7 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
         step: str | None = clean_step(item.get("step"), name, notes)
         if flow_order and step is None and "step" not in item:
             notes.append(f"chunk '{name}': no step")
-        start: dict[str, Any] | None = resolve_start(item.get("start"), name, files, diff_lines, notes)
+        start: dict[str, Any] | None = resolve_start(item.get("start"), name, files, diff_lines, notes, file_start)
         chunks.append(Chunk(name, review, str(item.get("why", "")).strip(), order_files(files, start),
                             clean_nodes(item.get("nodes")), start=start, step=step))
     missing: list[str] = [p for p in paths if p not in seen]
@@ -806,13 +814,18 @@ START_TEXT_LIMIT = 80
 
 
 def start_cell(chunk: Chunk, repo: str, pr: str) -> str:
-    """The chunk's start line under its name: a link to the line and a short quote of it."""
+    """The chunk's start under its name: a link to the line and a short quote of it, or, for a start that names only
+    a file, a link to the file and the reason to open it first."""
     if not chunk.start:
         return ""
     start: dict[str, Any] = chunk.start
+    name: str = html.escape(start["path"].split("/")[-1])
+    if start["line"] is None:
+        why: str = f'<br><em>{html.escape(start["why"])}</em>' if start.get("why") else ""
+        return f'<br><sub>start <a href="{diff_link(repo, pr, start["path"])}" title="{html.escape(start["path"])}">{name}</a></sub>{why}'
     quote: str = start["text"] if len(start["text"]) <= START_TEXT_LIMIT else start["text"][:START_TEXT_LIMIT - 1] + "…"
     return (f'<br><sub>start <a href="{line_link(repo, pr, start)}" title="{html.escape(start["path"])}">'
-            f'{html.escape(start["path"].split("/")[-1])}:{start["line"]}</a></sub><br><code>{html.escape(quote)}</code>')
+            f'{name}:{start["line"]}</a></sub><br><code>{html.escape(quote)}</code>')
 
 
 def risk_rank(chunk: Chunk) -> int:
@@ -904,7 +917,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         raise AnswerError(f"unknown render chunk_order {cfg['chunk_order']!r}, expected 'risk' or 'flow'")
     chunks: list[Chunk] = []
     if cfg.get("files") == "chunks":
-        chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, flow_order)
+        chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, flow_order,
+                              bool(cfg.get("file_start")))
     diagram: str = render_diagram(data.get("changes_diagram"), cfg)
     numbering: str = cfg.get("numbering", "chunks")
     if numbering not in ("chunks", "boxes", "flow"):
