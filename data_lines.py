@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from contract_block import SQL_NAME, DiffLine, sql_name
-from contract_lines import SWEEP_MINIMUM, Line, Member, code, names_text, plural
+from contract_lines import SWEEP_MINIMUM, Line, Member, code, names_text, plural, several
 
 DESTRUCTIVE = "destructive"
 REWRITES = "rewrites rows"
@@ -31,13 +31,16 @@ NO_DEFAULT_TYPES = re.compile(r"\b(?:small|big)?serial\b", re.I)
 class Action:
     """One thing a statement does: its impact (None when it is not classified), a verb that groups like actions, the
     table, the column it concerns, the sentence that describes it and, for an action on something other than a table or
-    column (an index, a constraint), its name."""
+    column (an index, a constraint), its name. `change` is the same change as a table row's Change cell
+    (`+ col` nullable, `col` default 0, constraint `uq` dropped), with the table left to the row's own column."""
     level: str | None
     verb: str
     table: str
     column: str | None
     text: str
     subject: str = ""
+    change: str = ""
+
 
 DEFAULT_EXPRESSION_LIMIT = 40
 
@@ -158,7 +161,9 @@ def alter_actions(table: str, rest: str) -> list[Action]:
             kind: re.Match[str] | None = re.search(r"\b(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK|EXCLUDE)\b", part, re.I)
             label: str = f"{code(sql_name(named.group(1)))} on {code(table)}" if named else \
                 f"{' '.join(kind.group(1).upper().split()) if kind else 'constraint'} on {code(table)}"
-            actions.append(Action(REWRITES, "add constraint", table, None, f"add constraint {label}"))
+            actions.append(Action(REWRITES, "add constraint", table, None, f"add constraint {label}",
+                                   change=f"constraint {code(sql_name(named.group(1)))} added" if named else
+                                   f"{' '.join(kind.group(1).upper().split()) if kind else 'constraint'} added"))
         elif found := re.match(rf"ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?({SQL_NAME})\s+(.*)$", part, re.I):
             column: str = sql_name(found.group(1))
             definition: str = found.group(2)
@@ -166,45 +171,59 @@ def alter_actions(table: str, rest: str) -> list[Action]:
                 r"\b(?:DEFAULT|GENERATED)\b", definition, re.I) and not NO_DEFAULT_TYPES.search(definition)
             subject: str = code(f"{table}.{column}")
             if bare:
-                actions.append(Action(REWRITES, "add column", table, column, f"add column {subject} NOT NULL without a default"))
+                actions.append(Action(REWRITES, "add column", table, column, f"add column {subject} NOT NULL without a default",
+                                       change=f"{code('+ ' + column)} NOT NULL, no default"))
             else:
-                actions.append(Action(ADDITIVE, "add column", table, column, f"add column {subject}"))
+                null: str = "NOT NULL, default" if re.search(r"\bNOT\s+NULL\b", definition, re.I) else "nullable"
+                actions.append(Action(ADDITIVE, "add column", table, column, f"add column {subject}",
+                                      change=f"{code('+ ' + column)} {null}"))
         elif found := re.match(rf"DROP\s+CONSTRAINT\s+(?:IF\s+EXISTS\s+)?({SQL_NAME})", part, re.I):
             name: str = sql_name(found.group(1))
-            actions.append(Action(REWRITES, "drop constraint", table, None, f"constraint {code(name)} dropped on {code(table)}", name))
+            actions.append(Action(REWRITES, "drop constraint", table, None, f"constraint {code(name)} dropped on {code(table)}", name,
+                                  f"constraint {code(name)} dropped"))
         elif found := re.match(rf"RENAME\s+CONSTRAINT\s+({SQL_NAME})\s+TO\s+({SQL_NAME})", part, re.I):
             actions.append(Action(REWRITES, "rename constraint", table, None,
                                   f"constraint {code(sql_name(found.group(1)))} renamed to {code(sql_name(found.group(2)))} on {code(table)}",
-                                  sql_name(found.group(1))))
+                                  sql_name(found.group(1)),
+                                  f"constraint {code(sql_name(found.group(1)))} renamed to {code(sql_name(found.group(2)))}"))
         elif found := re.match(rf"RENAME\s+(?:COLUMN\s+)?({SQL_NAME})\s+TO\s+({SQL_NAME})", part, re.I):
             old: str = sql_name(found.group(1))
             actions.append(Action(REWRITES, "rename column", table, None,
-                                  f"column {code(f'{table}.{old}')} renamed to {code(sql_name(found.group(2)))}", old))
+                                  f"column {code(f'{table}.{old}')} renamed to {code(sql_name(found.group(2)))}", old,
+                                  f"{code(old)} renamed to {code(sql_name(found.group(2)))}"))
         elif found := re.match(rf"RENAME\s+TO\s+({SQL_NAME})", part, re.I):
-            actions.append(Action(REWRITES, "rename table", table, None, f"{code(table)} renamed to {code(sql_name(found.group(1)))}"))
+            actions.append(Action(REWRITES, "rename table", table, None, f"{code(table)} renamed to {code(sql_name(found.group(1)))}",
+                                  change=f"renamed to {code(sql_name(found.group(1)))}"))
         elif found := re.match(rf"ALTER\s+(?:COLUMN\s+)?({SQL_NAME})\s+SET\s+DEFAULT\s+(.*)$", part, re.I):
             column = sql_name(found.group(1))
             actions.append(Action(ADDITIVE, "set default", table, column,
-                                  f"{code(f'{table}.{column}')} default set to {expression_text(found.group(2))}"))
+                                  f"{code(f'{table}.{column}')} default set to {expression_text(found.group(2))}",
+                                  change=f"{code(column)} default {expression_text(found.group(2))}"))
         elif found := re.match(rf"ALTER\s+(?:COLUMN\s+)?({SQL_NAME})\s+DROP\s+DEFAULT\b", part, re.I):
             column = sql_name(found.group(1))
-            actions.append(Action(ADDITIVE, "drop default", table, column, f"{code(f'{table}.{column}')} default dropped"))
+            actions.append(Action(ADDITIVE, "drop default", table, column, f"{code(f'{table}.{column}')} default dropped",
+                                  change=f"{code(column)} default dropped"))
         elif found := re.match(rf"DROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(?!CONSTRAINT\b)({SQL_NAME})", part, re.I):
             column = sql_name(found.group(1))
-            actions.append(Action(DESTRUCTIVE, "drop column", table, column, f"drop column {code(f'{table}.{column}')}"))
+            actions.append(Action(DESTRUCTIVE, "drop column", table, column, f"drop column {code(f'{table}.{column}')}",
+                                  change=code("− " + column)))
         elif found := re.match(rf"ALTER\s+(?:COLUMN\s+)?({SQL_NAME})\s+(?:SET\s+DATA\s+)?TYPE\s+(.*?)(?:\s+USING\b.*)?$", part, re.I):
             column = sql_name(found.group(1))
             target: str = found.group(2).strip()
             subject = code(f"{table}.{column}")
             if narrows(target):
-                actions.append(Action(DESTRUCTIVE, "narrow column", table, column, f"narrow {subject} to {code(target)}"))
+                actions.append(Action(DESTRUCTIVE, "narrow column", table, column, f"narrow {subject} to {code(target)}",
+                                      change=f"{code(column)} narrowed to {code(target)}"))
             else:
-                actions.append(Action(REWRITES, "change column type", table, column, f"change type of {subject} to {code(target)}"))
+                actions.append(Action(REWRITES, "change column type", table, column, f"change type of {subject} to {code(target)}",
+                                      change=f"{code(column)} type → {code(target)}"))
         elif found := re.match(rf"ALTER\s+(?:COLUMN\s+)?({SQL_NAME})\s+SET\s+NOT\s+NULL\b", part, re.I):
             column = sql_name(found.group(1))
-            actions.append(Action(REWRITES, "set not null", table, column, f"set {code(f'{table}.{column}')} NOT NULL"))
+            actions.append(Action(REWRITES, "set not null", table, column, f"set {code(f'{table}.{column}')} NOT NULL",
+                                  change=f"{code(column)} set NOT NULL"))
         else:
-            actions.append(Action(None, "other", table, None, f"other change to {code(table)}"))
+            head: str = " ".join(re.findall(r"[A-Za-z]+", part)[:2]).upper() or "other change"
+            actions.append(Action(None, "other", table, None, f"{head} on {code(table)}", change=f"{head} on {code(table)}"))
     return actions
 
 
@@ -233,43 +252,47 @@ def classify_statement(statement: str) -> list[Action]:
     found: re.Match[str] | None
     if found := re.match(rf"CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?({SQL_NAME})", text, re.I):
         name: str = sql_name(found.group(1))
-        return [Action(ADDITIVE, "create view", name, None, f"create view {code(name)}")]
+        return [Action(ADDITIVE, "create view", name, None, f"create view {code(name)}", change="new view")]
     if found := re.match(rf"CREATE\s+(?:(?:GLOBAL\s+|LOCAL\s+)?(?:TEMP|TEMPORARY)\s+|UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?({SQL_NAME})", text, re.I):
         name = sql_name(found.group(1))
-        return [Action(ADDITIVE, "create table", name, None, f"create table {code(name)}")]
+        return [Action(ADDITIVE, "create table", name, None, f"create table {code(name)}", change="new table")]
     if found := re.match(rf"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?:({SQL_NAME})\s+)?ON\s+(?:ONLY\s+)?({SQL_NAME})", text, re.I):
         table: str = sql_name(found.group(2))
         index: str = f"{code(sql_name(found.group(1)))} " if found.group(1) else ""
-        return [Action(ADDITIVE, "create index", table, None, f"create index {index}on {code(table)}")]
+        return [Action(ADDITIVE, "create index", table, None, f"create index {index}on {code(table)}",
+                       change=f"index {index}added")]
     if found := re.match(rf"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.*?)(?:\s+(?:CASCADE|RESTRICT))?$", text, re.I):
-        return [Action(DESTRUCTIVE, "drop table", sql_name(n), None, f"drop table {code(sql_name(n))}")
+        return [Action(DESTRUCTIVE, "drop table", sql_name(n), None, f"drop table {code(sql_name(n))}", change="dropped")
                 for n in re.findall(SQL_NAME, found.group(1))]
     if found := re.match(r"TRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?(.*?)(?:\s+(?:RESTART|CONTINUE)\s+IDENTITY)?(?:\s+(?:CASCADE|RESTRICT))?$", text, re.I):
-        return [Action(DESTRUCTIVE, "truncate", sql_name(n), None, f"truncate {code(sql_name(n))}")
+        return [Action(DESTRUCTIVE, "truncate", sql_name(n), None, f"truncate {code(sql_name(n))}", change="truncated")
                 for n in re.findall(SQL_NAME, found.group(1))]
     if found := re.match(r"DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?(.*?)(?:\s+(?:CASCADE|RESTRICT))?$", text, re.I):
-        return [Action(REWRITES, "drop index", "", None, f"index {code(sql_name(n))} dropped", sql_name(n))
+        return [Action(REWRITES, "drop index", "", None, f"index {code(sql_name(n))} dropped", sql_name(n),
+                       f"index {code(sql_name(n))} dropped")
                 for n in re.findall(SQL_NAME, found.group(1))]
     if found := re.match(rf"ALTER\s+INDEX\s+(?:IF\s+EXISTS\s+)?({SQL_NAME})\s+RENAME\s+TO\s+({SQL_NAME})", text, re.I):
         old: str = sql_name(found.group(1))
-        return [Action(REWRITES, "rename index", "", None, f"index {code(old)} renamed to {code(sql_name(found.group(2)))}", old)]
+        return [Action(REWRITES, "rename index", "", None, f"index {code(old)} renamed to {code(sql_name(found.group(2)))}", old,
+                        f"index {code(old)} renamed to {code(sql_name(found.group(2)))}")]
     if re.match(r"DO\b", text, re.I):
-        return [Action(None, "do", "", None, "DO block")]
+        return [Action(None, "do", "", None, "DO block", change="DO block")]
     cte: str = "WITH" if re.match(r"WITH\b", text, re.I) else ""
     verbs: tuple[tuple[str, str, str, str], ...] = (
-        (r"INSERT\s+INTO\s+", ADDITIVE, "insert", "insert rows into"),
-        (r"UPDATE\s+(?:ONLY\s+)?", REWRITES, "update", "update rows in"),
-        (r"DELETE\s+FROM\s+(?:ONLY\s+)?", DESTRUCTIVE, "delete", "delete rows from"),
+        (r"INSERT\s+INTO\s+", ADDITIVE, "insert", "insert rows into", "seed (INSERT)"),
+        (r"UPDATE\s+(?:ONLY\s+)?", REWRITES, "update", "update rows in", "backfill (UPDATE)"),
+        (r"DELETE\s+FROM\s+(?:ONLY\s+)?", DESTRUCTIVE, "delete", "delete rows from", "delete rows (DELETE)"),
     )
-    for pattern, level, verb, words in verbs:
+    for pattern, level, verb, words, change in verbs:
         found = re.search(rf"{'' if cte else '^'}{pattern}({SQL_NAME})", text, re.I)
         if found and (cte or found.start() == 0):
             name = sql_name(found.group(1))
-            return [Action(level, verb, name, None, f"{words} {code(name)}")]
+            return [Action(level, verb, name, None, f"{words} {code(name)}", change=change)]
     if found := re.match(rf"ALTER\s+TABLE\s+(?:ONLY\s+|IF\s+EXISTS\s+)*({SQL_NAME})\s+(.*)$", text, re.I):
         return alter_actions(sql_name(found.group(1)), found.group(2))
     head: str = " ".join(re.findall(r"[A-Za-z]+", text)[:2]).upper()
-    return [Action(None, "other", "", None, f"{head} statement" if head else "other statement")]
+    return [Action(None, "other", "", None, f"{head} statement" if head else "other statement",
+                   change=f"{head} statement" if head else "other statement")]
 
 
 SWEEP_VERBS: dict[str, str] = {"add column": "add", "drop column": "drop", "set not null": "set NOT NULL on",
@@ -299,18 +322,21 @@ def collapse(actions: list[tuple[Action, str, int]]) -> list[Line]:
             action, path, number = members[0]
             text: str = f"{SWEEP_VERBS[verb]} column {code(column)} on {len(set(tables))} tables · {names_text(list(dict.fromkeys(tables)))}"
             lines.append(Line(level, text, path, ("R", number), [Member(file=p, table=a.table) for a, p, _ in members],
-                              group=tables[0]))
+                              group=tables[0], change=action.change, on=several(len(set(tables)), "table", list(dict.fromkeys(tables)))))
             done.update(key for key in grouped if key[:2] == (level, verb) and key[3] == column)
     for key, group in grouped.items():
         if key in done:
             continue
         action, path, number = group[0]
         text = action.text if len(group) == 1 else f"{action.text} ({plural(len(group), 'statement')})"
-        lines.append(Line(action.level, text, path, ("R", number), [Member(file=path, table=action.table)], group=action.table))
+        change: str = action.change if len(group) == 1 else f"{action.change} ×{len(group)}"
+        lines.append(Line(action.level, text, path, ("R", number), [Member(file=path, table=action.table)], group=action.table,
+                          change=change, on=code(action.table or PurePosixPath(path).name)))
     for (path, kind), (count, number) in other.items():
         name: str = PurePosixPath(path).name
         text = f"{kind} in {name}" if count == 1 else f"{kind} in {name} ({plural(count, 'statement')})"
-        lines.append(Line(None, text, path, ("R", number), [Member(file=path)]))
+        lines.append(Line(None, text, path, ("R", number), [Member(file=path)],
+                          change=kind if count == 1 else f"{kind} ×{count}", on=code(name)))
     return sorted(lines, key=lambda line: DATA_LEVELS.index(line.impact) if line.impact in DATA_LEVELS else len(DATA_LEVELS))
 
 

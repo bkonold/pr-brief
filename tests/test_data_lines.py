@@ -100,6 +100,53 @@ class Levels(unittest.TestCase):
             self.assertEqual([action.level for action in classify_statement(sql)], [None], sql)
 
 
+class Parts(unittest.TestCase):
+    """The Change and Table of each kind of line, which fill a table row."""
+
+    def parts(self, sql: str) -> list[tuple[str | None, str, str]]:
+        return [(line.impact, line.change, line.on) for line in data_lines({PATH: diff_lines(sql)})]
+
+    def test_columns_read_as_plus_minus_and_a_qualifier(self) -> None:
+        self.assertEqual(self.parts("ALTER TABLE slides ADD COLUMN hidden_slide_keys text;"),
+                         [(ADDITIVE, "`+ hidden_slide_keys` nullable", "`slides`")])
+        self.assertEqual(self.parts("ALTER TABLE slides ADD COLUMN n int NOT NULL;"),
+                         [(REWRITES, "`+ n` NOT NULL, no default", "`slides`")])
+        self.assertEqual(self.parts("ALTER TABLE slides ADD COLUMN n int NOT NULL DEFAULT 0;"),
+                         [(ADDITIVE, "`+ n` NOT NULL, default", "`slides`")])
+        self.assertEqual(self.parts("ALTER TABLE slides DROP COLUMN kept_position;"),
+                         [(DESTRUCTIVE, "`− kept_position`", "`slides`")])
+
+    def test_defaults_constraints_and_types(self) -> None:
+        self.assertEqual(self.parts("ALTER TABLE slides ALTER COLUMN position SET DEFAULT 0;"),
+                         [(ADDITIVE, "`position` default 0", "`slides`")])
+        self.assertEqual(self.parts("ALTER TABLE slides DROP CONSTRAINT uq_slides_key;"),
+                         [(REWRITES, "constraint `uq_slides_key` dropped", "`slides`")])
+        self.assertEqual(self.parts("ALTER TABLE slides ALTER COLUMN n TYPE bigint;"),
+                         [(REWRITES, "`n` type → `bigint`", "`slides`")])
+        self.assertEqual(self.parts("ALTER TABLE slides ALTER COLUMN n SET NOT NULL;"), [(REWRITES, "`n` set NOT NULL", "`slides`")])
+
+    def test_statements_on_rows_and_tables(self) -> None:
+        self.assertEqual(self.parts("UPDATE slides SET n = 1;"), [(REWRITES, "backfill (UPDATE)", "`slides`")])
+        self.assertEqual(self.parts("INSERT INTO kinds VALUES (1);"), [(ADDITIVE, "seed (INSERT)", "`kinds`")])
+        self.assertEqual(self.parts("CREATE TABLE a (id int);"), [(ADDITIVE, "new table", "`a`")])
+        self.assertEqual(self.parts("DROP TABLE a;"), [(DESTRUCTIVE, "dropped", "`a`")])
+        self.assertEqual(self.parts("ALTER TABLE a RENAME TO b;"), [(REWRITES, "renamed to `b`", "`a`")])
+
+    def test_an_index_has_no_table_so_its_file_is_the_place(self) -> None:
+        self.assertEqual(self.parts("DROP INDEX idx_a;"), [(REWRITES, "index `idx_a` dropped", "`V9__widgets.sql`")])
+
+    def test_a_sweep_counts_tables(self) -> None:
+        sql = "".join(f"ALTER TABLE t{i} ADD COLUMN archived_at timestamp;\n" for i in range(4))
+        self.assertEqual(self.parts(sql), [(ADDITIVE, "`+ archived_at` nullable", "4 tables: `t0`, `t1`, `t2` +1")])
+
+    def test_a_repeated_statement_shows_its_count(self) -> None:
+        sql = "UPDATE slides SET a = 1;\nUPDATE slides SET b = 2;\n"
+        self.assertEqual(self.parts(sql), [(REWRITES, "backfill (UPDATE) ×2", "`slides`")])
+
+    def test_an_unclassified_statement_has_no_impact_and_names_its_file(self) -> None:
+        self.assertEqual(self.parts("DO $$ BEGIN NULL; END $$;"), [(None, "DO block", "`V9__widgets.sql`")])
+
+
 class Lines(unittest.TestCase):
     def test_lines_are_worst_first_with_their_file_and_table(self) -> None:
         sql = "CREATE TABLE a (id bigint);\nUPDATE b SET x = 1;\nDROP TABLE c;\n"

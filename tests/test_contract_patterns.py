@@ -309,5 +309,89 @@ class EnumsAndTheRest(unittest.TestCase):
         self.assertEqual(lines_for(doc, doc), [])
 
 
+class Parts(unittest.TestCase):
+    """The Change, On and side of each kind of line, which fill a table row."""
+
+    def parts(self, base: dict, head: dict) -> list[tuple[str, str, str]]:
+        return [(line.side, line.change, line.on) for line in lines_for(base, head)]
+
+    def test_a_property_added_to_a_request_is_an_optional_addition_with_its_side(self) -> None:
+        paths = {"/i": {"post": operation("m", "i-controller", request="Item")}}
+        self.assertEqual(self.parts(document(paths, {"Item": props("a")}), document(paths, {"Item": props("a", "note")})),
+                         [("request", "`+ note` optional", "`Item`")])
+
+    def test_a_new_required_property_and_one_made_required_read_differently(self) -> None:
+        paths = {"/i": {"post": operation("m", "i-controller", request="Item")}}
+        base = document(paths, {"Item": props("a", "b")})
+        head = document(paths, {"Item": props("a", "b", "c", required=("b", "c"))})
+        self.assertEqual(sorted(self.parts(base, head)),
+                         [("request", "`+ c` required", "`Item`"), ("request", "`b` now required", "`Item`")])
+
+    def test_a_removed_property_has_a_minus_and_no_qualifier(self) -> None:
+        self.assertEqual(self.parts(document({}, {"Item": props("a", "old")}), document({}, {"Item": props("a")})),
+                         [("", "`− old`", "`Item`")])
+
+    def test_a_type_change_names_both_types_without_code(self) -> None:
+        base = document(response_paths(1), {"S0": typed(price="number")})
+        head = document(response_paths(1), {"S0": typed(price="string")})
+        self.assertEqual(self.parts(base, head), [("response", "`price` number → string", "`S0`")])
+
+    def test_a_sweep_counts_schemas_and_lists_the_first_three(self) -> None:
+        paths = response_paths(9)
+        base = document(paths, {f"S{i}": props("id") for i in range(9)})
+        head = document(paths, {f"S{i}": props("id", "visibility") for i in range(9)})
+        self.assertEqual(self.parts(base, head), [("response", "`+ visibility` optional", "9 schemas: `S0`, `S1`, `S2` +6")])
+
+    def test_a_type_sweep_names_the_properties_and_the_schemas(self) -> None:
+        paths = response_paths(9)
+        names = [f"p{i}" for i in range(3)]
+        base = document(paths, {f"S{i}": typed(**{n: "number" for n in names}) for i in range(9)})
+        head = document(paths, {f"S{i}": typed(**{n: "string" for n in names}) for i in range(9)})
+        self.assertEqual(self.parts(base, head),
+                         [("response", "`number` → `string`, 3 properties: `p0`, `p1`, `p2`", "9 schemas: `S0`, `S1`, `S2` +6")])
+
+    def test_a_move_names_both_paths_and_a_family_its_base_and_methods(self) -> None:
+        base = document({"/api/old-widgets/{id}": {"get": operation("a", "w-controller")}}, {})
+        head = document({"/api/widgets/{id}": {"get": operation("b", "w-controller")}}, {})
+        self.assertEqual(self.parts(base, head), [("", "moved", "`/api/old-widgets/{id}` → `/api/widgets/{id}`")])
+        paths = {"/api/widgets": {"get": operation("list", "w", response="Widget"), "post": operation("make", "w", response="Widget")},
+                 "/api/widgets/{id}": {"patch": operation("edit", "w", response="Widget")}}
+        self.assertEqual(self.parts(document({}, {}), document(paths, {"Widget": props("id")})),
+                         [("", "new GET POST PATCH, +1 schema", "`/api/widgets`")])
+
+    def test_one_operation_is_its_verb_and_path(self) -> None:
+        base = document({"/old": {"get": operation("a")}}, {})
+        self.assertEqual(self.parts(base, document({}, {})), [("", "removed", "`GET /old`")])
+        self.assertEqual(self.parts(document({}, {}), document({"/new": {"post": operation("a", "c")}}, {})),
+                         [("", "new", "`POST /new`")])
+        self.assertEqual(self.parts(base, document({"/old": {"get": operation("a", deprecated=True)}}, {})),
+                         [("", "deprecated", "`GET /old`")])
+
+    def test_parameters_are_request_side_params(self) -> None:
+        base = document({"/r": {"get": operation("g")}}, {})
+        head = document({"/r": {"get": operation("g", parameters=[{"name": "kind", "in": "query", "required": True}])}}, {})
+        self.assertEqual(self.parts(base, head), [("request", "`+ kind` required param", "`GET /r`")])
+        head = document({"/r": {"get": operation("g", parameters=[{"name": "kind", "in": "query"}])}}, {})
+        self.assertEqual(self.parts(base, head), [("request", "`+ kind` param", "`GET /r`")])
+
+    def test_a_parameter_on_many_operations_counts_endpoints(self) -> None:
+        base = document({f"/r{i}": {"get": operation(f"g{i}")} for i in range(3)}, {})
+        head = document({f"/r{i}": {"get": operation(f"g{i}", parameters=[{"name": "kind", "in": "query"}])} for i in range(3)}, {})
+        self.assertEqual(self.parts(base, head),
+                         [("request", "`+ kind` param", "3 endpoints: `GET /r0`, `GET /r1`, `GET /r2`")])
+
+    def test_enum_values_are_plus_and_minus(self) -> None:
+        base = document({}, {"Kind": {"type": "string", "enum": ["A"]}})
+        head = document({}, {"Kind": {"type": "string", "enum": ["A", "B", "C"]}})
+        self.assertEqual([(l.change, l.on) for l in lines_for(base, head)], [("`+ B`, `+ C`", "`Kind`")])
+        self.assertEqual([(l.change, l.on) for l in lines_for(head, base)], [("`− B`", "`Kind`"), ("`− C`", "`Kind`")])
+
+    def test_a_removed_schema_and_a_changed_operation(self) -> None:
+        self.assertEqual(self.parts(document({}, {"Gone": props("a")}), document({}, {})), [("", "removed", "`Gone`")])
+        base = document({"/i": {"post": operation("m", request="A")}}, {"A": props("x"), "B": props("x")})
+        head = document({"/i": {"post": operation("m", request="B")}}, {"A": props("x"), "B": props("x")})
+        self.assertEqual(self.parts(base, head), [("", "request body changed", "`POST /i`")])
+
+
 if __name__ == "__main__":
     unittest.main()

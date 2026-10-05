@@ -1176,15 +1176,14 @@ def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, chunks: list[
             return line_link(repo, number, {"path": line.path, "side": line.loc[0], "line": line.loc[1]})
         return diff_link(repo, number, line.path)
 
-    def draw(title: str, side: str, none: str, levels: tuple[str, ...], kind: str, loose: list[Line],
-             key_of: Callable[[Line], str], noun: str) -> str:
+    def draw(side: str, none: str, levels: tuple[str, ...], kind: str, loose: list[Line], key_of: Callable[[Line], str]) -> str:
         owned: list[tuple[int, str, list[Line]]] = [(c.number, c.name, getattr(c, kind)) for c in chunks]
         if not loose and not any(lines for _, _, lines in owned):
             return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
-        return layout.section(title, levels, owned, loose, link_of, key_of, noun)
+        return layout.section(kind, levels, owned, loose, link_of, key_of)
 
-    return (draw("Contract", "API", "No API changes", CONTRACT_LEVELS, "contract", lineset.loose_contract, contract_key, "controller"),
-            draw("Data", "database", "No database changes", DATA_LEVELS, "data", lineset.loose_data, data_key, "table"))
+    return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", lineset.loose_contract, contract_key),
+            draw("database", "No database changes", DATA_LEVELS, "data", lineset.loose_data, data_key))
 
 
 # ---------------------------------------------------------------- body
@@ -1302,9 +1301,11 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
 # ---------------------------------------------------------------- review.json
 
 def line_json(line: Line) -> dict[str, Any]:
-    """A contract or data line for review.json: its level (null when it has none), text and where its diff line is."""
+    """A contract or data line for review.json: its level (null when it has none), text, the parts of that text (what
+    changed, on what, and for a contract line the side it reaches) and where its diff line is."""
     side, number = line.loc if line.loc else (None, None)
-    return {"impact": line.impact, "text": line.text, "path": line.path, "side": side, "line": number}
+    return {"impact": line.impact, "text": line.text, "change": line.change, "on": line.on, "reaches": line.side,
+            "path": line.path, "side": side, "line": number}
 
 
 def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], has_diagram: bool,
@@ -1551,6 +1552,13 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
  .pill.p1 { border-color: #1f2328; font-weight: 600; }
  details > summary .pill { margin: 0 4px; }
+ .muted { color: #59636e; font-size: 12px; }
+ .group-row { margin: 0 0 6px; }
+ .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
+ .table-wrap table { display: table; margin: 0; }
+ .table-wrap td, .table-wrap th { white-space: nowrap; }
+ .table-wrap td:last-child, .table-wrap th:last-child { width: 1%; }
+ .table-wrap tr.sub td { background: #f6f8fa; }
 </style></head><body><article class="markdown-body" id="out"></article>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -1559,6 +1567,12 @@ __DIAGRAM_STYLE__
  const md = __MD__;
  document.getElementById('out').innerHTML = marked.parse(md, { gfm: true });
  restyleLegend(document.getElementById('out'));
+ document.querySelectorAll('.table-wrap tbody tr').forEach(row => {
+   const cells = [...row.children];
+   if (cells.length > 1 && cells[0].textContent.trim() && cells.slice(1).every(c => !c.textContent.trim())) {
+     cells[0].colSpan = cells.length; cells.slice(1).forEach(c => c.remove()); row.className = 'sub';
+   }
+ });
  document.querySelectorAll('code.language-mermaid').forEach(c => {
    const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = styleDiagramText(c.textContent);
    c.parentElement.replaceWith(pre);

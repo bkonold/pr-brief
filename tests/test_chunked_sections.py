@@ -61,25 +61,30 @@ class ChunkedSections(unittest.TestCase):
 
     def test_two_sections_follow_the_description_in_place_of_the_old_block(self) -> None:
         (text, _, _, _, _), _ = render_body()
-        self.assertRegex(text, r"(?s)### \*\*Description\*\*\n.*___\n\n### \*\*Contract\*\*\nContract: .*___\n\n### \*\*Data\*\*\nData: ")
+        self.assertRegex(text, r"(?s)### \*\*Description\*\*\n.*___\n\n### \*\*Contract\*\*\n<span class=\"pill .*___\n\n### \*\*Data\*\*\n<span class=\"pill ")
         self.assertNotIn("Contract and data", text)
 
     def test_the_contract_glance_line_and_groups(self) -> None:
         (text, _, chunks, _, lineset), _ = render_body()
-        glance_line = re.search(r"^Contract: .*$", text, re.M).group()
-        self.assertEqual(glance_line, "Contract: 2 callers must change · 1 consumer may break")
-        heads = [re.sub(r"<[^>]+>", "", h) for h in re.findall(r"<summary>(.*?)</summary>", text)]
-        self.assertEqual(heads[:3], ["1 · Item endpoints callers must change request: owner added (required) on ItemRequest",
-                                     "2 · Widget model consumers may break b removed on Widget",
-                                     "Not in any chunk callers must change 1 change in 1 controller"])
+        contract = text.split("### **Contract**\n")[1].split("___")[0]
+        glance_line = contract.splitlines()[0]
+        self.assertEqual(re.sub(r"<[^>]+>", "", glance_line), "2 callers must change 1 consumer may break")
+        self.assertNotIn("Contract:", contract)
+        rows = [re.sub(r"<[^>]+>", "", row) for row in re.findall(r'<p class="group-row">(.*?) <a href', contract)]
+        self.assertEqual(rows, ["1 · Item endpoints callers must change + owner required · ItemRequest request",
+                                "2 · Widget model consumers may break − b · Widget",
+                                "Not in any chunk callers must change removed · GET /gone"])
+        self.assertNotIn("<details", contract)
         self.assertEqual([l.text for l in lineset.loose_contract], ["`GET /gone` removed"])
 
     def test_data_lines_are_grouped_by_their_migration_chunk(self) -> None:
         (text, _, chunks, _, _), _ = render_body()
         data = text.split("### **Data**")[1]
-        self.assertIn("Data: 1 destructive · 1 additive", data)
-        self.assertRegex(data, r"<summary>\d · Items table <span class=\"pill p0\"><strong>destructive</strong></span> ")
-        self.assertIn("drop column <code>legacy.old</code>", data)
+        self.assertEqual(re.sub(r"<[^>]+>", "", data.splitlines()[1]), "1 destructive 1 additive")
+        self.assertRegex(data, r"<summary>\d · Items table <span class=\"pill p0\"><strong>destructive</strong></span> "
+                               r"<span class=\"muted\">2 changes</span></summary>")
+        self.assertIn("| Impact | Change | Table | ↗ |", data)
+        self.assertIn("| <code>− old</code> | <code>legacy</code> |", data)
 
     def test_labels_come_from_the_lines_a_chunk_owns(self) -> None:
         (_, _, chunks, _, _), _ = render_body()
@@ -96,7 +101,8 @@ class ChunkedSections(unittest.TestCase):
         data = review_json(RUN, PR, chunks, False, None, True, lineset)
         by_name = {c["name"]: c for c in data["chunks"]}
         first = by_name["Item endpoints"]["contract"][0]
-        self.assertEqual(set(first), {"impact", "text", "path", "side", "line"})
+        self.assertEqual(set(first), {"impact", "text", "change", "on", "reaches", "path", "side", "line"})
+        self.assertEqual((first["change"], first["on"], first["reaches"]), ("`+ owner` required", "`ItemRequest`", "request"))
         self.assertEqual((first["impact"], first["path"], first["side"]), ("callers must change", SPEC, "R"))
         self.assertIsInstance(first["line"], int)
         self.assertEqual([l["impact"] for l in by_name["Items table"]["data"]], ["destructive", "additive"])

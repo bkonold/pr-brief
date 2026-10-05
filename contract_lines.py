@@ -117,6 +117,16 @@ def side_word(sides: frozenset[str]) -> str:
     return "request and response" if len(sides) == 2 else next(iter(sides), "")
 
 
+def side_cell(sides: frozenset[str] | set[str]) -> str:
+    """`request`, `response` or `both`; empty when the sides are not known."""
+    return "both" if len(sides) == 2 else next(iter(sides), "")
+
+
+def several(count: int, noun: str, names: list[str], many: str | None = None) -> str:
+    """`9 schemas: A, B, C +6`: the count, then the first names as code."""
+    return f"{plural(count, noun, many)}: {names_text(names)}"
+
+
 def side_phrase(sides: frozenset[str]) -> str:
     """`request only`, `response only` or `request and response`; empty when the sides are not known."""
     if not sides:
@@ -400,12 +410,18 @@ PAGINATION_PARAMETERS: frozenset[str] = frozenset({"page", "size", "sort", "page
 METHOD_ORDER: tuple[str, ...] = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE")
 @dataclass
 class Line:
+    """One contract or data line. `text` is the whole line as a sentence. `change`, `on` and `side` are its parts for a
+    table row: what changed (`+ name` required), what it changed on (an endpoint, schemas, a table) and the side it reaches
+    (`request`, `response`, `both`, or empty when it has none); each may hold `code` spans."""
     impact: str | None
     text: str
     path: str
     loc: tuple[str, int] | None
     members: list[Member] = field(default_factory=list)
     group: str = ""
+    change: str = ""
+    on: str = ""
+    side: str = ""
 
 
 def rank_of(impact: str | None, levels: tuple[str, ...] = CONTRACT_LEVELS) -> int:
@@ -481,11 +497,13 @@ def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], sp
         if len(moves) >= SWEEP_MINIMUM:
             text: str = f"{code(old_prefix + '/*')} → {code(new_prefix + '/*')}, {len(moves)} endpoints"
             lines.append(Line(impact, text, spec_path, moves[0]["loc"],
-                              [member_of({"method": m["method"], "path": m["to"], "tag": m["tag"]}) for m in moves]))
+                              [member_of({"method": m["method"], "path": m["to"], "tag": m["tag"]}) for m in moves],
+                              change=f"moved, {len(moves)} endpoints", on=f"{code(old_prefix + '/*')} → {code(new_prefix + '/*')}"))
         else:
             for move in moves:
                 lines.append(Line(impact, f"{code(move['from'])} → {code(move['to'])}", spec_path, move["loc"],
-                                  [member_of({"method": move["method"], "path": move["to"], "tag": move["tag"]})]))
+                                  [member_of({"method": move["method"], "path": move["to"], "tag": move["tag"]})],
+                                  change="moved", on=f"{code(move['from'])} → {code(move['to'])}"))
 
     for key, verb, kind in (("removed", "removed", "operation_removed"), ("added", "new", "operation_added"),
                             ("deprecated", "deprecated", "deprecated")):
@@ -495,14 +513,17 @@ def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], sp
             if len(members) == 1:
                 label: str = code(f"{first['method']} {first['path']}")
                 text = f"new {label}" if verb == "new" else f"{label} {verb}"
+                change, on = verb, label
             else:
                 text = f"{verb} {code(base)} {methods_text(members)}"
+                change, on = f"{verb} {methods_text(members)}", code(base)
                 if verb == "new":
                     labels: set[str] = {f"{o['method']} {o['path']}" for o in members}
                     schemas: int = sum(1 for schema in contract.get("added", {}).get("schemas", [])
                                        if labels & set(schema_operations.get(schema, [])))
                     text += f" · {plural(schemas, 'new schema')}" if schemas else ""
-            lines.append(Line(impact, text, spec_path, first["loc"], [member_of(o) for o in members]))
+                    change += f", +{plural(schemas, 'schema')}" if schemas else ""
+            lines.append(Line(impact, text, spec_path, first["loc"], [member_of(o) for o in members], change=change, on=on))
     return lines
 
 
@@ -512,11 +533,27 @@ PROPERTY_PHRASE: dict[str, str] = {
     "property_type_changed": "type changed", "property_constraint_changed": "constraint changed",
     "deprecated": "deprecated", "schema_removed": "removed",
 }
+PARAMETER_CHANGE: dict[str, str] = {
+    "parameter_added": "{plus} param", "parameter_added_required": "{plus} required param",
+    "parameter_required": "{name} param now required", "parameter_no_longer_required": "{name} param no longer required",
+    "parameter_type_changed": "{name} param type changed", "parameter_constraint_changed": "{name} param constraint changed",
+}
 PARAMETER_PHRASE: dict[str, str] = {
     "parameter_added": "added", "parameter_added_required": "added (required)", "parameter_required": "now required",
     "parameter_no_longer_required": "no longer required", "parameter_type_changed": "type changed",
     "parameter_constraint_changed": "constraint changed",
 }
+
+
+def property_change(kind: str, name: str, types: tuple[str, str] | None = None) -> str:
+    """The Change cell for a property: `+ name` optional, `+ name` required, `− name`, `name` number → string, ..."""
+    return {
+        "property_added": f"{code('+ ' + name)} optional", "property_added_required": f"{code('+ ' + name)} required",
+        "property_required": f"{code(name)} now required", "property_no_longer_required": f"{code(name)} no longer required",
+        "property_removed": code("− " + name), "property_constraint_changed": f"{code(name)} constraint changed",
+        "property_type_changed": f"{code(name)} {types[0]} → {types[1]}" if types else f"{code(name)} type changed",
+        "deprecated": f"{code(name)} deprecated", "schema_removed": "removed",
+    }[kind]
 
 
 def property_lines(changes: list[Change], spec_path: str) -> list[Line]:
@@ -536,14 +573,20 @@ def property_lines(changes: list[Change], spec_path: str) -> list[Line]:
             else:
                 text = f"{code(name)} {phrase} on {len(group)} schemas" + (f", {side}" if side else "")
                 text += f" · {names_text([c.scope for c in group])}"
-            lines.append(Line(group[0].impact, text, spec_path, group[0].loc, [c.member for c in group]))
+            scopes: list[str] = list(dict.fromkeys(c.scope for c in group))
+            same: set[tuple[str, str] | None] = {c.types for c in group}
+            lines.append(Line(group[0].impact, text, spec_path, group[0].loc, [c.member for c in group],
+                              change=property_change(kind, name, same.pop() if len(same) == 1 else None),
+                              on=several(len(scopes), "schema", scopes), side=side_cell(sides)))
             continue
         for change in group:
             if kind == "schema_removed":
-                lines.append(Line(change.impact, f"{code(change.subject)} schema removed", spec_path, change.loc, [change.member]))
+                lines.append(Line(change.impact, f"{code(change.subject)} schema removed", spec_path, change.loc, [change.member],
+                                  change="removed", on=code(change.subject), side=side_cell(sides)))
             else:
                 text = f"{code(name)} {phrase} on {code(change.scope)}"
-                lines.append(Line(change.impact, f"{side_word(sides)}: {text}" if sides else text, spec_path, change.loc, [change.member]))
+                lines.append(Line(change.impact, f"{side_word(sides)}: {text}" if sides else text, spec_path, change.loc, [change.member],
+                                  change=property_change(kind, name, change.types), on=code(change.scope), side=side_cell(sides)))
     return lines
 
 
@@ -563,8 +606,12 @@ def type_sweep_lines(changes: list[Change], spec_path: str) -> tuple[list[Line],
         side: str = side_phrase(sides)
         schemas: int = len({c.scope for c in group})
         text: str = f"{code(old)} → {code(new)} on {plural(len(group), 'property', 'properties')} in {plural(schemas, 'schema')}"
-        text += (f", {side}" if side else "") + f" · {names_text(list(dict.fromkeys(c.subject for c in group)))}"
-        lines.append(Line(group[0].impact, text, spec_path, group[0].loc, [c.member for c in group]))
+        properties: list[str] = list(dict.fromkeys(c.subject for c in group))
+        text += (f", {side}" if side else "") + f" · {names_text(properties)}"
+        scopes: list[str] = list(dict.fromkeys(c.scope for c in group))
+        lines.append(Line(group[0].impact, text, spec_path, group[0].loc, [c.member for c in group],
+                          change=f"{code(old)} → {code(new)}, {several(len(properties), 'property', properties, 'properties')}",
+                          on=several(len(scopes), "schema", scopes), side=side_cell(sides)))
         swept.update(id(c) for c in group)
     return lines, [c for c in changes if id(c) not in swept]
 
@@ -576,7 +623,15 @@ def schema_added_lines(changes: list[Change], covered: set[str], spec_path: str)
         return []
     names: list[str] = [c.scope for c in fresh]
     text: str = f"{code(names[0])} schema added" if len(names) == 1 else f"{len(names)} schemas added · {names_text(names)}"
-    return [Line(fresh[0].impact, text, spec_path, fresh[0].loc, [c.member for c in fresh])]
+    sides: frozenset[str] = frozenset().union(*(c.sides for c in fresh))
+    return [Line(fresh[0].impact, text, spec_path, fresh[0].loc, [c.member for c in fresh],
+                 change="new schema" if len(names) == 1 else "new schemas",
+                 on=code(names[0]) if len(names) == 1 else several(len(names), "schema", names), side=side_cell(sides))]
+
+
+def parameter_change(kind: str, name: str) -> str:
+    """The Change cell for a parameter: `+ name` required param, `name` param type changed, ..."""
+    return PARAMETER_CHANGE[kind].format(plus=code("+ " + name), name=code(name))
 
 
 def parameter_lines(changes: list[Change], spec_path: str) -> list[Line]:
@@ -593,7 +648,8 @@ def parameter_lines(changes: list[Change], spec_path: str) -> list[Line]:
         every: list[Change] = [c for group in pagination.values() for c in group]
         worst: str = min((c.impact for c in every), key=CONTRACT_LEVELS.index)
         lines.append(Line(worst, f"pagination added to {len(pagination)} endpoints", spec_path, first.loc,
-                          [c.member for group in pagination.values() for c in group[:1]]))
+                          [c.member for group in pagination.values() for c in group[:1]],
+                          change="pagination added", on=several(len(pagination), "endpoint", list(pagination)), side=REQUEST))
         swept.update(id(c) for c in every)
     groups: dict[tuple[str, str], list[Change]] = {}
     for change in changes:
@@ -603,13 +659,16 @@ def parameter_lines(changes: list[Change], spec_path: str) -> list[Line]:
         phrase: str = PARAMETER_PHRASE[kind]
         if len(group) >= SWEEP_MINIMUM:
             preposition: str = "to" if kind in ("parameter_added", "parameter_added_required") else "on"
+            scopes: list[str] = list(dict.fromkeys(c.scope for c in group))
             lines.append(Line(group[0].impact, f"{code(name)} parameter {phrase} {preposition} {len(group)} endpoints", spec_path,
-                              group[0].loc, [c.member for c in group]))
+                              group[0].loc, [c.member for c in group], change=parameter_change(kind, name),
+                              on=several(len(scopes), "endpoint", scopes), side=REQUEST))
             continue
         for change in group:
             preposition = "to" if kind in ("parameter_added", "parameter_added_required") else "on"
             lines.append(Line(change.impact, f"{code(name)} parameter {phrase} {preposition} {code(change.scope)}", spec_path,
-                              change.loc, [change.member]))
+                              change.loc, [change.member], change=parameter_change(kind, name), on=code(change.scope),
+                              side=REQUEST))
     return lines
 
 
@@ -622,10 +681,13 @@ def enum_lines(changes: list[Change], spec_path: str) -> list[Line]:
             added.setdefault(change.subject, []).append(change)
         else:
             lines.append(Line(change.impact, f"{code(change.subject)} value {code(change.detail)} removed", spec_path,
-                              change.loc, [change.member]))
+                              change.loc, [change.member], change=code("− " + change.detail), on=code(change.subject),
+                              side=side_cell(change.sides)))
     for subject, group in added.items():
         lines.append(Line(group[0].impact, f"{code(subject)} + {', '.join(code(c.detail) for c in group)}", spec_path,
-                          group[0].loc, [c.member for c in group]))
+                          group[0].loc, [c.member for c in group],
+                          change=", ".join(code("+ " + c.detail) for c in group), on=code(subject),
+                          side=side_cell(frozenset().union(*(c.sides for c in group)))))
     return lines
 
 
@@ -633,7 +695,8 @@ def operation_change_lines(changes: list[Change], spec_path: str) -> list[Line]:
     lines: list[Line] = []
     for change in changes:
         words: str = {"responses": "responses changed"}.get(change.detail, f"{change.detail} changed")
-        lines.append(Line(change.impact, f"{code(change.subject)} {words}", spec_path, change.loc, [change.member]))
+        lines.append(Line(change.impact, f"{code(change.subject)} {words}", spec_path, change.loc, [change.member],
+                          change=words, on=code(change.subject)))
     return lines
 
 

@@ -10,9 +10,11 @@
 3. A line about several subjects goes where most of them do. A chunk that holds only generated files never owns a line.
 
 A line that no chunk owns is "not in any chunk". `section` draws one section (Contract or Data): a glance line with
-the count at each impact level, then one closed `<details>` group per chunk, then the group of lines that no chunk owns.
-The markup is plain HTML so it survives both GitHub's markdown and the extension's brief pane; GitHub drops the
-`class` attributes, which leaves the top level bold and the others plain.
+the count at each impact level, then one group per chunk, then the group of lines that no chunk owns. A group is a closed
+`<details>` headed by the chunk, the worst impact and the number of changes, holding a table with a row per line; a group
+of one line is that line as a plain row. The markup is HTML and GitHub-flavoured markdown tables, so it survives both
+GitHub and the extension's brief pane; GitHub drops the `class` attributes, which leaves the top level bold and the others
+plain.
 """
 import html
 import re
@@ -25,6 +27,10 @@ from contract_lines import Line, Member, plural, rank_of
 
 DEFAULT_TAG_TEMPLATES: list[str] = ["{pascal}"]
 LOOSE_NAME = "Not in any chunk"
+CONTRACT_COLUMNS: tuple[str, ...] = ("Impact", "Side", "Change", "On", "↗")
+DATA_COLUMNS: tuple[str, ...] = ("Impact", "Change", "Table", "↗")
+# A name longer than this is cut in its middle on screen, with the whole name as the element's title.
+NAME_LIMIT = 36
 GLANCE_WORDS: dict[str, tuple[str, str]] = {
     "callers must change": ("caller must change", "callers must change"),
     "consumers may break": ("consumer may break", "consumers may break"),
@@ -139,77 +145,114 @@ def pill(level: str | None, levels: tuple[str, ...]) -> str:
     return f'<span class="pill p{rank}">{"<strong>" + label + "</strong>" if rank == 0 else label}</span>'
 
 
+def middle(name: str) -> str:
+    """`name` cut in the middle to NAME_LIMIT characters when it is longer."""
+    if len(name) <= NAME_LIMIT:
+        return name
+    keep: int = (NAME_LIMIT - 1) // 2
+    return f"{name[:keep]}…{name[-keep:]}"
+
+
+def code_element(name: str) -> str:
+    """A name as a code element; one that is too long is cut in its middle and carries the whole name as its title."""
+    shown: str = middle(name)
+    title: str = f' title="{html.escape(name)}"' if shown != name else ""
+    return f"<code{title}>{html.escape(shown, quote=False)}</code>"
+
+
 def inline(text: str) -> str:
     """The text escaped, with each `backticked` span as a code element."""
-    return re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(text, quote=False))
+    parts: list[str] = re.split(r"`([^`]+)`", text)
+    return "".join(code_element(part) if at % 2 else html.escape(part, quote=False) for at, part in enumerate(parts))
 
 
-def glance(title: str, lines: list[Line], levels: tuple[str, ...]) -> str:
-    """`Contract: 2 callers must change · 1 additive`: the count at each level, worst first, zeros left out, and the
-    lines with no level counted as `other`."""
+def cell(text: str) -> str:
+    """`text` as the inside of a markdown table cell: inline markup, with `|` as an entity."""
+    return inline(text).replace("|", "&#124;")
+
+
+def glance(lines: list[Line], levels: tuple[str, ...]) -> str:
+    """The count at each level as chips, worst first, zeros left out, and the lines with no level counted as `other`:
+    `2 callers must change` `1 additive`."""
     counts: Counter[str | None] = Counter(line.impact if line.impact in levels else None for line in lines)
     parts: list[str] = []
     for level in levels:
         if counts[level]:
             singular, many = GLANCE_WORDS.get(level, (level, level))
-            parts.append(f"{counts[level]} {singular if counts[level] == 1 else many}")
+            rank: int = min(levels.index(level), 2)
+            label: str = f"{counts[level]} {singular if counts[level] == 1 else many}"
+            parts.append(f'<span class="pill p{rank}">{"<strong>" + label + "</strong>" if rank == 0 else label}</span>')
     if counts[None]:
-        parts.append(f"{counts[None]} other")
-    return f"{title}: " + " · ".join(parts)
+        parts.append(f'<span class="pill">{counts[None]} other</span>')
+    return " ".join(parts)
 
 
 def sorted_lines(lines: list[Line], levels: tuple[str, ...]) -> list[Line]:
     return sorted(lines, key=lambda line: rank_of(line.impact, levels))
 
 
-def item(line: Line, levels: tuple[str, ...], link_of: Callable[[Line], str]) -> str:
+def row_cells(kind: str, line: Line, levels: tuple[str, ...], link_of: Callable[[Line], str]) -> list[str]:
+    """The cells of a line's table row: the contract's Impact, Side, Change, On and link, or the data's Impact, Change,
+    Table and link."""
     chip: str = pill(line.impact, levels)
-    text: str = f'<a href="{html.escape(link_of(line))}">{inline(line.text)}</a>'
-    return f"<li>{chip + ' ' if chip else ''}{text}</li>"
+    link: str = f"[↗]({link_of(line)})"
+    if kind == "contract":
+        return [chip, line.side, cell(line.change or line.text), cell(line.on), link]
+    return [chip, cell(line.change or line.text), cell(line.on), link]
 
 
-def summary_text(lines: list[Line]) -> str:
-    first: str = inline(lines[0].text)
-    return first if len(lines) == 1 else f"{first} <em>+{len(lines) - 1} more</em>"
-
-
-def group_html(head: str, lines: list[Line], levels: tuple[str, ...], link_of: Callable[[Line], str],
-               gist: str | None = None, key_of: Callable[[Line], str] | None = None) -> str:
-    """One closed `<details>`: the head, the worst level's chip and a gist (the first line unless given), and the
-    lines, split under a sub-heading per `key_of` when it is given."""
-    top: str | None = lines[0].impact
-    chip: str = pill(top, levels)
-    body: str
+def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str],
+          key_of: Callable[[Line], str] | None = None) -> str:
+    """A table of `lines`, in the order given. With `key_of`, a row under each key's name precedes that key's lines; it
+    has the name in its first cell and nothing after it, which the brief card draws across the whole row."""
+    columns: tuple[str, ...] = CONTRACT_COLUMNS if kind == "contract" else DATA_COLUMNS
+    rows: list[str] = []
     if key_of is None:
-        body = "\n".join(item(line, levels, link_of) for line in lines)
+        rows = [row_cells(kind, line, levels, link_of) for line in lines]
     else:
         keyed: dict[str, list[Line]] = {}
         for line in lines:
             keyed.setdefault(key_of(line), []).append(line)
-        body = "\n".join(f"<li><code>{html.escape(key)}</code><ul>\n"
-                         + "\n".join(item(line, levels, link_of) for line in group)
-                         + "\n</ul></li>" for key, group in keyed.items())
-    return (f"<details>\n<summary>{head}{' ' + chip if chip else ''} {gist if gist is not None else summary_text(lines)}"
-            f"</summary>\n\n<ul>\n{body}\n</ul>\n\n</details>")
+        for key, group in keyed.items():
+            rows.append([f"<strong>{cell('`' + key + '`')}</strong>", *[""] * (len(columns) - 1)])
+            rows.extend(row_cells(kind, line, levels, link_of) for line in group)
+    return "\n".join([f"| {' | '.join(columns)} |", f"| {' | '.join('---' for _ in columns)} |",
+                      *(f"| {' | '.join(cells)} |" for cells in rows)])
 
 
-def section(title: str, levels: tuple[str, ...], owned: list[tuple[int, str, list[Line]]], loose: list[Line],
-            link_of: Callable[[Line], str], key_of: Callable[[Line], str], noun: str) -> str:
+def plain_row(kind: str, head: str, line: Line, levels: tuple[str, ...], link_of: Callable[[Line], str]) -> str:
+    """A group of one line: the head, the line's chip, its change and where, and its link, in one paragraph."""
+    chip: str = pill(line.impact, levels)
+    side: str = f' <span class="muted">{html.escape(line.side)}</span>' if kind == "contract" and line.side else ""
+    return (f'<p class="group-row">{head}{" " + chip if chip else ""} {inline(line.change or line.text)} · {inline(line.on)}{side} '
+            f'<a href="{html.escape(link_of(line))}">↗</a></p>')
+
+
+def group_html(kind: str, head: str, lines: list[Line], levels: tuple[str, ...], link_of: Callable[[Line], str],
+               key_of: Callable[[Line], str] | None = None) -> str:
+    """One group of lines (worst first): a single row for one line, otherwise a closed `<details>` headed by `head`, the
+    worst level's chip and the number of changes, holding the table, split under a row per `key_of` when it is given."""
+    if len(lines) == 1:
+        return plain_row(kind, head, lines[0], levels, link_of)
+    chip: str = pill(lines[0].impact, levels)
+    return (f'<details>\n<summary>{head}{" " + chip if chip else ""} <span class="muted">{plural(len(lines), "change")}</span>'
+            f'</summary>\n\n<div class="table-wrap">\n\n{table(kind, levels, lines, link_of, key_of)}\n\n</div>\n\n</details>')
+
+
+def section(kind: str, levels: tuple[str, ...], owned: list[tuple[int, str, list[Line]]], loose: list[Line],
+            link_of: Callable[[Line], str], key_of: Callable[[Line], str]) -> str:
     """The section's markdown: the glance line, a group per chunk that owns lines (`owned` holds each chunk's number,
-    name and lines) sorted by worst level then chunk number, then the group of `loose` lines under their `key_of`
-    sub-headings. `noun` names what the loose lines are grouped by, for the group's gist."""
+    name and lines; `kind` is `contract` or `data`) sorted by worst level then chunk number, then the group of `loose`
+    lines under a row per `key_of`."""
     every: list[Line] = [line for _, _, lines in owned for line in lines] + loose
     ranked: list[tuple[int, int, str, list[Line]]] = []
     for number, name, lines in owned:
         if lines:
             ordered: list[Line] = sorted_lines(lines, levels)
             ranked.append((rank_of(ordered[0].impact, levels), number, name, ordered))
-    out: list[str] = [glance(title, every, levels)]
+    out: list[str] = [glance(every, levels)]
     for _, number, name, ordered in sorted(ranked, key=lambda entry: entry[:2]):
-        out.append(group_html(f"{number} · {inline(name)}", ordered, levels, link_of))
+        out.append(group_html(kind, f"{number} · {inline(name)}", ordered, levels, link_of))
     if loose:
-        ordered = sorted_lines(loose, levels)
-        keys: int = len({key_of(line) for line in ordered})
-        gist: str = f"{plural(len(ordered), 'change')} in {plural(keys, noun)}"
-        out.append(group_html(LOOSE_NAME, ordered, levels, link_of, gist, key_of))
+        out.append(group_html(kind, LOOSE_NAME, sorted_lines(loose, levels), levels, link_of, key_of))
     return "\n\n".join(out)
