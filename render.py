@@ -24,7 +24,10 @@ from typing import Any, Callable
 import yaml
 
 from config import ROOT, config_file, load_local, variant_file
+import layout
 from contract_block import contract_block, contract_rows, file_diff_lines, migration_rows
+from contract_lines import CALLERS, CONSUMERS, CONTRACT_LEVELS, Line, contract_lines
+from data_lines import DATA_LEVELS, DESTRUCTIVE, data_lines
 from hosts import get_host
 from hosts.github import GitHub
 
@@ -54,6 +57,7 @@ MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
 DEFAULT_TEST_GLOBS: list[str] = ["**/test/**", "**/tests/**", "**/*Test.*", "**/*Tests.*", "**/*.test.*", "**/*_test.*"]
 TEST_GLOBS: list[str] = load_local().get("test_globs", DEFAULT_TEST_GLOBS)
 TEST_DIRS: list[str] = load_local().get("test_dirs", [])
+TAG_FILE_TEMPLATES: list[str] = load_local().get("tag_file_templates", layout.DEFAULT_TAG_TEMPLATES)
 
 
 class AnswerError(Exception):
@@ -324,13 +328,13 @@ def breaking_probes(contract: dict[str, Any]) -> list[re.Pattern[str]]:
     for item in [*(contract.get("removals") or []), *(contract.get("newly_required") or [])]:
         operation: re.Match[str] | None = HTTP_OPERATION.search(item)
         if operation:
-            literal: list[str] = [part for part in operation.group(1).split("/") if part and not part.startswith("{")]
-            if literal:
-                probes.append(re.compile(r'(?<=["/])' + re.escape(literal[-1]) + r'(?=["/{])'))
+            probe: re.Pattern[str] | None = layout.operation_probe(operation.group(1))
+            if probe:
+                probes.append(probe)
             continue
         schema: re.Match[str] | None = SCHEMA_NAME.match(item)
         if schema:
-            probes.append(re.compile(rf"\b{re.escape(schema.group(0))}\b"))
+            probes.append(layout.schema_probe(schema.group(0)))
     return probes
 
 
@@ -506,6 +510,8 @@ class Chunk:
     following: list[int] = field(default_factory=list)
     checks: list[str] = field(default_factory=list)
     labels: list[str] = field(default_factory=list)
+    contract: list[Line] = field(default_factory=list)
+    data: list[Line] = field(default_factory=list)
 
 
 def clean_path(raw: Any) -> str:
@@ -530,7 +536,7 @@ def order_files(files: list[str], start: dict[str, Any] | None) -> list[str]:
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
                  notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None,
                  flow_order: bool = False, file_start: bool = False, review_labels: bool = False,
-                 migration_added: dict[str, list[str]] | None = None) -> list[Chunk]:
+                 migration_added: dict[str, list[str]] | None = None, lineset: layout.LineSet | None = None) -> list[Chunk]:
     chunks: list[Chunk] = []
     seen: set[str] = set()
     for item in raw_chunks if isinstance(raw_chunks, list) else []:
@@ -566,9 +572,11 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
         notes.append("files the model left out of every chunk: " + ", ".join(missing))
         chunks.append(Chunk(UNCHUNKED, "skim" if review_labels else "read", "Not assigned to a chunk by the model",
                             order_files(missing, None)))
+    if lineset is not None:
+        place_lines(chunks, lineset, floor_cfg, diff_lines)
     raising: dict[int, list[tuple[str, str]]] = {}
     if review_labels:
-        raising = apply_labels(chunks, floor_cfg, diff_lines, contract, migration_added or {}, notes)
+        raising = apply_labels(chunks, floor_cfg, diff_lines, contract, migration_added or {}, notes, lineset is not None)
     for index, chunk in enumerate(chunks):
         apply_floor(chunk, counts, floor_cfg, contract, raising.get(index, []))
     if flow_order:
@@ -956,6 +964,33 @@ def derive_labels(checks: list[str], breaking: bool, destructive: bool, generate
     return [label for label in CHECK_ORDER if label in present]
 
 
+def hand_written_paths(files: list[str], spec: str, floor_cfg: dict[str, Any]) -> list[str]:
+    """The files that are neither the spec, generated nor tests: the code that a contract change is traced to."""
+    return [p for p in files if p != spec and GENERATED_TAG not in file_tags(floor_cfg, p) and not is_test_path(p)]
+
+
+def hand_written_code(files: list[str], spec: str, floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]]) -> list[str]:
+    """The file stems and diff lines of the hand-written files, which the probes search."""
+    paths: list[str] = hand_written_paths(files, spec, floor_cfg)
+    return [Path(p).stem for p in paths] + [text for p in paths for _, _, text in diff_lines.get(p, [])]
+
+
+def place_lines(chunks: list[Chunk], lineset: layout.LineSet, floor_cfg: dict[str, Any],
+                diff_lines: dict[str, list[DiffLine]]) -> None:
+    """Give each chunk the contract and data lines it owns (`Chunk.contract`, `Chunk.data`) and keep the rest in
+    `lineset`. A chunk of only generated files owns none."""
+    eligible: list[int] = [i for i, chunk in enumerate(chunks) if generated_share(floor_cfg, chunk.files) != "all"]
+    held: list[set[str]] = [set(chunk.files) for chunk in chunks]
+    stems: list[set[str]] = [{layout.stem(p) for p in hand_written_paths(chunk.files, lineset.spec, floor_cfg)} for chunk in chunks]
+    code: dict[int, list[str]] = {i: hand_written_code(chunks[i].files, lineset.spec, floor_cfg, diff_lines) for i in eligible}
+    for kind, lines in (("contract", lineset.contract), ("data", lineset.data)):
+        preferred: set[int] = {i for i in eligible if kind in chunks[i].checks}
+        owned, loose = layout.place(lines, held, stems, code, preferred, lineset.templates)
+        for index, found in owned.items():
+            setattr(chunks[index], kind, found)
+        setattr(lineset, f"loose_{kind}", loose)
+
+
 def breaking_owners(chunks: list[Chunk], floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
                     contract: dict[str, Any] | None, notes: list[str]) -> set[int]:
     """Indexes of the chunks that own the PR's breaking API change, from the run's contract.json.
@@ -972,12 +1007,7 @@ def breaking_owners(chunks: list[Chunk], floor_cfg: dict[str, Any], diff_lines: 
     candidates: list[int] = [i for i, chunk in enumerate(chunks) if generated_share(floor_cfg, chunk.files) != "all"]
     tagged: set[int] = {i for i in candidates if "contract" in chunks[i].checks}
 
-    def code_of(index: int) -> list[str]:
-        paths: list[str] = [p for p in chunks[index].files
-                            if p != spec and GENERATED_TAG not in file_tags(floor_cfg, p) and not is_test_path(p)]
-        return [Path(p).stem for p in paths] + [text for p in paths for _, _, text in diff_lines.get(p, [])]
-
-    code: dict[int, list[str]] = {i: code_of(i) for i in candidates}
+    code: dict[int, list[str]] = {i: hand_written_code(chunks[i].files, spec, floor_cfg, diff_lines) for i in candidates}
     owners: set[int] = set()
     for probe in breaking_probes(contract):
         hits: list[int] = [i for i in candidates if any(probe.search(text) for text in code[i])]
@@ -1001,13 +1031,17 @@ def breaking_owners(chunks: list[Chunk], floor_cfg: dict[str, Any], diff_lines: 
 
 def apply_labels(chunks: list[Chunk], floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
                  contract: dict[str, Any] | None, migration_added: dict[str, list[str]],
-                 notes: list[str]) -> dict[int, list[tuple[str, str]]]:
+                 notes: list[str], by_lines: bool = False) -> dict[int, list[tuple[str, str]]]:
     """Set every chunk's `labels` and return, by chunk index, the (level, reason) pairs that raise a chunk to `verify`:
-    a breaking API change or a destructive migration. `migration_added` holds the added lines of each migration file."""
-    breaking: set[int] = breaking_owners(chunks, floor_cfg, diff_lines, contract, notes)
+    a breaking API change or a destructive migration. `migration_added` holds the added lines of each migration file.
+    With `by_lines`, a chunk is breaking when it owns a contract line at the top two levels and destructive when it
+    owns a destructive data line; otherwise they come from the run's breaking changes and the migration's SQL."""
+    breaking: set[int] = ({i for i, chunk in enumerate(chunks) if any(line.impact in (CALLERS, CONSUMERS) for line in chunk.contract)}
+                          if by_lines else breaking_owners(chunks, floor_cfg, diff_lines, contract, notes))
     raising: dict[int, list[tuple[str, str]]] = {}
     for index, chunk in enumerate(chunks):
-        destructive: bool = any(is_destructive_sql(migration_added.get(path, [])) for path in chunk.files)
+        destructive: bool = (any(line.impact == DESTRUCTIVE for line in chunk.data) if by_lines
+                             else any(is_destructive_sql(migration_added.get(path, [])) for path in chunk.files))
         share: str = generated_share(floor_cfg, chunk.files)
         if share == "mixed":
             notes.append(f"chunk '{chunk.name}': mixes generated and hand-written files")
@@ -1087,27 +1121,70 @@ def chunks_walkthrough(chunks: list[Chunk], counts: dict[str, tuple[int, int]], 
 
 # ---------------------------------------------------------------- contract and data block
 
+def unchecked_sides(run: dict[str, Any], contract: dict[str, Any] | None) -> list[str]:
+    """`API` when the run has no contract and did not look for one, and `database` when no migration globs are set."""
+    context: dict[str, Any] = run.get("context") or {}
+    api_checked: bool = "contract" in (context.get("sections") or {}) and "contract" not in (context.get("dropped") or {})
+    return (["API"] if contract is None and not api_checked else []) + ([] if MIGRATION_GLOBS else ["database"])
+
+
+def migration_paths(pr: dict[str, Any]) -> list[str]:
+    return [f["path"] for f in pr["files"] if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"]
+
+
 def contract_section(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: str) -> str:
     """The "Contract and data" block: the run's API contract changes and the tables its migration files touch."""
     repo: str = run["repo"]
     number: str = str(run["pr"])
-    context: dict[str, Any] = run.get("context") or {}
-    api_checked: bool = "contract" in (context.get("sections") or {}) and "contract" not in (context.get("dropped") or {})
-    unchecked: list[str] = []
+    unchecked: list[str] = unchecked_sides(run, contract)
     rows: list[Any] = []
     if contract is not None:
         rows += contract_rows(contract, file_diff_lines(diff_text, contract["path"]), contract["path"])
-    elif not api_checked:
-        unchecked.append("API")
     if MIGRATION_GLOBS:
-        migrations: list[str] = [f["path"] for f in pr["files"]
-                                 if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"]
-        rows += migration_rows({path: file_diff_lines(diff_text, path) for path in migrations})
-    else:
-        unchecked.append("database")
+        rows += migration_rows({path: file_diff_lines(diff_text, path) for path in migration_paths(pr)})
     return contract_block(rows,
                           lambda path, side, line: line_link(repo, number, {"path": path, "side": side, "line": line}),
                           lambda path: diff_link(repo, number, path), unchecked)
+
+
+def build_lineset(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: str) -> layout.LineSet:
+    """The run's contract and data lines, before any chunk owns them."""
+    api: list[Line] = contract_lines(contract, file_diff_lines(diff_text, contract["path"]), contract["path"]) if contract else []
+    data: list[Line] = data_lines({path: file_diff_lines(diff_text, path) for path in migration_paths(pr)}) if MIGRATION_GLOBS else []
+    return layout.LineSet(api, data, contract["path"] if contract else "", TAG_FILE_TEMPLATES)
+
+
+def contract_key(line: Line) -> str:
+    """The controller tag a contract line is about, for the lines no chunk owns."""
+    tags: list[str] = [member.tag for member in line.members if member.tag]
+    return max(dict.fromkeys(tags), key=tags.count) if tags else "untagged"
+
+
+def data_key(line: Line) -> str:
+    return next((member.table for member in line.members if member.table), Path(line.path).name)
+
+
+def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, chunks: list[Chunk],
+                     unchecked: list[str]) -> tuple[str, str]:
+    """The Contract and Data sections of a v22 body, each a glance line and a group per owning chunk. A section with
+    no lines says so, and says when its side could not be checked."""
+    repo: str = run["repo"]
+    number: str = str(run["pr"])
+
+    def link_of(line: Line) -> str:
+        if line.loc:
+            return line_link(repo, number, {"path": line.path, "side": line.loc[0], "line": line.loc[1]})
+        return diff_link(repo, number, line.path)
+
+    def draw(title: str, side: str, none: str, levels: tuple[str, ...], kind: str, loose: list[Line],
+             key_of: Callable[[Line], str], noun: str) -> str:
+        owned: list[tuple[int, str, list[Line]]] = [(c.number, c.name, getattr(c, kind)) for c in chunks]
+        if not loose and not any(lines for _, _, lines in owned):
+            return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
+        return layout.section(title, levels, owned, loose, link_of, key_of, noun)
+
+    return (draw("Contract", "API", "No API changes", CONTRACT_LEVELS, "contract", lineset.loose_contract, contract_key, "controller"),
+            draw("Data", "database", "No database changes", DATA_LEVELS, "data", lineset.loose_data, data_key, "table"))
 
 
 # ---------------------------------------------------------------- body
@@ -1115,7 +1192,8 @@ def contract_section(run: dict[str, Any], pr: dict[str, Any], contract: dict[str
 def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cfg: dict[str, Any],
                floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
                notes: list[str], contract: dict[str, Any] | None = None,
-               diff_text: str = "") -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None]:
+               diff_text: str = "") -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None,
+                                            layout.LineSet | None]:
     pr_number: str = str(run["pr"])
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     paths: list[str] = [f["path"] for f in pr["files"]]
@@ -1126,7 +1204,15 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
     for key in ("type", "description"):
         if key in data:
             ordered[key] = data[key]
-    if cfg.get("contract_block"):
+    layout_mode: str | None = cfg.get("contract_layout")
+    if layout_mode not in (None, "by_chunk"):
+        raise AnswerError(f"unknown render contract_layout {layout_mode!r}, expected 'by_chunk'")
+    if layout_mode and not (cfg.get("contract_block") and cfg.get("files") == "chunks"):
+        raise AnswerError("render contract_layout 'by_chunk' needs contract_block and files = 'chunks'")
+    lineset: layout.LineSet | None = build_lineset(run, pr, contract, diff_text) if layout_mode else None
+    if lineset is not None:
+        ordered["contract"] = ordered["data"] = ""
+    elif cfg.get("contract_block"):
         ordered["contract_and_data"] = contract_section(run, pr, contract, diff_text)
     flow_order: bool = cfg.get("chunk_order") == "flow"
     if cfg.get("chunk_order", "risk") not in ("risk", "flow"):
@@ -1137,7 +1223,9 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
             f["path"]: [line.text for line in file_diff_lines(diff_text, f["path"]) if line.kind == "+"]
             for f in pr["files"] if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"}
         chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, flow_order,
-                              bool(cfg.get("file_start")), bool(cfg.get("review_labels")), migration_added)
+                              bool(cfg.get("file_start")), bool(cfg.get("review_labels")), migration_added, lineset)
+        if lineset is not None:
+            ordered["contract"], ordered["data"] = chunked_sections(run, lineset, chunks, unchecked_sides(run, contract))
     diagram: str = render_diagram(data.get("changes_diagram"), cfg)
     numbering: str = cfg.get("numbering", "chunks")
     if numbering not in ("chunks", "boxes", "flow"):
@@ -1202,14 +1290,22 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
     if node_files is not None:
         nodes = [{"id": node, "number": index + 1 if numbering == "boxes" else None, "files": files}
                  for index, (node, files) in enumerate(node_files.items())]
-    return f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", edges, chunks, nodes
+    return f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", edges, chunks, nodes, lineset
 
 
 # ---------------------------------------------------------------- review.json
 
+def line_json(line: Line) -> dict[str, Any]:
+    """A contract or data line for review.json: its level (null when it has none), text and where its diff line is."""
+    side, number = line.loc if line.loc else (None, None)
+    return {"impact": line.impact, "text": line.text, "path": line.path, "side": side, "line": number}
+
+
 def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], has_diagram: bool,
-                nodes: list[dict[str, Any]] | None, review_labels: bool = False) -> dict[str, Any]:
-    """The chunks in review order, for the browser extension that groups the Files changed page by chunk."""
+                nodes: list[dict[str, Any]] | None, review_labels: bool = False,
+                lineset: layout.LineSet | None = None) -> dict[str, Any]:
+    """The chunks in review order, for the browser extension that groups the Files changed page by chunk. With a
+    `lineset`, each chunk lists the contract and data lines it owns and `unchunked` the ones no chunk owns."""
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     return {
         "schema": 2,
@@ -1219,9 +1315,13 @@ def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], ha
         "variant": run["variant"],
         **({"diagram": DIAGRAM_SVG} if has_diagram else {}),
         **({"nodes": nodes} if nodes is not None else {}),
+        **({"unchunked": {"contract": [line_json(line) for line in lineset.loose_contract],
+                          "data": [line_json(line) for line in lineset.loose_data]}} if lineset is not None else {}),
         "chunks": [{"n": c.number, "name": c.name, "review": c.review, "raised_by": c.raised_by, "why": c.why,
                     "nodes": c.nodes,
                     **({"labels": c.labels} if review_labels else {}),
+                    **({"contract": [line_json(line) for line in c.contract], "data": [line_json(line) for line in c.data]}
+                       if lineset is not None else {}),
                     "files": [{"path": path, "additions": counts[path.lower()][0], "deletions": counts[path.lower()][1]}
                               for path in c.files],
                     "next": c.following,
@@ -1441,6 +1541,10 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  table.review-order table { display: table; table-layout: fixed; width: 100%; }
  table.review-order table td { padding: 2px 0; border: 0; background: none; overflow-wrap: anywhere; }
  table.review-order table tr, table.review-order table tr:nth-child(2n) { border: 0; background: none; }
+ .pill { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 7px; border: 1px solid #8c959f; border-radius: 999px; white-space: nowrap; vertical-align: 1px; }
+ .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
+ .pill.p1 { border-color: #1f2328; font-weight: 600; }
+ details > summary .pill { margin: 0 4px; }
 </style></head><body><article class="markdown-body" id="out"></article>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -1505,7 +1609,7 @@ def main() -> int:
         prompt_file: Path = run_dir / "prompt.txt"
         diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
         diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_text)
-        md, (labelled, total), chunks, nodes = build_body(run, pr, data, cfg, floor_cfg, diff_lines, notes, contract, diff_text)
+        md, (labelled, total), chunks, nodes, lineset = build_body(run, pr, data, cfg, floor_cfg, diff_lines, notes, contract, diff_text)
     except AnswerError as e:
         (run_dir / "error.txt").write_text(f"{e}\n")
         (run_dir / "body.html").write_text(ERROR_PAGE.replace("__ERROR__", html.escape(str(e))).replace("__RAW__", html.escape(raw)))
@@ -1518,7 +1622,7 @@ def main() -> int:
     (run_dir / "body.html").write_text(markdown_page(md))
     has_diagram: bool = write_diagram_svg(md, run_dir, notes)
     if cfg.get("files") == "chunks":
-        (run_dir / "review.json").write_text(json.dumps(review_json(run, pr, chunks, has_diagram, nodes, bool(cfg.get("review_labels"))), indent=2) + "\n")
+        (run_dir / "review.json").write_text(json.dumps(review_json(run, pr, chunks, has_diagram, nodes, bool(cfg.get("review_labels")), lineset), indent=2) + "\n")
     if notes:
         (run_dir / "error.txt").write_text("Rendered with these fixes:\n" + "\n".join(f"- {n}" for n in notes) + "\n")
     return 0

@@ -72,6 +72,12 @@ callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
 # (`_layout.items.$id` becomes /items/:id) in the grouped file list. Leave unset for other layouts.
 routes_dir = "web/app/routes/"
 
+# How an OpenAPI operation tag names the file that implements it, for placing a contract line in the chunk that holds
+# that file. Each template may use {pascal} (`ItemList`), {camel} (`itemList`) and {kebab} (`item-list`); a file matches
+# when its name before the first dot equals any result, ignoring case. The default is ["{pascal}"], which turns the tag
+# `item-list-controller` into ItemListController.
+# tag_file_templates = ["{pascal}", "{pascal}Controller"]
+
 # serve.py (`serve.py`, or `pd serve` in an overlay) starts briefs on demand for the browser extension.
 # default_variant is the variant a started run uses. serve_repos is the only list of repositories a run may be
 # started for, per host, as "owner/name"; a request for any other repository is refused. Both are required to

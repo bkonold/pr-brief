@@ -28,7 +28,7 @@ DATA = {"type": "Enhancement", "description": "does things", "chunks": FLOW}
 
 def body(cfg: dict, diff: str = DIFF, contract: dict | None = None) -> str:
     notes: list[str] = []
-    text, _, _, _ = build_body(RUN, PR, DATA, {"files": "chunks", **cfg}, FLOORS, {}, notes, contract, diff)
+    text, _, _, _, _ = build_body(RUN, PR, DATA, {"files": "chunks", **cfg}, FLOORS, {}, notes, contract, diff)
     return text
 
 

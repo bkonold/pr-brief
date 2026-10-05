@@ -59,7 +59,7 @@ DATA = {"type": "Enhancement", "description": "does things", "chunks": FLOW}
 
 def body(cfg: dict, diff: str = DIFF, contract: dict | None = None) -> str:
     notes: list[str] = []
-    text, _, _, _ = build_body(RUN, PR, DATA, {"files": "chunks", **cfg}, FLOORS, {}, notes, contract, diff)
+    text, _, _, _, _ = build_body(RUN, PR, DATA, {"files": "chunks", **cfg}, FLOORS, {}, notes, contract, diff)
     return text
 
 
@@ -77,7 +77,7 @@ class RowOrderAttributes(unittest.TestCase):
         diagram = 'flowchart TD\n  a["Open screen"] --> b["Call endpoint"]\n  b --> c["Write row"]:::save'
         data = {**DATA, "changes_diagram": f"```mermaid\n{diagram}\n```",
                 "chunks": [{**FLOW[0], "nodes": ["a"]}, {**FLOW[1], "nodes": ["b"]}, {**FLOW[2], "nodes": ["c"]}]}
-        text, _, _, _ = build_body(RUN, PR, data, {"files": "chunks", "chunk_order": "flow", "numbering": "flow", "diagram": "force_td"},
+        text, _, _, _, _ = build_body(RUN, PR, data, {"files": "chunks", "chunk_order": "flow", "numbering": "flow", "diagram": "force_td"},
                                    FLOORS, {}, [], None, "")
         self.assertIn('a["1 · Open screen"]', text)
         self.assertIn('c["3 · Write row"]', text)
