@@ -74,7 +74,7 @@ What it does (see `extension/README.md`):
 
 - A "By review" chunk list, ordered read carefully, read, skim, replaces GitHub's file tree. Each folder shared
   by consecutive files is shown once as a header.
-- A diagram panel sits between the chunk list and the code. It collapses, resizes, highlights the selected
+- A diagram panel is the leftmost pane, before the chunk list. It collapses, resizes, highlights the selected
   chunk's boxes, and has a legend and motion.
 - A chunk click lands its first file flush under the pinned toolbar.
 - The `↳` button jumps to the start line: it waits up to 10 seconds for GitHub to render the row, re-centres,

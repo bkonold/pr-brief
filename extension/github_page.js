@@ -62,23 +62,16 @@
     return document.querySelector(`${LINE_CELL}[data-line-anchor="${anchor}"]`)?.closest("tr") ?? null;
   }
 
-  // GitHub's 1px rule down the pane's right edge, inside the pane wrapper. The panel is the pane's next sibling,
-  // so the rule would sit between the chunk list and the diagram; it is made transparent while the panel is
-  // there (until hovered, so the drag affordance stays), leaving the panel's own divider before the diffs as
-  // the only one.
-  const PANE_DIVIDER = '[class*="prc-PageLayout-PaneVerticalDivider"]';
-  const PANE_DIVIDER_CSS = `${DIFF_PANE}:has(+ #pr-focus-diagram) ${PANE_DIVIDER}:not(:hover):not(:active) { background: transparent; }`;
-
-  // GitHub's page layout is a flex row of the file tree pane and the diffs' column. The diagram panel goes
-  // between them: it is inserted right after the pane, with the pane's own computed `order`, so DOM order puts it
-  // ahead of the diffs whatever values GitHub's CSS gives them, and no GitHub element is restyled. It sticks at the
-  // pane's top offset. Without a pane it goes right before the diffs, with their order.
+  // GitHub's page layout is a flex row of the file tree pane and the diffs' column. The diagram panel is the
+  // row's leftmost item: it is inserted right before the pane, with the pane's own computed `order`, so DOM order
+  // puts it ahead of the pane whatever values GitHub's CSS gives them, and no GitHub element is restyled. It sticks
+  // at the pane's top offset. Without a pane it goes right before the diffs, with their order.
   function diagramHost() {
     const content = document.querySelector(DIFF_CONTENT);
     if (!content) return null;
     const pane = document.querySelector(DIFF_PANE);
     const anchor = pane ?? content;
-    return { content, pane, top: pane ? getComputedStyle(pane).top : "0px", order: getComputedStyle(anchor).order, paneDividerCss: PANE_DIVIDER_CSS };
+    return { content, pane, top: pane ? getComputedStyle(pane).top : "0px", order: getComputedStyle(anchor).order };
   }
 
   // GitHub's own tree, including its "File tree" heading. The filter box above it is a sibling and

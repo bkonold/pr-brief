@@ -119,7 +119,8 @@
     panel.style.setProperty("--prd-width", `${panelWidth}px`);
   }
 
-  // Dragging the right edge rightwards widens the panel, and the diff column, a flex sibling, narrows to match.
+  // Dragging the right edge rightwards widens the panel, and the file pane and diff column, its flex siblings,
+  // narrow to match.
   function resizeHandle(panel) {
     const handle = make("div", "prd-handle");
     handle.title = "Drag to resize; double-click to reset";
@@ -266,20 +267,22 @@
   function build(svg, handlers, collapsed) {
     const panel = make("aside", "prd-panel");
     panel.id = ROOT_ID;
-    const chevron = make("button", "prd-chevron", collapsed ? "›" : "‹");
+    const chevron = make("button", "prd-chevron");
     chevron.type = "button";
-    chevron.setAttribute("aria-expanded", String(!collapsed));
-    chevron.setAttribute("aria-label", collapsed ? "Expand change diagram" : "Collapse change diagram");
+    const showToggle = (isCollapsed) => {
+      chevron.textContent = isCollapsed ? "›" : "‹";
+      chevron.setAttribute("aria-expanded", String(!isCollapsed));
+      chevron.setAttribute("aria-label", isCollapsed ? "Expand change diagram" : "Collapse change diagram");
+    };
+    showToggle(collapsed);
     chevron.addEventListener("click", () => {
       const next = !panel.classList.contains("prd-collapsed");
       writeCollapsed(next);
       panel.classList.toggle("prd-collapsed", next);
-      chevron.textContent = next ? "›" : "‹";
-      chevron.setAttribute("aria-expanded", String(!next));
-      chevron.setAttribute("aria-label", next ? "Expand change diagram" : "Collapse change diagram");
+      showToggle(next);
     });
     const header = make("div", "prd-header");
-    header.append(make("span", "prd-title", "Change diagram"), chevron);
+    header.append(make("span", "prd-title", "Change diagram"), make("span", "prd-rail-label", "Diagram"), chevron);
 
     const cardElement = make("div", "prd-card");
     cardElement.title = "Click to enlarge";
@@ -297,8 +300,9 @@
     return panel;
   }
 
-  // Docks the diagram between GitHub's file pane and the diffs, in GitHub's own flex row, so the diff column
-  // narrows to make room. Safe to call repeatedly: it re-mounts only when the panel is gone. handlers: { onNode(nodeId) }.
+  // Docks the diagram as the leftmost pane, right before the host's file pane in its own flex row, so the file
+  // pane and the diff column narrow to make room. Safe to call repeatedly: it re-mounts only when the panel is
+  // gone. handlers: { onNode(nodeId) }.
   function render(svgText, handlers) {
     const host = ns.page.diagramHost();
     if (!host) return;
@@ -317,12 +321,8 @@
     root.style.top = host.top;
     root.style.setProperty("--prd-top", host.top);
     root.style.order = host.order;
-    if (!root.querySelector(":scope > style")) root.append(make("style", undefined, host.paneDividerCss));
-    if (host.pane) {
-      if (root.previousElementSibling !== host.pane) host.pane.after(root);
-    } else if (root.nextElementSibling !== host.content) {
-      host.content.before(root);
-    }
+    const anchor = host.pane ?? host.content;
+    if (root.nextElementSibling !== anchor) anchor.before(root);
   }
 
   function emphasize(nodeIds) {

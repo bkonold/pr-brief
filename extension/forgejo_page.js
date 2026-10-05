@@ -100,13 +100,13 @@
     }
   }
 
-  // The diagram panel is a flex item between the tree column and the diffs, sticking where the tree sticks.
+  // The diagram panel is the flex row's leftmost item, before the tree column, sticking where the tree sticks.
   function diagramHost() {
     const content = document.querySelector(DIFF_CONTENT);
     if (!content) return null;
     const pane = document.querySelector(DIFF_PANE);
     const anchor = pane ?? content;
-    return { content, pane, top: pane ? getComputedStyle(pane).top : "0px", order: getComputedStyle(anchor).order, paneDividerCss: "" };
+    return { content, pane, top: pane ? getComputedStyle(pane).top : "0px", order: getComputedStyle(anchor).order };
   }
 
   function treeHost() {

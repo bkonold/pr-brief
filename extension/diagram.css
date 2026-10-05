@@ -1,6 +1,6 @@
-/* The panel sits between GitHub's file pane and the diffs in the pane's flex row, so the chunk list and the
-   diagram read as one region. It shares the pane's surface, has no rule on its left, and ends at a single
-   divider before the code. Its footprint is the width plus a 16px margin (36px when collapsed), as before. */
+/* The panel is the leftmost item of the page's flex row, before the file pane, so the diagram, the chunk list and
+   the code read left to right. It shares the page surface and ends at a single divider before the chunk list.
+   Its footprint is the width plus a 12px margin; collapsed, it is a 30px rail with a vertical label. */
 .prd-panel {
   position: sticky;
   flex: 0 0 var(--prd-width, 280px);
@@ -8,7 +8,7 @@
   box-sizing: border-box;
   width: var(--prd-width, 280px);
   height: calc(100vh - var(--prd-top, 60px));
-  margin-left: 16px;
+  margin-right: 12px;
   padding-right: 11px;
   overflow-y: auto;
   color: var(--fgColor-default, #1f2328);
@@ -18,10 +18,11 @@
 }
 
 .prd-panel.prd-collapsed {
-  flex-basis: 28px;
-  width: 28px;
-  margin-left: 8px;
+  flex-basis: 30px;
+  width: 30px;
+  margin-right: 8px;
   padding-right: 0;
+  overflow: hidden;
 }
 
 .prd-handle {
@@ -58,8 +59,26 @@
   font-weight: 600;
 }
 
-.prd-collapsed .prd-title {
+.prd-collapsed .prd-header {
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 0;
+}
+
+.prd-collapsed .prd-chevron {
+  order: -1;
+}
+
+.prd-collapsed .prd-title,
+.prd-rail-label {
   display: none;
+}
+
+.prd-collapsed .prd-rail-label {
+  display: block;
+  color: var(--fgColor-muted, #59636e);
+  letter-spacing: 0.04em;
+  writing-mode: vertical-rl;
 }
 
 .prd-chevron {

@@ -21,7 +21,7 @@
 //   fileHeaderSelector              a file's header; stickySkip: elements the sticky-chrome scan ignores
 //   containerSelector               the diffs' container, watched for rows that appear
 //   contentSelector                 the diffs' column
-//   diagramHost()                   where the diagram panel docks, or null
+//   diagramHost()                   where the diagram panel docks (before the file pane), or null
 //   treeHost()                      the host's own file tree element, or null
 //   descriptionHost()               the element the PR brief card is inserted before (the PR's opening comment on the
 //                                   conversation page), or null

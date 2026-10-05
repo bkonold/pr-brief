@@ -80,14 +80,13 @@ chip appears and is removed after 2.5s. Without `nodes` (V10) a box selects the 
 ## The change diagram
 
 When `review.json` names a `diagram` (`diagram.svg` in the run directory), `background.js` fetches it with the review
-and `diagram.js` docks it between GitHub's file pane and the diffs, in GitHub's own flex row, so the page reads chunk
-list, diagram, code, and the diff column narrows by the panel's width (280px by default) instead of being covered. The
-panel is sticky at the file tree pane's offset and as tall as the pane, collapses with its chevron (`‹` expanded, `›`
-collapsed; remembered in `sessionStorage`) into a 28px strip in the same spot, and clicking the card opens a larger
-overlay; Esc or a click outside closes it.
-- The chunk list and the diagram read as one region: the panel has the page surface the pane has, GitHub's own rule
-  down the pane's right edge is made transparent while the panel is mounted, and the panel's right border is the one
-  divider before the code.
+and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
+diagram, chunk list, code, and the other two columns narrow by the panel's width (280px by default) instead of being
+covered. The panel is sticky at the file tree pane's offset and as tall as the pane. Its header's `‹` button collapses it
+(remembered in `sessionStorage`) into a 30px rail in the same spot, with "Diagram" written vertically under a `›` button
+that expands it. Clicking the card opens a larger overlay; Esc or a click outside closes it.
+- The diagram, the chunk list and the code are separated by single dividers: the panel's right border, then GitHub's own
+  rule down the pane's right edge.
 
 - Motion: the line jump scrolls smoothly (a target more than 1.5 windows away is first approached instantly to one window
   short of it), then flashes the row; newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
@@ -229,8 +228,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Entry hidden | the block's ancestor `div[class*="PullRequestDiffsList-module__diffEntry"]` |
 | Block path, first choice | `"diff-" + sha256(path)` looked up with `getElementById` |
 | Block path, fallbacks | a descendant `[data-file-path]`, else `table[data-diff-anchor]` with `aria-label` `Diff for: <path>` |
-| Diagram host | `[class*="prc-PageLayout-PaneWrapper"]` (the file pane) and `[class*="prc-PageLayout-ContentWrapper"]` (the diffs' column), both inside `#diff-comparison-viewer-container`. The panel is inserted right after the pane with the pane's computed `order` (before the column with the column's order when there is no pane), so DOM order places it between them and no GitHub element is restyled. Top offset copied from the pane |
-| Pane divider | `[class*="prc-PageLayout-PaneVerticalDivider"]` inside the pane, made transparent by a `<style>` carried in the panel (`:has(+ #pr-focus-diagram)`, so it applies only while the panel follows the pane) |
+| Diagram host | `[class*="prc-PageLayout-PaneWrapper"]` (the file pane) and `[class*="prc-PageLayout-ContentWrapper"]` (the diffs' column), both inside `#diff-comparison-viewer-container`. The panel is inserted right before the pane with the pane's computed `order` (before the column with the column's order when there is no pane), so DOM order places it first and no GitHub element is restyled. Top offset copied from the pane |
 | Tree host | `#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]`: GitHub's tree with its "File tree" heading. `#pr-file-tree` also holds the "Filter files" box as its first child, so the list is inserted before the host and the host is hidden with a class |
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed and scrolled to the middle of the window. |
 | Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
