@@ -132,6 +132,12 @@
     return make("span", `prf-impact prf-impact-${Math.min(rank, 2)}`, impact);
   }
 
+  // A line's one-line text: what changed and where, as in the brief's table row (`+ id` required · `GET /rows`); the whole
+  // sentence for a review.json whose lines have no such parts.
+  function lineText(line) {
+    return line.change ? (line.on ? `${line.change} · ${line.on}` : line.change) : line.text;
+  }
+
   // One line of a chunk's Contract or Data block: its impact chip, then its text with `code` spans, a button that
   // jumps to the line's place in the diff. A line the diff could not place jumps to its file.
   function changeLine(line, levels, onJump) {
@@ -141,7 +147,7 @@
     const chip = impactChip(line.impact, levels);
     if (chip) row.append(chip);
     const text = make("span", "prf-line-text");
-    text.append(...messageNodes(line.text));
+    text.append(...messageNodes(lineText(line)));
     row.append(text);
     item.append(row);
     return item;
@@ -533,7 +539,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { changeBlocks, impactChip, fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
+  ns.tree = { changeBlocks, impactChip, lineText, fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

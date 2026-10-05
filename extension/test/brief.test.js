@@ -719,6 +719,86 @@ test("a body with no review-order table has no order block, and the Contract gro
   assert.equal(require("../brief.js").splitOrder("<p>x</p><details> <summary><h3> File Walkthrough</h3></summary></details>").order.startsWith("<details>"), true);
 });
 
+const V22_MARKDOWN = [
+  "# T",
+  "",
+  "### **Contract**",
+  '<span class="pill p0"><strong>1 callers must change</strong></span> <span class="pill p2">2 additive</span>',
+  "",
+  "<details>",
+  '<summary>3 · Endpoint <span class="pill p0"><strong>callers must change</strong></span> <span class="muted">3 changes</span></summary>',
+  "",
+  '<div class="table-wrap">',
+  "",
+  "| Impact | Side | Change | On | ↗ |",
+  "| --- | --- | --- | --- | --- |",
+  '| <span class="pill p0"><strong>callers must change</strong></span> | request | <code>+ kind</code> required param | <code>GET /rows</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR4) |',
+  '| <span class="pill p2">additive</span> | response | <code>+ note</code> optional | 9 schemas: <code>A</code>, <code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters</code> +6 | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR9) |',
+  "",
+  "</div>",
+  "",
+  "</details>",
+  "",
+  "<details>",
+  '<summary>Not in any chunk <span class="pill p2">additive</span> <span class="muted">2 changes</span></summary>',
+  "",
+  '<div class="table-wrap">',
+  "",
+  "| Impact | Change | Table | ↗ |",
+  "| --- | --- | --- | --- |",
+  "| <strong><code>widgets</code></strong> |  |  |  |",
+  '| <span class="pill p2">additive</span> | <code>+ a</code> nullable &#124; x | <code>widgets</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-defR3) |',
+  "",
+  "</div>",
+  "",
+  "</details>",
+  "",
+  '<p class="group-row">1 · Model <span class="pill p1">consumers may break</span> <code>− b</code> · <code>Widget</code> <a href="https://github.com/acme/widgets/pull/7/changes#diff-abcL7">↗</a></p>',
+  "",
+  "___",
+  "",
+  "### **Data**",
+  "No database changes",
+  "",
+  "### Diagram Walkthrough",
+  "",
+  "```mermaid",
+  "flowchart TD",
+  "```",
+  "",
+].join("\n");
+
+test("a v22 brief draws each group's markdown table as a table, with the link rewritten and a sub-header row across the table", () => {
+  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
+  assert.equal((html.match(/<table>/g) ?? []).length, 2);
+  assert.match(html, /<thead><tr><th>Impact<\/th><th>Side<\/th><th>Change<\/th><th>On<\/th><th>↗<\/th><\/tr><\/thead>/);
+  assert.match(html, /<td><span class="pill p0"><strong>callers must change<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
+  assert.match(html, /<td><a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abcR4">↗<\/a><\/td>/);
+  assert.match(html, /<code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters<\/code>/);
+  assert.match(html, /<tr class="sub"><td colspan="4"><strong><code>widgets<\/code><\/strong><\/td><\/tr>/);
+  assert.match(html, /<code>\+ a<\/code> nullable &#124; x/);
+  assert.match(html, /<div class="table-wrap">\s*<table>/);
+  assert.doesNotMatch(html, /\|/);
+});
+
+test("a v22 brief keeps a one-line group as a plain row and the diagram after the Data section, with no order block", () => {
+  const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
+  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
+  assert.match(html, /<p class="group-row">1 · Model <span class="pill p1">consumers may break<\/span> <code>− b<\/code> · <code>Widget<\/code> <a href="http:\/\/forge\.example[^"]*#diff-abcL7">↗<\/a><\/p>/);
+  assert.doesNotMatch(html, /class="order"|order-switch/);
+  const contract = html.indexOf("<strong>Contract</strong>");
+  const data = html.indexOf("<strong>Data</strong>");
+  const diagram = html.indexOf('class="diagram-box"');
+  assert.ok(contract !== -1 && data > contract && diagram > data, [contract, data, diagram].join());
+  assert.equal(html.slice(contract, data).includes("diagram-box"), false);
+});
+
+test("renderMarkdown reads a pipe table with an escaped pipe and leaves a lone pipe line as text", () => {
+  const { html } = briefText.renderMarkdown(["| a | b |", "| --- | --- |", "| x \\| y | `z` |", "", "| not a table |"].join("\n"));
+  assert.match(html, /<table><thead><tr><th>a<\/th><th>b<\/th><\/tr><\/thead><tbody><tr><td>x \| y<\/td><td><code>z<\/code><\/td><\/tr><\/tbody><\/table>/);
+  assert.match(html, /<p>\| not a table \|<\/p>/);
+});
+
 test("the Contract and data block renders as a list of links into the files view, with its fragments kept", () => {
   const markdown = [
     "# T",

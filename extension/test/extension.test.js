@@ -952,7 +952,7 @@ test("a chunk's Contract and Data blocks list each line with its impact chip abo
         { impact: "callers must change", text: "`size` now required", path: "api/openapi.json", side: "R", line: 40 },
         { impact: "additive", text: "new `GET /items`", path: "api/openapi.json", side: "R", line: 52 },
       ],
-      data: [{ impact: null, text: "other statement in V9.sql", path: "db/V9.sql", side: "R", line: 3 }],
+      data: [{ impact: null, text: "DO block in V9.sql", path: "db/V9.sql", side: "R", line: 3 }],
     };
     const clicked = [];
     const blocks = changeBlocks(chunk, (line) => clicked.push(line.line));
@@ -971,6 +971,23 @@ test("a chunk's Contract and Data blocks list each line with its impact chip abo
     assert.equal(impactChip("x", ["a"]), null);
     assert.deepEqual(changeBlocks({ n: 1 }, () => {}), []);
     assert.deepEqual(changeBlocks({ n: 1, contract: [] }, () => {}), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk's change line is its change and where as one line, or the whole text when the run has no such parts", () => {
+  const { changeBlocks, lineText } = require("../tree.js");
+  assert.equal(lineText({ change: "`+ productType` required param", on: "`GET /rows`", text: "long sentence" }), "`+ productType` required param · `GET /rows`");
+  assert.equal(lineText({ change: "DO block", on: "", text: "DO block in V9.sql" }), "DO block");
+  assert.equal(lineText({ text: "`size` now required" }), "`size` now required");
+  globalThis.document = fakeDom();
+  try {
+    const chunk = { n: 1, contract: [{ impact: "callers must change", text: "sentence", change: "`+ kind` required param", on: "`GET /rows`", reaches: "request", path: "api/openapi.json", side: "R", line: 4 }] };
+    const [block] = changeBlocks(chunk, () => {});
+    const parts = byClass(block, "prf-line-text")[0].children.map((part) => part.tag ?? part);
+    assert.deepEqual(parts, ["code", " required param · ", "code"]);
+    assert.equal(byClass(block, "prf-line").length, 1);
   } finally {
     delete globalThis.document;
   }

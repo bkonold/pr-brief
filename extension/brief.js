@@ -103,6 +103,17 @@
     .text details > summary .pill { margin: 0 4px; font-size: 11px; line-height: 16px; padding: 0 7px; }
     .text details > ul { margin: 4px 0 8px; padding-left: 20px; }
     .text details li { margin-bottom: 4px; }
+    .muted { font-size: 12px; color: var(--muted); }
+    .text p.group-row { margin: 0 0 6px; line-height: 22px; }
+    .text p.group-row .pill { margin: 0 4px; font-size: 11px; line-height: 16px; padding: 0 7px; }
+    .text .table-wrap { margin: 4px 0 8px; overflow-x: auto; }
+    .text .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .text .table-wrap th, .text .table-wrap td { padding: 3px 12px 3px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+    .text .table-wrap th { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .text .table-wrap th:first-child, .text .table-wrap td:first-child, .text .table-wrap th:last-child, .text .table-wrap td:last-child { white-space: nowrap; overflow-wrap: normal; }
+    .text .table-wrap td:last-child { padding-right: 0; }
+    .text .table-wrap td .pill { font-size: 11px; line-height: 16px; padding: 0 7px; }
+    .text .table-wrap tr.sub td { padding-top: 8px; border-bottom: 0; }
     ul.contract { margin: 0 0 12px; padding-left: 20px; }
     .text > ul.contract > li { margin-bottom: 4px; }
     .order-switch { margin: 4px 0 8px; font-size: 12px; color: var(--muted); }

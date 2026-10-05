@@ -29,7 +29,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - A run with `contract` and `data` on its chunks (v22) shows them in the open chunk's row, above its files: a "Contract"
   block and a "Data" block, each a list of lines worst impact first. A line is a button with its impact as a chip
   (the top level filled, the second bold outlined, the rest outlined; no chip for a line with no impact) and its
-  text, which is the line's `text` from `review.json`. Clicking one focuses the chunk if another is open, jumps to the
+  text, which is the line's `change` and `on` from `review.json` joined by ` · ` (`+ kind` required param · `GET /rows`), or its `text` when the run has no such parts. Clicking one focuses the chunk if another is open, jumps to the
   line's diff row and centres it, without the pulse of a start jump. A line whose spec or migration file belongs to
   another chunk shows that file's diff while it is the target, since the focus would hide it otherwise; the file hides
   again when another chunk or file is chosen. A line with no row (`line` null) scrolls to its file. The lines are not in the start callouts, and the
@@ -198,10 +198,13 @@ the page's data, and its header links to the files view. Without a run it is the
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - A "Contract and data" section, when the run has one (v16), is a list of API operations and tables with badges; each
   line and badge is a link to the diff line it names, rewritten to this host's files view like the other links.
-- A v22 run has two sections instead, "Contract" and "Data". Each starts with a glance line (`Contract: 2 callers must
-  change · 1 additive`), then one closed `<details>` group per chunk, headed `<n> · <chunk name>`, the chunk's worst
-  impact as a chip and its first line, and last a "Not in any chunk" group. Inside a group each line has its chip and
-  links to its diff line. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a filled
+- A v22 run has two sections instead, "Contract" and "Data". Each starts with a glance line of impact chips, then one group
+  per chunk, headed `<n> · <chunk name>`, the chunk's worst impact as a chip and `K changes`, and last a "Not in any chunk"
+  group. A group of several lines is a closed `<details>` holding a table (Contract: Impact, Side, Change, On, ↗; Data:
+  Impact, Change, Table, ↗); a group of one line is a plain row. The body's pipe tables are drawn by `brief_text.js`, which
+  turns a body row with text only in its first cell into a sub-header across the table; each table scrolls sideways in its
+  own container, and a name cut in the middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's files
+  view like the others. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a filled
   chip, the second a bold outlined one and the rest outlined, drawn by the card's own style.
 - A run whose body still has a review-order table (variants before v22; v22 and later leave it out of the brief, since the
   files view lists the chunks) shows it after the diagram. When the run's chunks carry steps, it has the same "Order: by

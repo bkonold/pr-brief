@@ -43,8 +43,33 @@
       .join("");
   }
 
-  // Renders the markdown render.py writes: headings, rules, nested lists, paragraphs, fenced code and raw HTML
-  // blocks. The title heading and the "Diagram Walkthrough" section's heading and mermaid fence are left out (the
+  const TABLE_SEPARATOR = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+
+  // The cells of a pipe-table row; `\|` is a pipe inside a cell.
+  function tableCells(row) {
+    return row
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/(?<!\\)\|$/, "")
+      .split(/(?<!\\)\|/)
+      .map((cell) => cell.replace(/\\\|/g, "|").trim());
+  }
+
+  // A pipe table as HTML. A body row with text in its first cell and nothing after it is a sub-header, which spans the
+  // whole row.
+  function renderTable(rows) {
+    const [head, , ...body] = rows.map(tableCells);
+    const header = `<thead><tr>${head.map((cell) => `<th>${inline(cell)}</th>`).join("")}</tr></thead>`;
+    const lines = body.map((cells) => {
+      const sub = cells.length > 1 && cells[0] !== "" && cells.slice(1).every((cell) => cell === "");
+      if (sub) return `<tr class="sub"><td colspan="${cells.length}">${inline(cells[0])}</td></tr>`;
+      return `<tr>${cells.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`;
+    });
+    return `<table>${header}<tbody>${lines.join("")}</tbody></table>`;
+  }
+
+  // Renders the markdown render.py writes: headings, rules, nested lists, pipe tables, paragraphs, fenced code and raw
+  // HTML blocks. The title heading and the "Diagram Walkthrough" section's heading and mermaid fence are left out (the
   // page shows the title and the card shows the rendered diagram); the paragraph after them that starts with
   // "Legend:" is returned apart so it can sit under the diagram.
   function renderMarkdown(md) {
@@ -117,6 +142,16 @@
           out.push("<ul>");
         }
         out.push(`<li>${inline(item[2])}`);
+        continue;
+      }
+
+      if (trimmed.startsWith("|") && TABLE_SEPARATOR.test(lines[at + 1] ?? "")) {
+        flushParagraph();
+        closeLists();
+        const rows = [line, lines[at + 1]];
+        for (at += 2; at < lines.length && lines[at].trim().startsWith("|"); at += 1) rows.push(lines[at]);
+        at -= 1;
+        out.push(renderTable(rows));
         continue;
       }
 
