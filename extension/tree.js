@@ -30,11 +30,24 @@
     return chunk.review === LOWEST_LEVEL || chunk.name === UNCHUNKED;
   }
 
-  // "read carefully" first, then "read", then "skim", then Unchunked; ties keep review.json's order.
-  function orderChunks(chunks) {
+  // True when the run's chunks carry a `step`, which is what makes review.json's order a flow order worth offering
+  // beside the risk order.
+  function hasSteps(chunks) {
+    return chunks.some((chunk) => chunk.step);
+  }
+
+  // The order a review is first shown in: the flow of the change when the run has steps, else by risk.
+  function defaultOrder(review) {
+    return hasSteps(review.chunks) ? "flow" : "risk";
+  }
+
+  // "risk" (the default): "read carefully" first, then "read", then "skim", then Unchunked; ties keep review.json's
+  // order. "flow": review.json's order, Unchunked last.
+  function orderChunks(chunks, order = "risk") {
+    const rank = order === "flow" ? (chunk) => (chunk.name === UNCHUNKED ? 1 : 0) : groupRank;
     return chunks
       .map((chunk, index) => ({ chunk, index }))
-      .sort((a, b) => groupRank(a.chunk) - groupRank(b.chunk) || a.index - b.index)
+      .sort((a, b) => rank(a.chunk) - rank(b.chunk) || a.index - b.index)
       .map(({ chunk }) => chunk);
   }
 
@@ -263,7 +276,9 @@
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.n));
     main.setAttribute("aria-pressed", String(chunk.n === state.selectedN));
     const line = make("span", "prf-line");
-    line.append(make("span", "prf-name", `${chunk.n} · ${chunk.name}`), make("span", "prf-count", String(chunk.files.length)));
+    line.append(make("span", "prf-name", `${chunk.n} · ${chunk.name}`));
+    if (chunk.step) line.append(make("span", "prf-step", chunk.step));
+    line.append(make("span", "prf-count", String(chunk.files.length)));
     if (isMuted(chunk)) line.append(make("span", "prf-tag", chunk.name === UNCHUNKED ? UNCHUNKED : chunk.review));
     const level = make("span", "prf-meta");
     level.append(make("span", `prf-level prf-level-${chunk.review.replace(/\s+/g, "-")}`, chunk.review));
@@ -309,6 +324,18 @@
     return toggle;
   }
 
+  // The "Order: by flow | by risk" switch of the review list. Offered only when the run's chunks have steps.
+  function orderSwitch(state, handlers) {
+    const element = make("div", "prf-order");
+    element.append(make("span", "prf-order-label", "Order:"));
+    for (const [order, label] of [["flow", "by flow"], ["risk", "by risk"]]) {
+      const choice = button("prf-order-choice", label, () => handlers.onOrder(order));
+      choice.setAttribute("aria-pressed", String(state.order === order));
+      element.append(choice);
+    }
+    return element;
+  }
+
   // Offered only when the PR has runs for more than one variant.
   function variantSelect(review, handlers) {
     const select = make("select", "prf-variant");
@@ -331,6 +358,7 @@
     const element = make("div", "prf-bar");
     if (review.variants?.length > 1) element.append(variantSelect(review, handlers));
     element.append(modeToggle(state, handlers));
+    if (state.mode === "review" && hasSteps(review.chunks)) element.append(orderSwitch(state, handlers));
     if (state.mode === "review") {
       const allOpen = [...review.chunks.map((chunk) => chunk.n), ...(state.extras.length ? [EXTRA_KEY] : [])].every((key) =>
         state.expanded.has(key),
@@ -344,7 +372,7 @@
 
   function groups(review, state, handlers) {
     const list = make("div", "prf-groups");
-    for (const chunk of orderChunks(review.chunks)) list.append(chunkGroup(chunk, state, handlers));
+    for (const chunk of orderChunks(review.chunks, state.order)) list.append(chunkGroup(chunk, state, handlers));
     if (state.extras.length) list.append(extraGroup(state.extras, state, handlers));
     return list;
   }
@@ -362,11 +390,11 @@
     return { root, host };
   }
 
-  // state: { mode: "review" | "github", selectedN, expanded: Set of chunk numbers and "extra",
+  // state: { mode: "review" | "github", order: "flow" | "risk", selectedN, expanded: Set of chunk numbers and "extra",
   //          extras: [{ path }], pageSha, note, badges: Map of path -> diagram box numbers,
   //          activeFiles: Set of the active box's paths }
   // handlers: onMode(mode), onToggleGroup(key), onSelectChunk(n), onSelectFile(n | null, path),
-  //           onJumpToStart(n), onExpandAll(), onCollapseAll(), onSwitchVariant(variant)
+  //           onJumpToStart(n), onExpandAll(), onCollapseAll(), onSwitchVariant(variant), onOrder(order)
   function render(review, state, handlers) {
     const mount = mountPoint();
     if (!mount) return;
@@ -498,7 +526,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, flashBadges, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, groupByFolder, staleMessage, EXTRA_KEY };
+  ns.tree = { render, renderServerNote, renderGenerateLine, flashBadges, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, hasSteps, defaultOrder, groupByFolder, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

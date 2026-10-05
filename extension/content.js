@@ -157,6 +157,7 @@
       session.review,
       {
         mode: session.mode,
+        order: session.order,
         selectedN: session.selectedN,
         expanded: session.expanded,
         extras: extraFiles(session),
@@ -240,7 +241,7 @@
 
   // Without it, a box selects the first chunk, in list order, that touches it; the diff doesn't scroll.
   function selectNode(session, nodeId) {
-    const owner = tree.orderChunks(session.review.chunks).find((chunk) => chunk.nodes?.includes(nodeId));
+    const owner = tree.orderChunks(session.review.chunks, session.order).find((chunk) => chunk.nodes?.includes(nodeId));
     if (!owner || (session.mode === "review" && session.selectedN === owner.n)) return;
     change(
       session,
@@ -331,6 +332,7 @@
         await landOnFile(session, path);
       },
       onSwitchVariant: (variant) => switchVariant(session, variant),
+      onOrder: (order) => change(session, () => (session.order = order), { scroll: false }),
       onExpandAll: () => change(session, () => (session.expanded = new Set(allKeys())), { scroll: false }),
       onCollapseAll: () => change(session, () => (session.expanded = new Set()), { scroll: false }),
     };
@@ -354,7 +356,8 @@
       deactivate(session);
       const kept = variants.keepSelection(session.review, session.selectedN, review);
       session.selectedN = kept;
-      session.expanded = new Set([kept ?? tree.orderChunks(review.chunks)[0]?.n]);
+      session.order = tree.defaultOrder(review);
+      session.expanded = new Set([kept ?? tree.orderChunks(review.chunks, session.order)[0]?.n]);
       session.review = review;
       save(session);
     }
@@ -500,7 +503,8 @@
       review,
       mode: saved.mode === "github" ? "github" : "review",
       selectedN,
-      expanded: new Set([selectedN ?? tree.orderChunks(review.chunks)[0]?.n]),
+      order: tree.defaultOrder(review),
+      expanded: new Set([selectedN ?? tree.orderChunks(review.chunks, tree.defaultOrder(review))[0]?.n]),
       startedAt: Date.now(),
     };
     stopObserving = page.onChange(onMutations);

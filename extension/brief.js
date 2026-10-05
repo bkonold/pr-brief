@@ -93,6 +93,11 @@
     .paper { padding: 8px; overflow: auto; color: #1f2328; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; }
     .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
     .legend { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+    ul.contract { margin: 0 0 12px; padding-left: 20px; }
+    .text > ul.contract > li { margin-bottom: 4px; }
+    .order-switch { margin: 4px 0 8px; font-size: 12px; color: var(--muted); }
+    .order-switch .link { margin: 0 2px; }
+    .order-switch .link[aria-pressed="true"] { color: var(--fg); font-weight: 600; cursor: default; text-decoration: none; }
     table.review-order { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
     table.review-order th, table.review-order td { padding: 6px 8px; vertical-align: top; text-align: left; border: 1px solid var(--border); overflow-wrap: anywhere; }
     table.review-order th { background: var(--header); }
@@ -118,6 +123,25 @@
   function splitOrder(html) {
     const at = html.indexOf("<details");
     return at === -1 ? { text: html, order: "" } : { text: html.slice(0, at), order: html.slice(at) };
+  }
+
+  const ORDERS = [["flow", "by flow"], ["risk", "by risk"]];
+  const DEFAULT_ORDER = "flow";
+
+  // The "Order: by flow | by risk" switch, drawn only for a review order whose rows carry both ranks. Its buttons
+  // are `order:<mode>` actions.
+  function orderSwitch(mode) {
+    const buttons = ORDERS.map(([value, label]) => `<button class="link" type="button" data-action="order:${value}" aria-pressed="${value === mode}">${label}</button>`);
+    return `<div class="order-switch">Order: ${buttons.join(" | ")}</div>`;
+  }
+
+  // The review-order block in `mode` ("flow" unless the view asks for "risk"), with the switch under its heading.
+  function orderBlock(order, mode) {
+    if (!ns.briefText.hasOrders(order)) return order;
+    const shown = mode === "risk" ? "risk" : DEFAULT_ORDER;
+    const ordered = ns.briefText.orderRows(order, shown);
+    const heading = ordered.indexOf("</summary>");
+    return heading === -1 ? ordered : `${ordered.slice(0, heading + "</summary>".length)}${orderSwitch(shown)}${ordered.slice(heading + "</summary>".length)}`;
   }
 
   const SHORT_SHA = 7;
@@ -151,7 +175,8 @@
   //   { kind: "none", canGenerate }                         no run yet
   //   { kind: "running", stage, elapsed }                   a run is going
   //   { kind: "error", message }                            the call or the run failed
-  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate }   a run, closed
+  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate, order }   a run, closed
+  //                                                       (`order`: "flow", the default, or "risk" for the review order)
   // `key` and `filesUrl` name the run and the PR's files view on this host. Every button is a
   // data-action: generate, cancel.
   function cardHtml(view, { key, filesUrl }) {
@@ -182,25 +207,40 @@
       `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label)}${regenerate}` +
       `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
       `<div class="content"><div class="text">${text}</div>${diagram}` +
-      `${order ? `<div class="order">${order}</div>` : ""}</div></details>`
+      `${order ? `<div class="order">${orderBlock(order, view.order)}</div>` : ""}</div></details>`
     );
   }
 
   // Builds the card host for a run folder `key`, empty until `show(view)` draws it (see cardHtml for the views).
-  // `onAction(name)` is called with "generate" or "cancel" when the matching button is clicked. The card holds no
-  // state of its own: a brief view is drawn closed every time.
+  // `onAction(name)` is called with "generate" or "cancel" when the matching button is clicked. The "order:flow" and
+  // "order:risk" buttons only reorder the review order in place, keeping it open; the choice is not remembered, and
+  // the next `show` draws the default order again. A brief view is drawn closed every time.
   function buildCard({ key, filesUrl, onAction }) {
     const host = document.createElement("div");
     host.id = HOST_ID;
     host.setAttribute("data-run", key);
     const shadow = host.attachShadow({ mode: "open" });
+    let shown = null;
+
+    function reorder(mode) {
+      if (shown?.kind !== "brief") return;
+      shown = { ...shown, order: mode };
+      const target = shadow.querySelector?.(".order");
+      if (!target) return;
+      const wasOpen = target.querySelector?.("details")?.open;
+      target.innerHTML = orderBlock(splitOrder(ns.briefText.renderBody(shown.bodyHtml, filesUrl).html).order, mode);
+      if (wasOpen) target.querySelector?.("details")?.setAttribute?.("open", "");
+    }
+
     shadow.addEventListener?.("click", (event) => {
       const action = event.target?.closest?.("[data-action]")?.getAttribute("data-action");
       if (!action) return;
       event.preventDefault();
-      onAction?.(action);
+      if (action.startsWith("order:")) reorder(action.slice("order:".length));
+      else onAction?.(action);
     });
     host.show = (view) => {
+      shown = view;
       if (view.variant) host.setAttribute("data-variant", view.variant);
       shadow.innerHTML = `<style>${STYLE}</style>${cardHtml(view, { key, filesUrl })}`;
     };
@@ -214,7 +254,7 @@
     return host;
   }
 
-  ns.brief = { HOST_ID, buildCard, buildBrief, cardHtml, isStale };
+  ns.brief = { HOST_ID, buildCard, buildBrief, cardHtml, isStale, orderBlock };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.brief;

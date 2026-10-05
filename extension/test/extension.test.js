@@ -444,3 +444,24 @@ test("the head sha is read from the page on any view of the PR it was loaded for
     if (saved === undefined) delete globalThis.location;
   }
 });
+
+const { hasSteps, defaultOrder } = require("../tree.js");
+
+test("orderChunks in flow order keeps review.json's order and puts Unchunked last", () => {
+  const chunks = [
+    { n: 1, name: "Screen", review: "skim", step: "UI" },
+    { n: 2, name: "Table", review: "read carefully", step: "Database" },
+    { n: 3, name: "Unchunked", review: "read" },
+    { n: 4, name: "Config", review: "read" },
+  ];
+  assert.deepEqual(orderChunks(chunks, "flow").map((chunk) => chunk.name), ["Screen", "Table", "Config", "Unchunked"]);
+  assert.deepEqual(orderChunks(chunks, "risk").map((chunk) => chunk.name), ["Table", "Config", "Screen", "Unchunked"]);
+  assert.deepEqual(orderChunks(chunks), orderChunks(chunks, "risk"));
+});
+
+test("a run opens in flow order only when its chunks have steps", () => {
+  assert.equal(hasSteps([{ name: "A" }, { name: "B", step: "API" }]), true);
+  assert.equal(hasSteps([{ name: "A" }]), false);
+  assert.equal(defaultOrder({ chunks: [{ name: "A", step: "UI" }] }), "flow");
+  assert.equal(defaultOrder({ chunks: [{ name: "A" }] }), "risk");
+});

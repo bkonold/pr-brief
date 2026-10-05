@@ -11,7 +11,11 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - A toggle, "By review" / "GitHub tree", and an "Expand all" / "Collapse all" button. "GitHub tree" brings
   GitHub's own tree back and shows every diff; the toggle stays so you can switch again.
 - One group per chunk, with its file count, review level and why.
-  Groups are ordered by review level ("read carefully", "read", "skim"), then "Unchunked"; skim-level chunks and "Unchunked" are muted. A "Not in review" group lists loaded diffs no chunk names.
+  Groups are ordered by review level ("read carefully", "read", "skim"), then "Unchunked"; skim-level chunks and "Unchunked" are muted.
+  When the run's chunks carry a `step` (v16), the order is the flow of the change as `review.json` lists it, each group
+  shows its step beside its name, and an "Order: by flow | by risk" switch under the toggle reorders the list. The
+  switch changes only the order: numbers, selection, `↳` jumps and the diagram highlight are by chunk, so they work in
+  both. It is not remembered, so each load opens in flow order; a run with no steps opens by risk and has no switch. A "Not in review" group lists loaded diffs no chunk names.
 - Files show their basename, `+N` and `-N`. Each folder shared by consecutive files is named once in a dim monospace header above them, trimmed from the left when it doesn't fit; the file order is the chunk's own.
 - Clicking a chunk header focuses the diffs on that chunk, expands it, collapses the others and scrolls to the
   chunk's first file; clicking it again shows all diffs. The chevron only expands or collapses.
@@ -141,6 +145,11 @@ the page's data, and its header links to the files view. Without a run it is the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
   description's bullets and above the review order, with the legend under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
+- A "Contract and data" section, when the run has one (v16), is a list of API operations and tables with badges; each
+  line and badge is a link to the diff line it names, rewritten to this host's files view like the other links.
+- The review order of a run with steps carries the same "Order: by flow | by risk" switch under its heading. It reorders
+  the rows in place (their numbers stay the flow numbers, which are the diagram's labels), keeps the review order open,
+  and is not remembered. The rows carry `data-flow` and `data-risk`; a body with none shows no switch.
 - The review order shows with its `<details>` closed, and each chunk's file list is a closed `<details>` headed by the
   file count. A chunk's start (the file:line link and the quoted line) sits in a closed "Start here" `<details>` under
   the chunk name. Links into the PR's files view are rewritten to this host's files view, fragment kept.
@@ -191,7 +200,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `variants.js` | Which chunk stays selected after a variant switch |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
 | `source.js` | Content-script side of the fetch |
-| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
+| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML, and reorders the review-order rows by flow or risk (pure string work, tested without a DOM) |
 | `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |
 
 The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in the order listed in `manifest.json`.

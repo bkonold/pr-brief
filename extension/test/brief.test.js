@@ -266,6 +266,9 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const built = [];
   const calls = [];
   const lines = [];
+  const renders = [];
+  const jumps = [];
+  const emphasized = [];
   const prFocus = {
     page: {
       name: "Fake",
@@ -279,7 +282,14 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       onChange: () => () => {},
       cancelJump() {},
       clearLineTarget() {},
+      fileBlocks: () => new Map(),
+      headSha: () => null,
+      restoreLineTarget() {},
+      ownsLine: () => false,
+      jumpToLine: async (...args) => jumps.push(args.slice(0, 3)),
     },
+    boxes: require("../boxes.js"),
+    variants: require("../variants.js"),
     source: {
       loadBrief: async () => run,
       loadReview: async () => review,
@@ -296,12 +306,28 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       },
     },
     tree: {
+      orderChunks: require("../tree.js").orderChunks,
+      defaultOrder: require("../tree.js").defaultOrder,
+      EXTRA_KEY: "extra",
+      render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
+      startCallout: () => null,
+      flashRows() {},
+      flashBadges() {},
+      revealGroup() {},
       remove() {},
       owns: () => false,
     },
-    focus: { apply: async () => ({}), clearBox() {} },
-    diagram: { remove() {}, owns: () => false },
+    focus: { apply: async () => ({}), clearBox() {}, markBox() {}, scrollTo: async () => {}, announceBox() {}, owns: () => false },
+    diagram: {
+      render() {},
+      emphasize: (nodes) => emphasized.push(nodes),
+      setActive() {},
+      titleOf: () => "",
+      pulse() {},
+      remove() {},
+      owns: () => false,
+    },
     alive: () => true,
   };
   const output = [];
@@ -311,10 +337,10 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     timer.unref?.();
     return timer;
   };
-  const context = { prFocus, location: { href: "x" }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
+  const context = { prFocus, location: { href: "x", hash: "" }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines };
+  return { log, built, navigations, output, calls, lines, renders, jumps, emphasized };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -483,5 +509,207 @@ test("clicking a button in the card reports its action, and show redraws the car
     assert.equal(prevented, 2);
   } finally {
     delete globalThis.document;
+  }
+});
+
+function ranked(n, name, risk, files = ["alpha"]) {
+  return `<tr data-flow="${n}" data-risk="${risk}"><td>${n}<br><sub>step ${n}</sub></td><td><strong>${name}</strong></td><td>read</td><td>why</td><td><table>${files
+    .map((file) => `<tr><td><a href="https://github.com/acme/widgets/pull/7/files#diff-${file}">${file}.js</a></td></tr>`)
+    .join("")}</table></td></tr>`;
+}
+
+const ORDER_ROWS = [ranked(1, "Screen", 0), ranked(2, "Endpoint", 1, ["beta", "gamma"]), ranked(3, "Table", 2), ranked(4, "Tests", 0), ranked(5, "Unchunked", -1)];
+const ORDER_MARKDOWN = [
+  "# T",
+  "",
+  "### **Description**",
+  "text",
+  "",
+  "___",
+  "",
+  "<details open> <summary><h3> Review order</h3></summary>",
+  "",
+  `<table class="review-order"><thead><tr><th>#</th><th>Chunk</th></tr></thead><tbody>${ORDER_ROWS.join("")}</tbody></table>`,
+  "",
+  "</details>",
+  "",
+].join("\n");
+const names = (html) => [...html.matchAll(/<tr data-flow="\d+" data-risk="-?\d+"><td>\d+<br><sub>[^<]*<\/sub><\/td><td><strong>([^<]*)</g)].map((match) => match[1]);
+
+test("orderRows puts the chunks in flow order, or by risk with ties in flow order and the catch-all last", () => {
+  const html = briefText.renderBody(bodyHtml(ORDER_MARKDOWN), FILES_URL).html;
+  assert.deepEqual(names(briefText.orderRows(html, "flow")), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
+  assert.deepEqual(names(briefText.orderRows(html, "risk")), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
+});
+
+test("orderRows moves a row with its nested file list whole and leaves the rest of the html alone", () => {
+  const html = briefText.renderBody(bodyHtml(ORDER_MARKDOWN), FILES_URL).html;
+  const risk = briefText.orderRows(html, "risk");
+  assert.equal(risk.length, html.length);
+  assert.ok(risk.startsWith(html.slice(0, html.indexOf("<tr data-flow"))));
+  assert.ok(risk.endsWith(html.slice(html.lastIndexOf("</tbody>"))));
+  const endpoint = /<tr data-flow="2"[^]*?<\/details><\/td><\/tr>/.exec(risk)[0];
+  assert.match(endpoint, /2 files<\/summary>.*diff-beta.*diff-gamma/s);
+  assert.equal(briefText.orderRows(risk, "flow"), html);
+});
+
+test("html with no ranked rows is returned as it is in either order", () => {
+  const html = briefText.renderBody(bodyHtml(), FILES_URL).html;
+  assert.equal(briefText.hasOrders(html), false);
+  assert.equal(briefText.orderRows(html, "risk"), html);
+  assert.equal(briefText.orderRows("<p>none</p>", "flow"), "<p>none</p>");
+});
+
+test("the rank attributes survive sanitizing while event handlers on the same row do not", () => {
+  const html = briefText.sanitize('<tr data-flow="2" onclick="x()" data-risk="1" data-evil="y"><td>a</td></tr>');
+  assert.equal(html, '<tr data-flow="2" data-risk="1"><td>a</td></tr>');
+});
+
+test("a review order with ranks opens in flow order with an Order switch, and the risk view reorders it", () => {
+  const view = { kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null };
+  const flow = cardHtml(view, CARD);
+  assert.deepEqual(names(flow), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
+  assert.match(flow, /<\/summary><div class="order-switch">Order: <button class="link" type="button" data-action="order:flow" aria-pressed="true">by flow<\/button> \| <button class="link" type="button" data-action="order:risk" aria-pressed="false">by risk<\/button><\/div>/);
+  const risk = cardHtml({ ...view, order: "risk" }, CARD);
+  assert.deepEqual(names(risk), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
+  assert.match(risk, /data-action="order:risk" aria-pressed="true"/);
+});
+
+test("a run without ranks shows no Order switch", () => {
+  const html = cardHtml({ kind: "brief", variant: "v15", bodyHtml: bodyHtml(), diagramSvg: null }, CARD);
+  assert.doesNotMatch(html, /order-switch|order:/);
+});
+
+test("the Contract and data block renders as a list of links into the files view, with its fragments kept", () => {
+  const markdown = [
+    "# T",
+    "",
+    "### **Description**",
+    "text",
+    "",
+    "___",
+    "",
+    "### **Contract and data**",
+    '<ul class="contract">',
+    '<li><a href="https://github.com/acme/widgets/pull/7/files#diff-abcR40"><code>GET /widgets</code></a> · <a href="https://github.com/acme/widgets/pull/7/files#diff-abcR41"><strong>size now required</strong></a></li>',
+    '<li><a href="https://github.com/acme/widgets/pull/7/files#diff-defR3"><code>orders</code></a> <sub>table</sub> · <a href="https://github.com/acme/widgets/pull/7/files#diff-defR3">CREATE TABLE</a></li>',
+    "</ul>",
+    "",
+    "<sub>Database changes not checked</sub>",
+    "",
+    "___",
+    "",
+  ].join("\n");
+  const html = cardHtml({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(markdown), diagramSvg: null }, CARD);
+  assert.match(html, /<h3><strong>Contract and data<\/strong><\/h3>\s*<ul class="contract">/);
+  assert.match(html, /<a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abcR40"><code>GET \/widgets<\/code><\/a>/);
+  assert.match(html, /<strong>size now required<\/strong>/);
+  assert.match(html, /<code>orders<\/code><\/a> <sub>table<\/sub>/);
+  assert.match(html, /<sub>Database changes not checked<\/sub>/);
+});
+
+function interactiveDocument() {
+  const order = { innerHTML: "", opened: false };
+  const details = { get open() { return order.opened; }, setAttribute: () => { order.opened = true; } };
+  order.querySelector = () => details;
+  const handlers = [];
+  const document = {
+    order,
+    handlers,
+    createElement: () => ({
+      attributes: {},
+      setAttribute(name, value) {
+        this.attributes[name] = value;
+      },
+      attachShadow() {
+        this.shadow = {
+          innerHTML: "",
+          addEventListener: (type, handler) => handlers.push(handler),
+          querySelector: (selector) => (selector === ".order" ? order : null),
+        };
+        return this.shadow;
+      },
+    }),
+  };
+  const click = (action) => {
+    let prevented = false;
+    const target = { closest: () => ({ getAttribute: () => action }) };
+    for (const handler of handlers) handler({ target, preventDefault: () => (prevented = true) });
+    return prevented;
+  };
+  return { document, click };
+}
+
+test("the Order buttons reorder the open review order in place and never reach onAction", () => {
+  const { document, click } = interactiveDocument();
+  globalThis.document = document;
+  try {
+    const actions = [];
+    const host = buildCard({ key: "fj-7", filesUrl: FILES_URL, onAction: (action) => actions.push(action) });
+    host.show({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null });
+    document.order.opened = true;
+    assert.equal(click("order:risk"), true);
+    assert.deepEqual(names(document.order.innerHTML), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
+    assert.equal(document.order.opened, true);
+    click("order:flow");
+    assert.deepEqual(names(document.order.innerHTML), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
+    click("generate");
+    assert.deepEqual(actions, ["generate"]);
+    host.show({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null });
+    assert.deepEqual(names(host.shadow.innerHTML), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+const STEP_REVIEW = {
+  schema: 2,
+  repo: "acme/widgets",
+  pr: 7,
+  variant: "v16",
+  diagramSvg: "<svg></svg>",
+  chunks: [
+    { n: 1, name: "Screen", step: "UI", review: "skim", why: "w", nodes: ["a"], files: [{ path: "src/ui.js" }], start: { path: "src/ui.js", side: "R", line: 4, text: "x" } },
+    { n: 2, name: "Endpoint", step: "API", review: "read", why: "w", nodes: ["b"], files: [{ path: "src/api.js" }], start: { path: "src/api.js", side: "R", line: 9, text: "y" } },
+    { n: 3, name: "Table", step: "Database", review: "read carefully", why: "w", nodes: ["c"], files: [{ path: "db/V1.sql" }], start: { path: "db/V1.sql", side: "R", line: 2, text: "z" } },
+  ],
+};
+
+test("a files page opens in flow order when the run has steps, and the switch reorders the list", async () => {
+  const { renders } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  const names = (render) => require("../tree.js").orderChunks(render.review.chunks, render.state.order).map((chunk) => chunk.name);
+  assert.equal(renders.at(-1).state.order, "flow");
+  assert.deepEqual(names(renders.at(-1)), ["Screen", "Endpoint", "Table"]);
+  renders.at(-1).handlers.onOrder("risk");
+  await settle();
+  assert.equal(renders.at(-1).state.order, "risk");
+  assert.deepEqual(names(renders.at(-1)), ["Table", "Endpoint", "Screen"]);
+  assert.equal(renders.at(-1).state.selectedN, null);
+});
+
+test("a run with no steps opens by risk and its switch is not offered", async () => {
+  const withoutSteps = { ...STEP_REVIEW, chunks: STEP_REVIEW.chunks.map(({ step, ...chunk }) => chunk) };
+  const { renders } = loadContent({ run: null, view: "files", review: withoutSteps });
+  await settle();
+  assert.equal(renders.at(-1).state.order, "risk");
+  assert.equal(require("../tree.js").hasSteps(withoutSteps.chunks), false);
+});
+
+test("a chunk's start jump and the diagram highlight work in both orders", async () => {
+  const { renders, jumps, emphasized } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  for (const order of ["flow", "risk"]) {
+    renders.at(-1).handlers.onOrder(order);
+    await settle();
+    const { handlers } = renders.at(-1);
+    jumps.length = 0;
+    await handlers.onJumpToStart(3);
+    assert.deepEqual(jumps, [["db/V1.sql", "R", 2]]);
+    await handlers.onSelectChunk(2);
+    assert.deepEqual(emphasized.at(-1), ["b"]);
+    assert.equal(renders.at(-1).state.order, order);
+    await renders.at(-1).handlers.onSelectChunk(2);
+    assert.deepEqual(emphasized.at(-1), null);
   }
 });
