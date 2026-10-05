@@ -348,23 +348,27 @@
   color: var(--fgColor-attention, #9a6700);
 }
 
-.prf-start {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  color: var(--fgColor-muted, #59636e);
+.prf-start-here {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 2px 0 10px 38px;
+  padding: 3px 10px;
+  font: inherit;
+  color: var(--fgColor-default, #1f2328);
   cursor: pointer;
-  background: none;
-  border: 0;
+  background: var(--bgColor-default, #ffffff);
+  border: 1px solid var(--borderColor-default, #d0d7de);
   border-radius: 6px;
 }
 
-.prf-start:hover {
-  color: var(--fgColor-accent, #0969da);
+.prf-start-here:hover {
   background: var(--bgColor-neutral-muted, #818b981f);
+}
+
+.prf-start-icon {
+  flex: none;
+  color: var(--fgColor-attention, #9a6700);
 }
 
 .prf-muted > .prf-head {
@@ -442,56 +446,4 @@
   .prf-file.prf-row-flash {
     animation: none;
   }
-}
-
-.prf-card {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 2px 8px 6px 30px;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--fgColor-default, #1f2328);
-  pointer-events: none;
-  background: var(--bgColor-muted, #f6f8fa);
-  border: 1px solid var(--borderColor-default, #d0d7de);
-  border: 1px solid color-mix(in srgb, var(--borderColor-accent-emphasis, #0969da) 22%, var(--borderColor-default, #d0d7de));
-  border-radius: 8px;
-}
-
-.prf-card-head {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--fgColor-muted, #59636e);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.prf-card-loc {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.prf-card-code {
-  display: -webkit-box;
-  padding: 4px 6px;
-  overflow: hidden;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  background: var(--bgColor-default, #ffffff);
-  border: 1px solid var(--borderColor-muted, #d1d9e0b3);
-  border-radius: 6px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.prf-card-path,
-.prf-card-hint {
-  font-size: 11px;
-  color: var(--fgColor-muted, #59636e);
-  overflow-wrap: anywhere;
 }

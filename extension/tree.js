@@ -135,69 +135,15 @@
     );
   }
 
-  function group({ key, expanded, selected, muted }, header, files) {
+  function group({ key, expanded, selected, muted }, header, body) {
     const element = make("section", "prf-group");
     element.dataset.group = String(key);
     element.classList.toggle("prf-expanded", expanded);
     element.classList.toggle("prf-selected", selected);
     element.classList.toggle("prf-muted", muted);
     element.append(header);
-    if (expanded) element.append(files);
+    if (expanded) element.append(body);
     return element;
-  }
-
-  const CARD_ID = "pr-focus-start-card";
-  const CARD_DELAY_MS = 300;
-  const SIDE_KIND = { L: "removed line", R: "added or unchanged line" };
-
-  // What the start-line card says: the diff records a start line as "L" (old file) or "R" (new file) and
-  // doesn't tell an added line from a context line on the new side.
-  function startCard(start) {
-    const basename = start.path.split("/").pop();
-    return {
-      heading: "Read this line first",
-      location: `${basename}:${start.line}`,
-      kind: SIDE_KIND[start.side] ?? "line",
-      code: start.text,
-      path: start.path,
-      hint: "Click to jump",
-    };
-  }
-
-  let card = null;
-  let cardTimer = null;
-  let cardDismiss = null;
-
-  function hideStartCard() {
-    clearTimeout(cardTimer);
-    cardTimer = null;
-    card?.remove();
-    card = null;
-    if (cardDismiss) document.removeEventListener("keydown", cardDismiss, true);
-    cardDismiss = null;
-  }
-
-  // The card sits in the list directly below its chunk's header, pushing the rows under it down, so it never
-  // covers the diff.
-  function showStartCard(button, start) {
-    hideStartCard();
-    const model = startCard(start);
-    card = make("div", "prf-card");
-    card.id = CARD_ID;
-    card.setAttribute("role", "tooltip");
-    const code = make("div", "prf-card-code", model.code);
-    card.append(
-      make("div", "prf-card-head", model.heading),
-      make("div", "prf-card-loc", `${model.location} · ${model.kind}`),
-      code,
-      make("div", "prf-card-path", model.path),
-      make("div", "prf-card-hint", model.hint),
-    );
-    button.closest(".prf-head").after(card);
-    cardDismiss = (event) => {
-      if (event.key === "Escape") hideStartCard();
-    };
-    document.addEventListener("keydown", cardDismiss, true);
   }
 
   // Why to read the chunk's start line: the model's reason for that line, else the chunk's own.
@@ -205,38 +151,11 @@
     return chunk.start?.why?.trim() || chunk.why || "";
   }
 
-  // The note pinned above the start line in the diff: only the reason, since the row below it already shows the line.
-  function startCallout(chunk, onClose) {
-    const element = make("div", "prf-callout");
-    element.setAttribute("role", "note");
-    const close = button("prf-callout-close", "×", onClose);
-    close.setAttribute("aria-label", "Dismiss the read-first note");
-    element.append(
-      outlineIcon(JUMP_ICON, 16, "prf-callout-icon"),
-      make("strong", "prf-callout-label", "Read first:"),
-      make("span", "prf-callout-reason", readFirstReason(chunk)),
-      close,
-    );
-    return element;
-  }
-
-  function startButton(chunk, handlers) {
-    const element = button("prf-start", undefined, (event) => {
-      event.stopPropagation();
-      hideStartCard();
-      handlers.onJumpToStart(chunk.n);
-    });
-    element.append(outlineIcon(JUMP_ICON, 16, "prf-start-icon"));
-    element.setAttribute("aria-label", `Jump to the line to read first: ${startCard(chunk.start).location}`);
-    element.addEventListener("mouseenter", () => {
-      hideStartCard();
-      cardTimer = setTimeout(() => showStartCard(element, chunk.start), CARD_DELAY_MS);
-    });
-    element.addEventListener("focus", () => {
-      if (element.matches(":focus-visible")) showStartCard(element, chunk.start);
-    });
-    element.addEventListener("mouseleave", hideStartCard);
-    element.addEventListener("blur", hideStartCard);
+  // The button under an open chunk's files that jumps to the line the model says to read first.
+  function startHere(chunk, handlers) {
+    const element = button("prf-start-here", undefined, () => handlers.onJumpToStart(chunk.n));
+    element.append(outlineIcon(JUMP_ICON, 14, "prf-start-icon"), "Start here");
+    element.title = `${baseNameOf(chunk.start.path)}:${chunk.start.line}`;
     return element;
   }
 
@@ -252,7 +171,6 @@
 
     const header = make("div", "prf-head");
     header.append(main);
-    if (chunk.start) header.append(startButton(chunk, handlers));
     const files = make("ul", "prf-files");
     files.append(
       ...fileRows(
@@ -261,7 +179,10 @@
         (file) => ({ active: state.activeFiles?.has(file.path), start: file.path === chunk.start?.path }),
       ),
     );
-    return group({ key: chunk.n, expanded, selected: chunk.n === state.selectedN, muted: isMuted(chunk) }, header, files);
+    const body = make("div", "prf-body");
+    body.append(files);
+    if (chunk.start) body.append(startHere(chunk, handlers));
+    return group({ key: chunk.n, expanded, selected: chunk.n === state.selectedN, muted: isMuted(chunk) }, header, body);
   }
 
   function extraGroup(extras, state, handlers) {
@@ -342,7 +263,6 @@
     if (!mount) return;
     const { root, host } = mount;
     const reviewMode = state.mode === "review";
-    hideStartCard();
     const scrolled = root.querySelector(".prf-groups")?.scrollTop ?? 0;
     root.classList.toggle("prf-review", reviewMode);
     host.classList.toggle(HOST_HIDDEN, reviewMode);
@@ -447,7 +367,6 @@
   }
 
   function remove() {
-    hideStartCard();
     document.getElementById(ROOT_ID)?.remove();
     ns.page.treeHost()?.classList.remove(HOST_HIDDEN);
   }
@@ -457,7 +376,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
+  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, remove, owns, orderChunks, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

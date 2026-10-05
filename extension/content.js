@@ -295,23 +295,27 @@
         );
         if (first) await landOnFile(session, first);
       },
-      // The start file's diff is hidden while another chunk is focused, so that chunk is focused first.
+      // The start file's diff is hidden while another chunk is focused, so that chunk is focused first. The chunk is
+      // also opened in the list, where its start button is.
       onJumpToStart: async (n) => {
         const chunk = session.review.chunks.find((candidate) => candidate.n === n);
         const start = chunk?.start;
         if (!start) return;
-        if (session.selectedN !== null && session.selectedN !== n) {
+        const refocus = session.selectedN !== null && session.selectedN !== n;
+        if (refocus || !session.expanded.has(n)) {
           await change(
             session,
             () => {
-              deactivate(session);
-              session.selectedN = n;
+              if (refocus) {
+                deactivate(session);
+                session.selectedN = n;
+              }
               session.expanded = new Set([n]);
             },
             { scroll: false },
           );
         }
-        if (current === session) await page.jumpToLine(start.path, start.side, start.line, (dismiss) => tree.startCallout(chunk, dismiss));
+        if (current === session) await page.jumpToLine(start.path, start.side, start.line, tree.readFirstReason(chunk));
       },
       // A file row selects its chunk without the chunk's own scroll, lands that file's header below the sticky chrome
       // and makes the file active: its row and header get the box bar and the header flashes, without a label.
@@ -340,7 +344,7 @@
   }
 
   // A link to a chunk's start line, such as the PR brief card's, carries that line's anchor in the URL fragment.
-  // Opening the files page on it does what the ↳ button does. Any other fragment is left to the page.
+  // Opening the files page on it does what the chunk's "Start here" button does. Any other fragment is left to the page.
   async function jumpToLinkedStart(session) {
     const wanted = location.hash.slice(1);
     if (!wanted.startsWith("diff-") || !session?.review || !live()) return;

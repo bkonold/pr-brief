@@ -15,7 +15,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   Groups are ordered by review level ("read carefully", "read", "skim"), then "Unchunked"; skim-level chunks and "Unchunked" are muted.
   When the run's chunks carry a `step` (v16), the order is the flow of the change as `review.json` lists it, and a quiet
   "Order: by flow | by risk" switch under the toggle reorders the list. The
-  switch changes only the order: numbers, selection, `↳` jumps and the diagram highlight are by chunk, so they work in
+  switch changes only the order: numbers, selection, start jumps and the diagram highlight are by chunk, so they work in
   both. It is not remembered, so each load opens in flow order; a run with no steps opens by risk and has no switch. A "Not in review" group, in the same one-line style, lists loaded diffs no chunk names.
 - Files show only their basename, in small monospace; the chunk's start file is in the primary text colour and the rest are
   muted. A basename shared by two files of the list gets its folder as a dim suffix; the full path is the row's tooltip. The
@@ -23,19 +23,18 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and scrolls to the
   chunk's first file; clicking it again shows all diffs and leaves it open.
   Clicking a file focuses its chunk and scrolls to its diff. A chunk opened with "Expand all" closes again with "Collapse all" or when another chunk is clicked.
-- A `↳` button on a chunk with a start line (the `start` field of `review.json`, the one line the model says to read
-  first; hovering or keyboard-focusing it, after 300ms, shows a card with `path:line` and the quoted text directly below the
-  chunk's header in the list, pushing the rows below it down; Esc closes it) jumps to that line, centres it, flashes the row amber three times over two seconds (under `prefers-reduced-motion`: no flash, a static amber tint on the row while it is the target). If another chunk is
+- A "Start here" button under the open chunk's files, when the chunk has a start line (the `start` field of `review.json`, the
+  one line the model says to read first), jumps to that line and centres it. If another chunk is
   focused it focuses this chunk first, since the line's diff is hidden otherwise. GitHub renders a diff's rows only once
   the diff is near the window, so the jump scrolls to the file's diff, waits up to 10 seconds for the row, then centres
   it, measuring the row again after each scroll and nudging until it sits mid-window (GitHub's layout shifts while diffs
-  load); on a timeout the view stays at the file's header. The target row keeps its class when GitHub re-renders it, until another selection, a new jump or teardown clears it.
-- When a jump lands, a callout is pinned in the diff as a full-width table row directly above the line: `↳ Read first:`
-  and the reason to read that line (the chunk's `start.why`, else the chunk's own `why`), in GitHub's attention colours,
-  with a × button that removes it. The reason wraps onto as many lines as it needs and is never cut off; the file, line number
-  and code are not repeated, since the diff row below shows them (the sidebar's hover card still does). Only one
-  exists; it goes whenever the line target clears (another selection, a new jump, a variant switch or teardown) and
-  comes back if GitHub re-renders the row, unless it was dismissed with ×.
+  load); on a timeout the view stays at the file's header. The button's tooltip is `file:line`. Opening the files page on
+  a link to a chunk's start line (the PR brief card's links) does the same.
+- The start line is highlighted with a warning-tinted background and a 4px warning-coloured bar on its left edge, and its
+  reason sits on its own row directly below it, as one line of secondary text, wrapping if it is long: the chunk's
+  `start.why`, else the chunk's own `why`. The file, line number and code are not repeated, since the diff row shows them.
+  Only one start line exists; it goes whenever the line target clears (another selection, a new jump or teardown) and
+  comes back if GitHub re-renders the row. There is no animation.
 - A banner appears when the review was generated for an older head commit than the page's.
 
 The mode and selected chunk are remembered per PR in `sessionStorage`.
@@ -72,8 +71,8 @@ first-file scroll use the same code). The clicked box becomes the active box:
   of the box's SVG label), that fades out after 2.5s.
 - List: the box's file rows get an accent background and its chunk opens.
 
-The active state clears when another box, a chunk header (including unselecting it), a file row, the mode toggle or the jump
-button is used, or the variant changes. Under `prefers-reduced-motion` only the end states show: no pulse, flash or fade; the
+The active state clears when another box, a chunk's line (including unselecting it), a file row, the mode toggle or the "Start here"
+button is used. Under `prefers-reduced-motion` only the end states show: no pulse, flash or fade; the
 chip appears and is removed after 2.5s. Without `nodes` (V10) a box selects the first chunk, in list order, that lists it, without scrolling.
 
 ## The change diagram
@@ -88,7 +87,7 @@ that expands it. Clicking the card opens a larger overlay; Esc or a click outsid
   rule down the pane's right edge.
 
 - Motion: the line jump scrolls smoothly (a target more than 1.5 windows away is first approached instantly to one window
-  short of it), then flashes the row; newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
+  short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
   250ms. The emphasized box gets a 2px `#534ab7` stroke (`#b26a00` on save boxes); the diagrams carry no inline `!important`
   styles, so no glow is needed. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
@@ -159,7 +158,7 @@ the page's data, and its header links to the files view. Without a run it is the
   file count. A chunk's start (the file:line link and the quoted line) sits in a closed "Start here" `<details>` under
   the chunk name. Links into the PR's files view are rewritten to this host's files view, fragment kept.
 - A chunk's start link opens the files view with that line's anchor in the fragment. When the files page loads with a
-  fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's `↳` button; any other
+  fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's "Start here" button; any other
   fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,
   the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the
@@ -191,7 +190,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `background.js` | Fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers |
 | `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
 | `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
-| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the callout, change watching. `createPage(spec)` builds an adapter from a host's spec |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the reason row, change watching. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |

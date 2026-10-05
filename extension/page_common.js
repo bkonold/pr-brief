@@ -1,5 +1,5 @@
 // The page behaviour shared by every host: scrolling a diff under the sticky chrome, jumping to a line, the
-// pinned callout, and watching for changes. createPage(spec) returns the adapter the rest of the extension
+// reason shown under it, and watching for changes. createPage(spec) returns the adapter the rest of the extension
 // calls through prFocus.page (see page.js). The spec holds everything that differs per host, which is all
 // the DOM knowledge and nothing else; a host's spec lives in its own file (github_page.js, forgejo_page.js).
 //
@@ -30,8 +30,7 @@
   const ns = (globalThis.prFocus ??= {});
 
   const LINE_TARGET = "prf-line-target";
-  const LINE_PULSE = "prf-line-pulse";
-  const CALLOUT_ROW = "prf-callout-row";
+  const REASON_ROW = "prf-reason-row";
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
   const JUMP_TIMEOUT_MS = 10000;
@@ -182,55 +181,48 @@
     }
 
     // The row that is the line target now: its anchor, so a re-render of the row by the host can be undone, and the
-    // factory of the callout pinned above it (null once dismissed, or when the jump had none).
+    // reason shown under it ("" when the jump had none).
     let lineTarget = null;
 
     function findRow(anchor) {
       return spec.findRow(anchor);
     }
 
-    function removeCallout() {
-      for (const element of document.querySelectorAll(`.${CALLOUT_ROW}`)) element.remove();
+    function removeReason() {
+      for (const element of document.querySelectorAll(`.${REASON_ROW}`)) element.remove();
     }
 
-    // The callout is a full-width table row directly above the target row, so the host's columns stay as they are.
-    // `makeCallout(dismiss)` builds its content; dismissing removes it and it stays gone.
-    function syncCallout(row) {
-      if (!lineTarget.makeCallout) return removeCallout();
-      if (row.previousElementSibling?.classList.contains(CALLOUT_ROW)) return;
-      removeCallout();
+    // The reason is a full-width table row directly below the target row, so the host's columns stay as they are.
+    function syncReason(row) {
+      if (!lineTarget.reason) return removeReason();
+      if (row.nextElementSibling?.classList.contains(REASON_ROW)) return;
+      removeReason();
       const cell = document.createElement("td");
       cell.colSpan = Math.max(1, row.children.length);
-      cell.append(
-        lineTarget.makeCallout(() => {
-          lineTarget.makeCallout = null;
-          removeCallout();
-        }),
-      );
-      const callout = document.createElement("tr");
-      callout.className = CALLOUT_ROW;
-      callout.append(cell);
-      row.before(callout);
+      cell.textContent = lineTarget.reason;
+      const reason = document.createElement("tr");
+      reason.className = REASON_ROW;
+      reason.append(cell);
+      row.after(reason);
     }
 
     function clearLineTarget() {
       lineTarget = null;
-      removeCallout();
-      for (const row of document.querySelectorAll(`.${LINE_TARGET}`)) row.classList.remove(LINE_TARGET, LINE_PULSE);
+      removeReason();
+      for (const row of document.querySelectorAll(`.${LINE_TARGET}`)) row.classList.remove(LINE_TARGET);
     }
 
-    // The host re-renders diff rows, which drops our classes and the callout; the target row gets its class and its
-    // callout back, without the pulse.
+    // The host re-renders diff rows, which drops our class and the reason row; the target row gets both back.
     function restoreLineTarget() {
       const row = lineTarget ? findRow(lineTarget.anchor) : null;
       if (!row) return;
       if (!row.classList.contains(LINE_TARGET)) row.classList.add(LINE_TARGET);
-      syncCallout(row);
+      syncReason(row);
     }
 
     function ownsLine(node) {
       const element = node?.nodeType === 1 ? node : node?.parentElement;
-      return Boolean(element?.closest(`.${CALLOUT_ROW}`));
+      return Boolean(element?.closest(`.${REASON_ROW}`));
     }
 
     // The header of a file's diff entry: the host's header element when it can be found, else the entry's first child.
@@ -338,9 +330,10 @@
     }
 
     // A diff's rows may be rendered only once the diff is near the window, so the file's diff is scrolled
-    // to first; then the line's row is waited for, scrolled to the centre, outlined and pulsed. If it never
-    // appears the view stays at the file's header. Returns whether the row ended centred.
-    async function jumpToLine(path, side, line, makeCallout = null) {
+    // to first; then the line's row is waited for, scrolled to the centre and highlighted, with `reason` shown on
+    // its own row beneath it. If the row never appears the view stays at the file's header. Returns whether the row
+    // ended centred.
+    async function jumpToLine(path, side, line, reason = "") {
       const mine = ++latestJump;
       cancelPendingJump?.();
       clearLineTarget();
@@ -349,9 +342,9 @@
       scrollToElement(entry);
       const found = await waitForRow(anchor, JUMP_TIMEOUT_MS);
       if (!found || mine !== latestJump) return false;
-      // The callout goes in before the final scroll, so the row is centred with it above.
-      lineTarget = { anchor, makeCallout };
-      syncCallout(found);
+      lineTarget = { anchor, reason };
+      found.classList.add(LINE_TARGET);
+      syncReason(found);
       const landed = await scrollToRow(anchor, newScrollToken());
       if (mine !== latestJump) return false;
       const row = findRow(anchor);
@@ -359,8 +352,8 @@
         clearLineTarget();
         return false;
       }
-      row.classList.add(LINE_TARGET, LINE_PULSE);
-      syncCallout(row);
+      row.classList.add(LINE_TARGET);
+      syncReason(row);
       return landed;
     }
 

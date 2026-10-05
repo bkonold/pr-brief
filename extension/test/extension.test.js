@@ -7,7 +7,7 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, ambiguousNames, levelLabel, orderChunks, revealTarget, startCard, readFirstReason } = require("../tree.js");
+const { staleMessage, ambiguousNames, levelLabel, orderChunks, revealTarget, readFirstReason } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
 const { targetOfNode, boxTitle } = require("../boxes.js");
 
@@ -277,20 +277,6 @@ test("revealTarget scrolls the list only when the span is not fully visible", ()
   assert.equal(revealTarget({ ...view, top: 20, bottom: 120 }), 12);
   assert.equal(revealTarget({ ...view, top: 2, bottom: 60, scrollTop: 40 }), 0);
   assert.equal(revealTarget({ ...view, top: 700, bottom: 1300 }), 692);
-});
-
-test("startCard says which line to read first and what kind of line it is", () => {
-  const path = "api/src/main/java/com/example/util/ReportHelper.java";
-  const added = startCard({ path, side: "R", line: 14, text: "String normalized = reportId.strip();" });
-  assert.deepEqual(added, {
-    heading: "Read this line first",
-    location: "ReportHelper.java:14",
-    kind: "added or unchanged line",
-    code: "String normalized = reportId.strip();",
-    path,
-    hint: "Click to jump",
-  });
-  assert.equal(startCard({ path: "a.ts", side: "L", line: 3, text: "x" }).kind, "removed line");
 });
 
 test("readFirstReason prefers the start line's reason and falls back to the chunk's", () => {
