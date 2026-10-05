@@ -128,29 +128,35 @@
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  const WALKTHROUGH = /<details>\s*<summary>\s*<h3>/;
+
   // The description and the review order are split at the review order's <details>, so the diagram's own <details>
-  // can sit between them. The <details> groups of the Contract and Data sections stay in the description.
+  // can sit between them. A body with no review-order table splits at its file walkthrough's <details>, which has an
+  // <h3> in its summary, and has no order when it has neither. The <details> groups of the Contract and Data sections
+  // stay in the description.
   function splitOrder(html) {
     const table = html.indexOf('class="review-order"');
-    const at = table === -1 ? html.indexOf("<details") : html.lastIndexOf("<details", table);
+    const at = table === -1 ? html.search(WALKTHROUGH) : html.lastIndexOf("<details", table);
     return at === -1 ? { text: html, order: "" } : { text: html.slice(0, at), order: html.slice(at) };
   }
 
   const ORDERS = [["flow", "by flow"], ["risk", "by risk"]];
   const DEFAULT_ORDER = "flow";
 
-  // The "Order: by flow | by risk" switch, drawn only for a review order whose rows carry both ranks. Its buttons
-  // are `order:<mode>` actions.
+  // The "Order: by flow | by risk" switch. Its buttons are `order:<mode>` actions.
   function orderSwitch(mode) {
     const buttons = ORDERS.map(([value, label]) => `<button class="link" type="button" data-action="order:${value}" aria-pressed="${value === mode}">${label}</button>`);
     return `<div class="order-switch">Order: ${buttons.join(" | ")}</div>`;
   }
 
-  // The review-order block in `mode` ("flow" unless the view asks for "risk"), with the switch under its heading.
-  function orderBlock(order, mode) {
-    if (!ns.briefText.hasOrders(order)) return order;
+  // The review-order block in `mode` ("flow" unless the view asks for "risk"), with the switch under its heading. The
+  // block is ordered by review.json's `chunks` when the view has them, and offers the switch only when they carry
+  // steps, as the files view does; without `chunks` it follows the rows' own ranks.
+  function orderBlock(order, mode, chunks = null) {
+    if (!ns.briefText.hasOrders(order) || (chunks && !ns.tree.hasSteps(chunks))) return order;
     const shown = mode === "risk" ? "risk" : DEFAULT_ORDER;
-    const ordered = ns.briefText.orderRows(order, shown);
+    const numbers = chunks ? ns.tree.orderChunks(chunks, shown).map((chunk) => chunk.n) : null;
+    const ordered = ns.briefText.orderRows(order, shown, numbers);
     const heading = ordered.indexOf("</summary>");
     return heading === -1 ? ordered : `${ordered.slice(0, heading + "</summary>".length)}${orderSwitch(shown)}${ordered.slice(heading + "</summary>".length)}`;
   }
@@ -186,8 +192,8 @@
   //   { kind: "none", canGenerate }                         no run yet
   //   { kind: "running", stage, elapsed }                   a run is going
   //   { kind: "error", message }                            the call or the run failed
-  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate, order }   a run, closed
-  //                                                       (`order`: "flow", the default, or "risk" for the review order)
+  //   { kind: "brief", variant, bodyHtml, diagramSvg, chunks, runSha, pageSha, canGenerate, order }   a run, closed
+  //                                    (`order`: "flow", the default, or "risk" for the review order; `chunks`: review.json's)
   // `key` and `filesUrl` name the run and the PR's files view on this host. Every button is a
   // data-action: generate, cancel.
   function cardHtml(view, { key, filesUrl }) {
@@ -223,7 +229,7 @@
       `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label)}${regenerate}` +
       `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
       `<div class="content"><div class="text">${text}</div>${diagram}` +
-      `${order ? `<div class="order">${orderBlock(order, view.order)}</div>` : ""}</div></details>`
+      `${order ? `<div class="order">${orderBlock(order, view.order, view.chunks)}</div>` : ""}</div></details>`
     );
   }
 
@@ -244,7 +250,7 @@
       const target = shadow.querySelector?.(".order");
       if (!target) return;
       const wasOpen = target.querySelector?.("details")?.open;
-      target.innerHTML = orderBlock(splitOrder(ns.briefText.renderBody(shown.bodyHtml, filesUrl).html).order, mode);
+      target.innerHTML = orderBlock(splitOrder(ns.briefText.renderBody(shown.bodyHtml, filesUrl).html).order, mode, shown.chunks);
       if (wasOpen) target.querySelector?.("details")?.setAttribute?.("open", "");
     }
 
@@ -264,9 +270,9 @@
   }
 
   // The card for a run that exists, drawn closed.
-  function buildBrief({ key, variant, bodyHtml, diagramSvg, filesUrl, runSha, pageSha, onAction }) {
+  function buildBrief({ key, variant, bodyHtml, diagramSvg, chunks, filesUrl, runSha, pageSha, onAction }) {
     const host = buildCard({ key, filesUrl, onAction });
-    host.show({ kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha });
+    host.show({ kind: "brief", variant, bodyHtml, diagramSvg, chunks, runSha, pageSha });
     return host;
   }
 

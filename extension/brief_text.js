@@ -265,18 +265,20 @@
   // ---- the review order's two orders
 
   const FLOW_ROW = /(?=<tr\s[^>]*\bdata-flow=)/;
+  const ROW_NUMBER = /^<tr\s[^>]*?\bdata-flow="(-?\d+)"/;
   const ROW_RANKS = /^<tr\s[^>]*?\bdata-flow="(-?\d+)"[^>]*?\bdata-risk="(-?\d+)"|^<tr\s[^>]*?\bdata-risk="(-?\d+)"[^>]*?\bdata-flow="(-?\d+)"/;
 
-  // True when the review-order table's rows carry the flow and risk ranks render.py writes for a flow-ordered run.
+  // True when the review-order table's rows carry the chunk number render.py writes for a flow-ordered run.
   function hasOrders(html) {
     const start = html.indexOf('class="review-order"');
     return start !== -1 && /<tr\s[^>]*\bdata-flow=/.test(html.slice(start));
   }
 
-  // The review-order table's rows in the given order: "flow" (the run's flow order, by data-flow) or "risk" (highest
-  // review level first, rows of one level in flow order, the catch-all chunk last). HTML without ranked rows is
-  // returned as it is.
-  function orderRows(html, mode) {
+  // The review-order table's rows in the given order. `numbers` is the chunk numbers in the order to show, which
+  // the caller takes from review.json; a row's chunk is its data-flow, and a row `numbers` does not name goes last.
+  // Without `numbers` the order comes from the rows' own ranks: "flow" (data-flow) or "risk" (data-risk, highest
+  // first, ties in flow order, the catch-all chunk last). HTML without such rows is returned as it is.
+  function orderRows(html, mode, numbers = null) {
     const table = html.indexOf('class="review-order"');
     const first = table === -1 ? -1 : html.slice(table).search(FLOW_ROW) + table;
     if (table === -1 || first < table) return html;
@@ -285,11 +287,19 @@
     if (end === -1) return html;
     const rows = [];
     for (const row of rest.slice(0, end).split(FLOW_ROW)) {
+      if (numbers) {
+        const found = ROW_NUMBER.exec(row);
+        if (!found) return html;
+        const place = numbers.indexOf(Number(found[1]));
+        rows.push({ row, place: place === -1 ? numbers.length : place });
+        continue;
+      }
       const found = ROW_RANKS.exec(row);
       if (!found) return html;
       rows.push({ row, flow: Number(found[1] ?? found[4]), risk: Number(found[2] ?? found[3]) });
     }
-    rows.sort(mode === "risk" ? (a, b) => b.risk - a.risk || a.flow - b.flow : (a, b) => a.flow - b.flow);
+    if (numbers) rows.sort((a, b) => a.place - b.place);
+    else rows.sort(mode === "risk" ? (a, b) => b.risk - a.risk || a.flow - b.flow : (a, b) => a.flow - b.flow);
     return html.slice(0, first) + rows.map(({ row }) => row).join("") + rest.slice(end);
   }
 

@@ -194,7 +194,7 @@ the page's data, and its header links to the files view. Without a run it is the
   script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
   `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
-  description's bullets and above the review order, with the legend under it, on a white panel in both themes. The
+  description's bullets (above the review order, when the body has one), with the legend under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - A "Contract and data" section, when the run has one (v16), is a list of API operations and tables with badges; each
   line and badge is a link to the diff line it names, rewritten to this host's files view like the other links.
@@ -203,9 +203,14 @@ the page's data, and its header links to the files view. Without a run it is the
   impact as a chip and its first line, and last a "Not in any chunk" group. Inside a group each line has its chip and
   links to its diff line. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a filled
   chip, the second a bold outlined one and the rest outlined, drawn by the card's own style.
-- The review order of a run with steps carries the same "Order: by flow | by risk" switch under its heading. It reorders
-  the rows in place (their numbers stay the flow numbers, which are the diagram's labels), keeps the review order open,
-  and is not remembered. The rows carry `data-flow` and `data-risk`; a body with none shows no switch.
+- A run whose body still has a review-order table (variants before v22; v22 and later leave it out of the brief, since the
+  files view lists the chunks) shows it after the diagram. When the run's chunks carry steps, it has the same "Order: by
+  flow | by risk" switch under its heading, ordered by the files view's own rules over `review.json`'s chunks (flow is
+  their order, risk their effort level, the catch-all chunk last). A row is matched to its chunk by its `data-flow`,
+  which holds the chunk number; a row `review.json` does not name goes last. When the card has no `review.json` chunks
+  it falls back to the rows' own `data-flow` and `data-risk`. The switch reorders the rows in place (their numbers stay
+  the flow numbers, which are the diagram's labels), keeps the review order open, and is not remembered. A body with no
+  `data-flow` rows shows no switch, and a body with no table shows no review order.
 - The review order shows with its `<details>` closed, and each chunk's file list is a closed `<details>` headed by the
   file count. A chunk's start (the file:line link and the quoted line, or the file link and the reason for a file start) sits in a closed "Start here" `<details>` under
   the chunk name. Links into the PR's files view are rewritten to this host's files view, fragment kept.
@@ -213,7 +218,7 @@ the page's data, and its header links to the files view. Without a run it is the
   fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's "Start here" button; any other
   fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,
-  the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the
+  the way it fetches `review.json` (and the run's `head_sha`, and each chunk's `n`, `name`, `review` and `step`). With no run, or the page server down, the card is the
   "Generate brief" bar, except where the server says it will not run the PR's repository: then nothing is mounted.
 - The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
   back above the description; `onNavigate` mounts it again after client-side navigation, and one card exists at a time.
@@ -253,7 +258,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
 | `source.js` | Content-script side of the fetch |
-| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML, and reorders the review-order rows by flow or risk (pure string work, tested without a DOM) |
+| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML, and reorders the review-order rows of an older body (pure string work, tested without a DOM) |
 | `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |
 
 The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in the order listed in `manifest.json`.

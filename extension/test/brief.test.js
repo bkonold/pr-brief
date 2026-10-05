@@ -7,6 +7,7 @@ const vm = require("node:vm");
 const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const briefText = require("../brief_text.js");
+const tree = require("../tree.js");
 const runControl = require("../run_control.js");
 const { buildBrief, buildCard, cardHtml, isStale } = require("../brief.js");
 
@@ -648,6 +649,74 @@ test("a review order with ranks opens in flow order with an Order switch, and th
 test("a run without ranks shows no Order switch", () => {
   const html = cardHtml({ kind: "brief", variant: "v15", bodyHtml: bodyHtml(), diagramSvg: null }, CARD);
   assert.doesNotMatch(html, /order-switch|order:/);
+});
+
+const JSON_CHUNKS = [
+  { n: 1, name: "Screen", step: "UI", review: "skim" },
+  { n: 2, name: "Endpoint", step: "API", review: "read" },
+  { n: 3, name: "Table", step: "Database", review: "verify" },
+  { n: 4, name: "Tests", step: "Tests", review: "skim" },
+  { n: 5, name: "Unchunked", review: "skim" },
+];
+const BLIND_ROWS = ORDER_ROWS.map((row) => row.replace(/data-risk="-?\d+"/, 'data-risk="0"'));
+const BLIND_MARKDOWN = ORDER_MARKDOWN.replace(ORDER_ROWS.join(""), BLIND_ROWS.join(""));
+
+test("orderRows follows the chunk numbers it is given and puts a row they do not name last", () => {
+  const html = briefText.renderBody(bodyHtml(BLIND_MARKDOWN), FILES_URL).html;
+  assert.deepEqual(names(briefText.orderRows(html, "risk", [3, 2, 1, 5])), ["Table", "Endpoint", "Screen", "Unchunked", "Tests"]);
+  assert.deepEqual(names(briefText.orderRows(html, "flow", [1, 2, 3, 4, 5])), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
+});
+
+test("a card with review.json's chunks orders the review order by them, whatever ranks the rows carry", () => {
+  const view = { kind: "brief", variant: "v16", bodyHtml: bodyHtml(BLIND_MARKDOWN), diagramSvg: null, chunks: JSON_CHUNKS };
+  assert.deepEqual(names(cardHtml(view, CARD)), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
+  const risk = cardHtml({ ...view, order: "risk" }, CARD);
+  assert.deepEqual(names(risk), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
+  assert.match(risk, /data-action="order:risk" aria-pressed="true"/);
+});
+
+test("with review.json's chunks the Order switch needs steps there, not ranks on the rows", () => {
+  const stepless = JSON_CHUNKS.map(({ step, ...rest }) => rest);
+  const html = cardHtml({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null, chunks: stepless }, CARD);
+  assert.doesNotMatch(html, /order-switch|order:/);
+  assert.deepEqual(names(html), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
+});
+
+test("the Order buttons order by review.json's chunks too", () => {
+  const { document, click } = interactiveDocument();
+  globalThis.document = document;
+  try {
+    const host = buildCard({ key: "fj-7", filesUrl: FILES_URL, onAction: () => {} });
+    host.show({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(BLIND_MARKDOWN), diagramSvg: null, chunks: JSON_CHUNKS });
+    click("order:risk");
+    assert.deepEqual(names(document.order.innerHTML), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a body with no review-order table has no order block, and the Contract groups stay in the description", () => {
+  const markdown = [
+    "# T",
+    "",
+    "### **Contract**",
+    "Contract: 1 additive",
+    "",
+    "<details>",
+    "<summary>3 · Endpoint <em>+1 more</em></summary>",
+    "",
+    "<ul>",
+    "<li>a line</li>",
+    "</ul>",
+    "",
+    "</details>",
+    "",
+  ].join("\n");
+  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(markdown), diagramSvg: null }, CARD);
+  assert.doesNotMatch(html, /class="order"/);
+  assert.match(html, /<div class="text">[^]*<summary>3 · Endpoint/);
+  assert.deepEqual(require("../brief.js").splitOrder("<p>x</p><details><summary>a</summary></details>"), { text: "<p>x</p><details><summary>a</summary></details>", order: "" });
+  assert.equal(require("../brief.js").splitOrder("<p>x</p><details> <summary><h3> File Walkthrough</h3></summary></details>").order.startsWith("<details>"), true);
 });
 
 test("the Contract and data block renders as a list of links into the files view, with its fragments kept", () => {
