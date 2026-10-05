@@ -20,7 +20,7 @@
   }
 
   async function entryOfPath(path, scanned) {
-    return (await ns.githubPage.entryFor(path)) ?? ns.githubPage.entryOf(scanned.get(path));
+    return (await ns.page.entryFor(path)) ?? ns.page.entryOf(scanned.get(path));
   }
 
   // Hides every diff outside `chunk` and scrolls to the chunk's first loaded diff. apply(null) shows all.
@@ -30,20 +30,20 @@
       clear();
       return {};
     }
-    const scanned = ns.githubPage.fileBlocks();
+    const scanned = ns.page.fileBlocks();
     const found = await Promise.all(chunk.files.map(({ path }) => entryOfPath(path, scanned)));
     if (mine !== generation) return { stale: true };
 
     const keep = new Set(found.filter(Boolean));
-    for (const entry of ns.githubPage.diffEntries()) setHidden(entry, !keep.has(entry));
+    for (const entry of ns.page.diffEntries()) setHidden(entry, !keep.has(entry));
     const first = found.find(Boolean);
-    if (scroll && first) ns.githubPage.scrollToElement(first);
+    if (scroll && first) ns.page.scrollToElement(first);
     return {};
   }
 
   async function scrollTo(path) {
-    const entry = await entryOfPath(path, ns.githubPage.fileBlocks());
-    if (entry) await ns.githubPage.scrollToElement(entry);
+    const entry = await entryOfPath(path, ns.page.fileBlocks());
+    if (entry) await ns.page.scrollToElement(entry);
   }
 
   const ACTIVE = "prf-box-active";
@@ -64,9 +64,9 @@
 
   // The loaded file headers for `paths`, in order; a file whose diff isn't in the page yet is left out.
   async function headersOf(paths) {
-    const scanned = ns.githubPage.fileBlocks();
+    const scanned = ns.page.fileBlocks();
     const entries = await Promise.all(paths.map((path) => entryOfPath(path, scanned)));
-    return entries.filter(Boolean).map((entry) => ns.githubPage.fileHeaderOf(entry) ?? entry);
+    return entries.filter(Boolean).map((entry) => ns.page.fileHeaderOf(entry) ?? entry);
   }
 
   // Gives the active box's files an accent bar on their headers, and takes it off every other header. An

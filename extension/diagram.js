@@ -300,7 +300,7 @@
   // Docks the diagram between GitHub's file pane and the diffs, in GitHub's own flex row, so the diff column
   // narrows to make room. Safe to call repeatedly: it re-mounts only when the panel is gone. handlers: { onNode(nodeId) }.
   function render(svgText, handlers) {
-    const host = ns.githubPage.diagramHost();
+    const host = ns.page.diagramHost();
     if (!host) return;
     if (!root?.isConnected || shownText !== svgText) {
       const svg = parseSvg(svgText);

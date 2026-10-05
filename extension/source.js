@@ -11,11 +11,12 @@
     }
   }
 
-  // `variant` is a variant the user picked; without it the extension's stored default decides.
-  async function loadReview(owner, repo, pr, variant) {
+  // `variant` is a variant the user picked; without it the extension's stored default decides. `key` is the
+  // PR's folder under runs/, which is not the PR number for every host.
+  async function loadReview(owner, repo, pr, variant, key = String(pr)) {
     if (!alive()) return null;
     try {
-      return (await chrome.runtime.sendMessage({ type: "loadReview", owner, repo, pr, variant })) ?? null;
+      return (await chrome.runtime.sendMessage({ type: "loadReview", owner, repo, pr, variant, key })) ?? null;
     } catch {
       return null;
     }

@@ -3,7 +3,10 @@ const assert = require("node:assert/strict");
 
 const { createHash } = require("node:crypto");
 
-const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = require("../github_page.js");
+const githubPage = require("../github_page.js");
+const forgejoPage = require("../forgejo_page.js");
+const { chooseAdapter } = require("../page.js");
+const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
 const { staleMessage, groupByFolder, orderChunks, revealTarget, startCard, readFirstReason } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
 const { keepSelection } = require("../variants.js");
@@ -330,4 +333,64 @@ test("centeringDelta is the distance from a row's middle to the window's middle,
   assert.equal(centeringDelta({ top: 390, height: 20 }, 800), 0);
   assert.equal(centeringDelta({ top: 394, height: 20 }, 800), 0);
   assert.equal(centeringDelta({ top: 396, height: 20 }, 800), 6);
+});
+
+test("chooseAdapter picks the adapter that serves the host and none for any other", () => {
+  const adapters = [githubPage, forgejoPage];
+  assert.equal(chooseAdapter("github.com", adapters), githubPage);
+  assert.equal(chooseAdapter("localhost:3300", adapters), forgejoPage);
+  assert.equal(chooseAdapter("localhost:3000", adapters), null);
+  assert.equal(chooseAdapter("gist.github.com", adapters), null);
+  assert.equal(chooseAdapter(undefined, adapters), null);
+  assert.equal(chooseAdapter("github.com", [undefined, forgejoPage]), null);
+});
+
+test("each adapter names itself and its tree for the interface", () => {
+  assert.deepEqual([githubPage.name, githubPage.treeLabel], ["GitHub", "GitHub tree"]);
+  assert.deepEqual([forgejoPage.name, forgejoPage.treeLabel], ["Forgejo", "Forgejo tree"]);
+  for (const page of [githubPage, forgejoPage]) {
+    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "diffEntries", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "ownsLine", "cancelJump", "diagramHost", "treeHost", "onChange", "onNavigate"]) {
+      assert.equal(typeof page[member], "function", `${page.name}.${member}`);
+    }
+  }
+});
+
+test("a GitHub pull request's runs are keyed by its number", () => {
+  assert.equal(githubPage.runKey(prFromUrl({ pathname: "/example-org/example-repo/pull/42/changes" })), "42");
+});
+
+test("a Forgejo files page maps to the fj- run key", () => {
+  const url = { pathname: "/acme/widgets/pulls/7/files" };
+  assert.deepEqual(forgejoPage.prFromUrl(url), { owner: "acme", repo: "widgets", pr: 7 });
+  assert.equal(forgejoPage.runKey(forgejoPage.prFromUrl(url)), "fj-7");
+  assert.equal(forgejoPage.runKey(forgejoPage.prFromUrl("http://localhost:3300/acme/widgets/pulls/120/files?style=unified#diff-abc")), "fj-120");
+});
+
+test("a Forgejo URL that is not a files page maps to nothing", () => {
+  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7" }), null);
+  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7/commits" }), null);
+  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7/filesfoo" }), null);
+  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pull/7/files" }), null);
+  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/issues/7/files" }), null);
+  assert.deepEqual(forgejoPage.pullFromUrl({ pathname: "/acme/widgets/pulls/7/commits" }), { owner: "acme", repo: "widgets", pr: 7 });
+  assert.equal(prFromUrl({ pathname: "/acme/widgets/pulls/7/files" }), null);
+});
+
+test("a Forgejo line anchor is the sha1 of the path plus the side and line", async () => {
+  const path = "services/billing/Invoice.kt";
+  const id = `diff-${createHash("sha1").update(path).digest("hex")}`;
+  assert.equal(await forgejoPage.lineAnchor(path, "R", 42), `${id}R42`);
+  assert.equal(await forgejoPage.lineAnchor(path, "L", 7), `${id}L7`);
+});
+
+test("loadReview sends the run key with the PR number, defaulting to the number", async () => {
+  const sent = [];
+  globalThis.chrome = { runtime: { id: "abc", sendMessage: async (message) => (sent.push(message), null) } };
+  const source = require("../source.js");
+  await source.loadReview("acme", "widgets", 7, undefined, "fj-7");
+  await source.loadReview("o", "r", 9);
+  assert.equal(sent[0].key, "fj-7");
+  assert.equal(sent[0].pr, 7);
+  assert.equal(sent[1].key, "9");
+  delete globalThis.chrome;
 });

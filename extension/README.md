@@ -1,8 +1,10 @@
 # Review focus extension
 
-A Chrome extension (Manifest V3) for GitHub's Files changed page. It reads the `review.json` that
-`render.py` writes for a chunked variant and replaces GitHub's file tree with a list grouped by review
-chunk, like a "group by importance" view. It only reads, and posts nothing to GitHub.
+A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
+(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes for a
+chunked variant and replaces the host's file tree with a list grouped by review chunk, like a "group by
+importance" view. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+where it describes the page, and the Forgejo selectors are in their own table at the end.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
@@ -101,12 +103,16 @@ overlay; Esc or a click outside closes it.
 
 1. From the `pr-describe` root, serve the runs: `python3 -m http.server 8765 --bind 127.0.0.1`.
 2. Open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick this `extension/` folder.
-3. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`.
+3. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
+   `http://localhost:3300/<owner>/<repo>/pulls/<n>/files`.
 
-The list appears only when `runs/<pr>/<variant>/review.json` exists for the PR (404, a server that
-is down or a different repo leave the page untouched). Runs are keyed by PR number alone and `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories with the same PR number would overwrite each other's runs. The variant defaults to
+The list appears only when `runs/<key>/<variant>/review.json` exists for the PR (404, a server that
+is down or a different repo leave the page untouched). `<key>` is the PR number on GitHub and `fj-<number>` on
+Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant defaults to
 `one_path_risk_chunked_v11b`; change it and the server URL on the extension's options page. The
-manifest only allows `http://127.0.0.1:8765`, so another origin also needs a `host_permissions` entry.
+manifest allows `http://127.0.0.1:8765` for the runs and `http://localhost:3300` for Forgejo, so another origin
+also needs a `host_permissions` entry (and a `matches` entry for a Forgejo elsewhere). Loading a version that adds a host
+makes Chrome ask for the new permission when the extension is reloaded.
 After editing a file, reload the extension on `chrome://extensions` and refresh the GitHub tab.
 
 Run the pure tests with `node --test test/extension.test.js`.
@@ -116,7 +122,10 @@ Run the pure tests with `node --test test/extension.test.js`.
 | File | Role |
 | --- | --- |
 | `background.js` | Fetches `review.json` for the content script; the page server sends no CORS headers |
-| `github_page.js` | The only module with GitHub selectors |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the callout, change watching. `createPage(spec)` builds an adapter from a host's spec |
+| `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
+| `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
+| `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Hides diffs outside a chunk and scrolls to a diff |
 | `tree.js`, `tree.css`, `focus.css` | The grouped list and the class `focus.js` toggles |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
@@ -128,6 +137,14 @@ Run the pure tests with `node --test test/extension.test.js`.
 | `source.js` | Content-script side of the fetch |
 
 The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in the order listed in `manifest.json`.
+
+### The page adapter
+
+Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
+`prFromUrl` / `pullFromUrl` (`{owner, repo, pr}`), `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
+`diffEntries`, `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `onChange` and `onNavigate`. A new host is a
+spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)
 
@@ -149,3 +166,22 @@ If a chunk hides nothing, the list is missing, or the list says it couldn't find
 update `github_page.js` only.
 
 When GitHub's file tree pane is closed there is no tree host, so no list is shown until the pane is reopened.
+
+## Forgejo selectors (observed 2026-10-05 on a local Forgejo's pull request files page)
+
+All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
+
+| What | Selector or rule |
+| --- | --- |
+| Page URL and run key | `/{owner}/{repo}/pulls/{n}/files`; the run folder is `fj-<n>` |
+| Diff block and entry | `#diff-container .diff-file-box[id^="diff-"]`; the box is both, and hiding it collapses the spacing. Its id is `diff-` + sha1 hex of the file path |
+| Block path | `data-new-filename`, else `data-old-filename` |
+| File header | `.diff-file-header`, sticky at 44px inside the box, under the sticky summary bar `.diff-detail-box` (top 0, 44px) that the scroll offset is measured against |
+| Line row | `.lines-num [rel="diff-<sha1 of path>R<line>"]` (`L` for a removed line); its closest `tr`. The cell is `td.lines-num-new` / `td.lines-num-old` with `data-line-num` |
+| Tree host | `#diff-file-tree > .diff-file-tree-items`: the Vue-rendered tree inside the sticky 380px column `#diff-file-tree`. The list is mounted before it in that column and the tree is hidden with a class |
+| Diagram host | pane `#diff-file-tree`, content `#diff-content-container`, both children of the flex row `#diff-container`; the panel goes right after the pane |
+| Head SHA | `/src/commit/<sha>/` in the `href` of the first `#diff-container .diff-file-box a[href*="/src/commit/"]` ("View file"), trusted only for the PR the page was first opened on |
+| Colours | the Primer custom properties the CSS uses are pointed at Forgejo's `--color-*` variables by a `<style id="prf-forgejo-theme">` added to the page |
+
+Not covered: a file collapsed with "Viewed", and a diff Forgejo holds back behind a load button on a very large
+change (neither occurred in the PRs observed), so a jump into such a file times out and stays at its header.

@@ -300,7 +300,7 @@
 
   function modeToggle(state, handlers) {
     const toggle = make("div", "prf-modes");
-    for (const [mode, label, icon] of [["review", "By review", LIST_TREE_ICON], ["github", "GitHub tree", FOLDER_ICON]]) {
+    for (const [mode, label, icon] of [["review", "By review", LIST_TREE_ICON], ["github", ns.page.treeLabel, FOLDER_ICON]]) {
       const choice = button("prf-mode", undefined, () => handlers.onMode(mode));
       choice.append(outlineIcon(icon, 14, "prf-mode-icon"), make("span", undefined, label));
       choice.setAttribute("aria-pressed", String(state.mode === mode));
@@ -351,7 +351,7 @@
 
   // Our list sits just before GitHub's tree in the same column; GitHub's tree is hidden while ours shows.
   function mountPoint() {
-    const host = ns.githubPage.treeHost();
+    const host = ns.page.treeHost();
     if (!host) return null;
     let root = document.getElementById(ROOT_ID);
     if (!root) {
@@ -460,7 +460,7 @@
   function remove() {
     hideStartCard();
     document.getElementById(ROOT_ID)?.remove();
-    ns.githubPage.treeHost()?.classList.remove(HOST_HIDDEN);
+    ns.page.treeHost()?.classList.remove(HOST_HIDDEN);
   }
 
   function owns(node) {

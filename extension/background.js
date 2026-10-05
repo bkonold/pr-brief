@@ -18,20 +18,20 @@ function matchesPr(review, owner, repo, pr) {
   );
 }
 
-async function loadDiagram(baseUrl, variant, pr, file) {
+async function loadDiagram(baseUrl, variant, key, file) {
   if (!/^[\w.-]+\.svg$/.test(file ?? "")) return null;
   try {
-    const response = await fetch(`${baseUrl}/runs/${pr}/${variant}/${file}`, { cache: "no-store" });
+    const response = await fetch(`${baseUrl}/runs/${key}/${variant}/${file}`, { cache: "no-store" });
     return response.ok ? await response.text() : null;
   } catch {
     return null;
   }
 }
 
-// The variants this PR has runs for, from runs/<pr>/variants.json; empty when the file is missing.
-async function loadVariants(baseUrl, pr) {
+// The variants this PR has runs for, from runs/<key>/variants.json; empty when the file is missing.
+async function loadVariants(baseUrl, key) {
   try {
-    const response = await fetch(`${baseUrl}/runs/${pr}/variants.json`, { cache: "no-store" });
+    const response = await fetch(`${baseUrl}/runs/${key}/variants.json`, { cache: "no-store" });
     if (!response.ok) return [];
     const listed = await response.json();
     return Array.isArray(listed)
@@ -44,14 +44,15 @@ async function loadVariants(baseUrl, pr) {
 
 // The page server sends no CORS headers, so the fetch happens here rather than in the content script.
 // `requested` is a variant the user just picked; otherwise the stored default decides.
-async function loadReview({ owner, repo, pr, variant: requested }) {
+async function loadReview({ owner, repo, pr, variant: requested, key: requestedKey }) {
   const { variant: stored, baseUrl } = await settings();
-  const variants = await loadVariants(baseUrl, pr);
+  const key = SAFE_NAME.test(requestedKey ?? "") ? requestedKey : String(pr);
+  const variants = await loadVariants(baseUrl, key);
   const variant = SAFE_NAME.test(requested ?? "") ? requested : chooseVariant(stored, variants);
   let response;
   let failure;
   try {
-    response = await fetch(`${baseUrl}/runs/${pr}/${variant}/review.json`, { cache: "no-store" });
+    response = await fetch(`${baseUrl}/runs/${key}/${variant}/review.json`, { cache: "no-store" });
   } catch (error) {
     failure = error;
   }
@@ -61,7 +62,7 @@ async function loadReview({ owner, repo, pr, variant: requested }) {
   try {
     const review = await response.json();
     if (!matchesPr(review, owner, repo, pr)) return null;
-    return { ...review, variants, diagramSvg: await loadDiagram(baseUrl, variant, pr, review.diagram) };
+    return { ...review, variants, diagramSvg: await loadDiagram(baseUrl, variant, key, review.diagram) };
   } catch {
     return null;
   }

@@ -1,9 +1,10 @@
 (() => {
-  const { githubPage, source, variants, boxes, focus, tree, diagram, alive } = globalThis.prFocus;
+  const { page, source, variants, boxes, focus, tree, diagram, alive } = globalThis.prFocus;
+  if (!page) return;
 
   const SETTLE_MS = 150;
   const LOAD_GRACE_MS = 5000;
-  const NO_BLOCKS_NOTE = "Couldn't find GitHub's diff blocks; selectors may need updating";
+  const NO_BLOCKS_NOTE = `Couldn't find ${page.name}'s diff blocks; selectors may need updating`;
 
   let current = null;
   let loadToken = 0;
@@ -49,7 +50,7 @@
 
   function extraFiles(session) {
     const listed = new Set(session.review.chunks.flatMap((chunk) => chunk.files.map((file) => file.path)));
-    return [...githubPage.fileBlocks().keys()].filter((path) => !listed.has(path)).map((path) => ({ path }));
+    return [...page.fileBlocks().keys()].filter((path) => !listed.has(path)).map((path) => ({ path }));
   }
 
   async function refresh({ scroll }) {
@@ -64,10 +65,10 @@
     if (result.stale || current !== session) return;
     renderDiagram(session, chunk);
     focus.markBox(session.activeBox?.paths ?? []);
-    githubPage.restoreLineTarget();
+    page.restoreLineTarget();
 
     const waited = Date.now() - session.startedAt;
-    const noBlocks = githubPage.fileBlocks().size === 0;
+    const noBlocks = page.fileBlocks().size === 0;
     if (noBlocks && waited < LOAD_GRACE_MS) schedule(LOAD_GRACE_MS - waited + SETTLE_MS);
     tree.render(
       session.review,
@@ -78,7 +79,7 @@
         extras: extraFiles(session),
         badges: boxes.fileBadges(session.review),
         activeFiles: new Set(session.activeBox?.paths ?? []),
-        pageSha: githubPage.headSha(),
+        pageSha: page.headSha(),
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
       handlersFor(session),
@@ -99,8 +100,8 @@
   // Ends any line jump in progress, which would otherwise scroll to its line when the row finally loads, and
   // clears the outlined line. Every selection started from the list or the diagram calls it.
   function leaveLine() {
-    githubPage.cancelJump();
-    githubPage.clearLineTarget();
+    page.cancelJump();
+    page.clearLineTarget();
   }
 
   // The active state of a single file: no box id, number or title, so no label is shown for it.
@@ -228,7 +229,7 @@
             { scroll: false },
           );
         }
-        if (current === session) await githubPage.jumpToLine(start.path, start.side, start.line, (dismiss) => tree.startCallout(chunk, dismiss));
+        if (current === session) await page.jumpToLine(start.path, start.side, start.line, (dismiss) => tree.startCallout(chunk, dismiss));
       },
       // A file row selects its chunk without the chunk's own scroll, lands that file's header below the sticky chrome
       // and makes the file active: its row and header get the box bar and the header flashes, without a label.
@@ -253,7 +254,7 @@
   }
 
   function owned(node) {
-    return tree.owns(node) || diagram.owns(node) || focus.owns(node) || githubPage.ownsLine(node);
+    return tree.owns(node) || diagram.owns(node) || focus.owns(node) || page.ownsLine(node);
   }
 
   // Loads another variant's review in place. The selected chunk stays selected when the new variant has a chunk
@@ -263,7 +264,7 @@
     session.switching = (session.switching ?? 0) + 1;
     const mine = session.switching;
     await source.saveVariant(variant);
-    const review = await source.loadReview(session.pr.owner, session.pr.repo, session.pr.pr, variant);
+    const review = await source.loadReview(session.pr.owner, session.pr.repo, session.pr.pr, variant, page.runKey(session.pr));
     if (current !== session || !live() || mine !== session.switching) return;
     if (review && !review.error) {
       leaveLine();
@@ -300,8 +301,8 @@
     timer = null;
     stopObserving?.();
     stopObserving = null;
-    githubPage.cancelJump();
-    githubPage.clearLineTarget();
+    page.cancelJump();
+    page.clearLineTarget();
     focus.apply(null);
     focus.clearBox();
     tree.remove();
@@ -327,7 +328,7 @@
 
   async function start() {
     if (!live()) return;
-    const pr = githubPage.prFromUrl(location);
+    const pr = page.prFromUrl(location);
     if (!pr) {
       if (current || stopObserving) teardown();
       return;
@@ -338,11 +339,11 @@
     current = { key };
 
     const token = loadToken;
-    const review = await source.loadReview(pr.owner, pr.repo, pr.pr);
+    const review = await source.loadReview(pr.owner, pr.repo, pr.pr, undefined, page.runKey(pr));
     if (!live()) return;
     if (token === loadToken && review?.error === "server") {
       current = { key, pr, offline: review.baseUrl, startedAt: Date.now() };
-      stopObserving = githubPage.onChange(onMutations);
+      stopObserving = page.onChange(onMutations);
       refresh({ scroll: false });
       return;
     }
@@ -361,10 +362,10 @@
       expanded: new Set([selectedN ?? tree.orderChunks(review.chunks)[0]?.n]),
       startedAt: Date.now(),
     };
-    stopObserving = githubPage.onChange(onMutations);
+    stopObserving = page.onChange(onMutations);
     refresh({ scroll: selectedN !== null });
   }
 
-  stopNavigating = githubPage.onNavigate(start);
+  stopNavigating = page.onNavigate(start);
   start();
 })();
