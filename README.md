@@ -131,7 +131,7 @@ One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own)
 `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
-`boxes`), `start_line` and `chunk_box_fallback`. `review_floor.toml` sets the minimum review level per
+`boxes`), `start_line`, `chunk_box_fallback` and `contract_block`. `review_floor.toml` sets the minimum review level per
 path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
 breaking change (a removal or a newly required field) the run's `contract.json` lists (see `review_floor.example.toml`).
 
@@ -170,6 +170,16 @@ sha256 of the variant file that produced each run.
 - With `node_files` in the answer (`{node id: [paths]}`), the renderer drops paths that are not in the PR and
   node ids that are not on the diagram, gives every box with no files a dashed `context` style, and writes
   `review.json`'s top-level `nodes`: `[{id, number, files}]`.
+- `contract_block = true` puts a "Contract and data" section right after the description, built without a model
+  call: one line per API operation the OpenAPI diff touches (a badge each for new, removed, a field added or made
+  required, a parameter added) and one per table the PR's migration files touch (`CREATE TABLE`, `ADD COLUMN`,
+  `DROP`, and so on; destructive and breaking changes are bold). Each line and badge links to its line in the
+  diff, or to the file's diff when the diff does not settle which line it is. A change to a shared schema is listed
+  on the operations that use it. With no changes the section says "No API or database changes"; a side that could
+  not be checked (no `openapi_path` or mirror, no `migration_globs`) is named. It needs `contract.json` for the API
+  side and `migration_globs` in `local.toml` for the database side. `contract.json` lists `removals` and
+  `newly_required` (the only entries that raise a review floor) and, for this block, `added`, `changed` and
+  `schema_operations`.
 - `numbering = "boxes"` numbers the diagram's boxes 1 to N in declaration order, prefixes each label with its
   number and gives the Review order table a `Boxes` column.
 - `chunk_box_fallback = true`: after the model's node ids are validated, each chunk still without a node gets
@@ -195,7 +205,7 @@ and estimated tokens (characters / 4). `run.py --prompt-only` builds the pack to
 | callers | Files outside the PR that mention a changed symbol (at most 15 symbols; more than 50 caller files and the symbol is skipped as too common) | `source_checkout` (and `github_url` to fetch missing commits of a GitHub PR) |
 | reach | Per app, the changed files and caller files, mapped by globs | `reach.toml` |
 | contract | Removed operations, removed schema properties, newly required properties and removed enum values (at most 30 lines), only when the OpenAPI file changed | `openapi_path`, plus the mirror |
-| migrations | `DELETE FROM`, `UPDATE`, `DROP`, `TRUNCATE` and `SET NOT NULL` statements in added migration files | `migration_dirs` |
+| migrations | `DELETE FROM`, `UPDATE`, `DROP`, `TRUNCATE` and `SET NOT NULL` statements in added migration files | `migration_dirs` (the "Contract and data" block uses `migration_globs`) |
 | wiki | Up to four pages whose `resource: repo://` paths match the changed files (exact path 2 points, same folder 1) | `wiki_repo` (and `wiki_dir`) |
 
 The pack is trimmed to 6000 estimated tokens by dropping whole items, wiki first, then callers, reach,

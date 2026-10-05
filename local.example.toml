@@ -39,6 +39,11 @@ openapi_path = "api/openapi.json"
 # Section "migrations": a new file whose path contains one of these is scanned for destructive SQL.
 migration_dirs = ["db/migrations/"]
 
+# The "Contract and data" block of a brief (variants with `contract_block = true`) lists the tables these files touch.
+# Globs over repository paths, `*` within a folder and `**` across folders. Without it the block says the database
+# side was not checked.
+migration_globs = ["db/migrations/*.sql"]
+
 # Precise caller matching for TypeScript. All four are optional; without them only relative imports are resolved.
 # A client package that is generated in-repo: its folder, and the specifier other packages import it by.
 sdk_dir = "web/sdk/"

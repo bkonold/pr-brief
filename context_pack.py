@@ -595,6 +595,141 @@ def contract_breaks(base: dict[str, Any], head: dict[str, Any]) -> dict[str, lis
             "newly_required": [*contract_lines(base, head, required_only=True), *required_parameter_lines(base, head)]}
 
 
+SCHEMA_REF = "#/components/schemas/"
+PARAMETER_REF = "#/components/parameters/"
+OPERATION_KEYS_NOT_COMPARED: frozenset[str] = frozenset({"parameters"})
+
+
+def operation_map(document: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    """(METHOD, path) -> the operation object, in document order."""
+    return {(method.upper(), path): operation
+            for path, item in document.get("paths", {}).items()
+            for method, operation in item.items() if method in HTTP_METHODS and isinstance(operation, dict)}
+
+
+def differing_keys(old: dict[str, Any], new: dict[str, Any], skip: frozenset[str] = frozenset()) -> list[str]:
+    return sorted(key for key in {*old, *new} - skip if old.get(key) != new.get(key))
+
+
+def parameter_entry(method: str, path: str, operation_id: str | None, key: tuple[str, str],
+                    parameter: dict[str, Any]) -> dict[str, Any]:
+    return {"method": method, "path": path, "operation_id": operation_id, "name": key[1], "in": key[0],
+            "required": bool(parameter.get("required"))}
+
+
+def schema_refs(node: Any, document: dict[str, Any]) -> set[str]:
+    """The names of the component schemas that `node` refers to, following references to shared parameters."""
+    found: set[str] = set()
+    pending: list[Any] = [node]
+    shared: dict[str, Any] = document.get("components", {}).get("parameters", {})
+    while pending:
+        current: Any = pending.pop()
+        if isinstance(current, dict):
+            ref: Any = current.get("$ref")
+            if isinstance(ref, str) and ref.startswith(SCHEMA_REF):
+                found.add(ref[len(SCHEMA_REF):])
+            elif isinstance(ref, str) and ref.startswith(PARAMETER_REF):
+                pending.append(shared.get(ref[len(PARAMETER_REF):]))
+            pending.extend(current.values())
+        elif isinstance(current, list):
+            pending.extend(current)
+    return found
+
+
+def operations_using(names: set[str], document: dict[str, Any]) -> dict[str, set[str]]:
+    """Schema name -> the `METHOD /path` operations whose parameters, request or responses reach it, directly or
+    through other schemas."""
+    schemas: dict[str, Any] = document.get("components", {}).get("schemas", {})
+    parents: dict[str, set[str]] = {}
+    for name, schema in schemas.items():
+        for ref in schema_refs(schema, document):
+            parents.setdefault(ref, set()).add(name)
+    reaching: dict[str, set[str]] = {}
+    for name in names:
+        reached: set[str] = {name}
+        pending: list[str] = [name]
+        while pending:
+            for parent in parents.get(pending.pop(), set()) - reached:
+                reached.add(parent)
+                pending.append(parent)
+        reaching[name] = reached
+    used: dict[str, set[str]] = {name: set() for name in names}
+    for path, item in document.get("paths", {}).items():
+        shared: set[str] = schema_refs(item.get("parameters", []), document)
+        for method, operation in item.items():
+            if method not in HTTP_METHODS or not isinstance(operation, dict):
+                continue
+            direct: set[str] = shared | schema_refs(operation, document)
+            for name in names:
+                if direct & reaching[name]:
+                    used[name].add(f"{method.upper()} {path}")
+    return used
+
+
+def touched_schemas(entries: list[str]) -> set[str]:
+    """The schema names in contract lines such as `Widget.size (now required)` or `Widget (schema removed)`."""
+    names: set[str] = set()
+    for entry in entries:
+        found: re.Match[str] | None = re.match(r"([^\s.(]+)", entry)
+        if found and not entry.startswith(("removed operation ", *(f"{m.upper()} " for m in HTTP_METHODS))):
+            names.add(found.group(1))
+    return names
+
+
+def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[str, list[str]]) -> dict[str, Any]:
+    """What was added or changed in the contract, beside the breaking changes in `breaks`: `added` and `changed`, each
+    with operations, properties and parameters (`added` also lists new schemas), and `schema_operations`, the operations
+    that reach each schema named in either (or in `breaks`)."""
+    old_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(base)
+    new_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(head)
+    added: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": [], "schemas": []}
+    changed: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": []}
+
+    for (method, path), operation in new_operations.items():
+        operation_id: str | None = operation.get("operationId")
+        old: dict[str, Any] | None = old_operations.get((method, path))
+        if old is None:
+            added["operations"].append({"method": method, "path": path, "operation_id": operation_id})
+            continue
+        what: list[str] = differing_keys(old, operation, OPERATION_KEYS_NOT_COMPARED)
+        if what:
+            changed["operations"].append({"method": method, "path": path, "operation_id": operation_id, "what": what})
+        old_parameters: dict[tuple[str, str], dict[str, Any]] = resolved_parameters(base, path, method.lower())
+        for key, parameter in resolved_parameters(head, path, method.lower()).items():
+            if key not in old_parameters:
+                added["parameters"].append(parameter_entry(method, path, operation_id, key, parameter))
+            elif old_parameters[key] != parameter:
+                changed["parameters"].append({**parameter_entry(method, path, operation_id, key, parameter),
+                                              "what": differing_keys(old_parameters[key], parameter)})
+
+    base_schemas: dict[str, Any] = base.get("components", {}).get("schemas", {})
+    for name, schema in head.get("components", {}).get("schemas", {}).items():
+        old_schema: dict[str, Any] | None = base_schemas.get(name)
+        if old_schema is None:
+            added["schemas"].append(name)
+            continue
+        old_props: dict[str, Any] = old_schema.get("properties", {})
+        new_props: dict[str, Any] = schema.get("properties", {})
+        for prop, definition in new_props.items():
+            if prop not in old_props:
+                added["properties"].append({"schema": name, "name": prop})
+            elif old_props[prop] != definition:
+                changed["properties"].append({"schema": name, "name": prop,
+                                              "what": differing_keys(old_props[prop], definition) if isinstance(definition, dict) else []})
+        for prop in old_schema.get("required", []):
+            if prop in new_props and prop not in schema.get("required", []):
+                changed["properties"].append({"schema": name, "name": prop, "what": ["no longer required"]})
+
+    names: set[str] = {*(item["schema"] for item in [*added["properties"], *changed["properties"]]), *added["schemas"],
+                       *touched_schemas([*breaks["removals"], *breaks["newly_required"]])}
+    used: dict[str, set[str]] = {name: set() for name in names}
+    for document in (base, head):
+        for name, operations in operations_using(names, document).items():
+            used[name] |= operations
+    return {"added": added, "changed": changed,
+            "schema_operations": {name: sorted(operations) for name, operations in sorted(used.items())}}
+
+
 def contract_lines(base: dict[str, Any], head: dict[str, Any], removals_only: bool = False,
                    required_only: bool = False) -> list[str]:
     """The contract differences, in the order the pack lists them. `removals_only` leaves out the properties that
@@ -920,7 +1055,8 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
         new: dict[str, Any] | None = read_json_at(head, OPENAPI_PATH)
         if old is not None and new is not None:
             lines: list[str] = contract_lines(old, new)
-            contract = {"path": OPENAPI_PATH, **contract_breaks(old, new)}
+            breaks: dict[str, list[str]] = contract_breaks(old, new)
+            contract = {"path": OPENAPI_PATH, **breaks, **contract_changes(old, new, breaks)}
             items["contract"] = [f"- {line}" for line in lines[:MAX_CONTRACT_LINES]]
             if len(lines) > MAX_CONTRACT_LINES:
                 items["contract"].append(f"- ({len(lines) - MAX_CONTRACT_LINES} more contract lines not listed)")

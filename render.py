@@ -23,6 +23,7 @@ from typing import Any, Callable
 import yaml
 
 from config import ROOT, config_file, load_local, variant_file
+from contract_block import contract_block, contract_rows, file_diff_lines, migration_rows
 from hosts import get_host
 from hosts.github import GitHub
 
@@ -40,6 +41,7 @@ ALSO_ID = "also"
 ALSO_SUBGRAPH = f'subgraph {ALSO_ID}["Also in this PR"]'
 LEVELS: list[str] = ["skim", "read", "read carefully"]
 ROUTES_DIR: str = load_local().get("routes_dir", "")
+MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
 
 
 class AnswerError(Exception):
@@ -706,11 +708,37 @@ def chunks_walkthrough(chunks: list[Chunk], counts: dict[str, tuple[int, int]], 
     return out + "</tbody></table>\n\n</details>\n\n"
 
 
+# ---------------------------------------------------------------- contract and data block
+
+def contract_section(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: str) -> str:
+    """The "Contract and data" block: the run's API contract changes and the tables its migration files touch."""
+    repo: str = run["repo"]
+    number: str = str(run["pr"])
+    context: dict[str, Any] = run.get("context") or {}
+    api_checked: bool = "contract" in (context.get("sections") or {}) and "contract" not in (context.get("dropped") or {})
+    unchecked: list[str] = []
+    rows: list[Any] = []
+    if contract is not None:
+        rows += contract_rows(contract, file_diff_lines(diff_text, contract["path"]), contract["path"])
+    elif not api_checked:
+        unchecked.append("API")
+    if MIGRATION_GLOBS:
+        migrations: list[str] = [f["path"] for f in pr["files"]
+                                 if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"]
+        rows += migration_rows({path: file_diff_lines(diff_text, path) for path in migrations})
+    else:
+        unchecked.append("database")
+    return contract_block(rows,
+                          lambda path, side, line: line_link(repo, number, {"path": path, "side": side, "line": line}),
+                          lambda path: diff_link(repo, number, path), unchecked)
+
+
 # ---------------------------------------------------------------- body
 
 def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cfg: dict[str, Any],
                floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
-               notes: list[str], contract: dict[str, Any] | None = None) -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None]:
+               notes: list[str], contract: dict[str, Any] | None = None,
+               diff_text: str = "") -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None]:
     pr_number: str = str(run["pr"])
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     paths: list[str] = [f["path"] for f in pr["files"]]
@@ -721,6 +749,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
     for key in ("type", "description"):
         if key in data:
             ordered[key] = data[key]
+    if cfg.get("contract_block"):
+        ordered["contract_and_data"] = contract_section(run, pr, contract, diff_text)
     chunks: list[Chunk] = []
     if cfg.get("files") == "chunks":
         chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract)
@@ -1037,8 +1067,9 @@ def main() -> int:
             raise AnswerError(f"claude exited with status {run['exit_status']}")
         data: dict[str, Any] = parse_answer(raw)
         prompt_file: Path = run_dir / "prompt.txt"
-        diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_from_prompt(prompt_file.read_text())) if prompt_file.exists() else {}
-        md, (labelled, total), chunks, nodes = build_body(run, pr, data, cfg, floor_cfg, diff_lines, notes, contract)
+        diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
+        diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_text)
+        md, (labelled, total), chunks, nodes = build_body(run, pr, data, cfg, floor_cfg, diff_lines, notes, contract, diff_text)
     except AnswerError as e:
         (run_dir / "error.txt").write_text(f"{e}\n")
         (run_dir / "body.html").write_text(ERROR_PAGE.replace("__ERROR__", html.escape(str(e))).replace("__RAW__", html.escape(raw)))
