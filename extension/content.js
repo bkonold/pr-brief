@@ -1,5 +1,5 @@
 (() => {
-  const { page, source, runControl, variants, boxes, focus, tree, diagram, brief, alive } = globalThis.prFocus;
+  const { page, source, runControl, boxes, focus, tree, diagram, brief, alive } = globalThis.prFocus;
   if (!page) return;
 
   const SETTLE_MS = 150;
@@ -161,7 +161,6 @@
         selectedN: session.selectedN,
         expanded: session.expanded,
         extras: extraFiles(session),
-        badges: boxes.fileBadges(session.review),
         activeFiles: new Set(session.activeBox?.paths ?? []),
         pageSha: page.headSha(),
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
@@ -235,7 +234,6 @@
     if (current !== session || !live() || session.activeBox?.id !== nodeId) return;
     const { number, title, paths } = session.activeBox;
     diagram.pulse(nodeId);
-    tree.flashBadges();
     focus.announceBox(paths, number == null ? title : `Box ${number} · ${title}`);
   }
 
@@ -331,7 +329,6 @@
         );
         await landOnFile(session, path);
       },
-      onSwitchVariant: (variant) => switchVariant(session, variant),
       onOrder: (order) => change(session, () => (session.order = order), { scroll: false }),
       onExpandAll: () => change(session, () => (session.expanded = new Set(allKeys())), { scroll: false }),
       onCollapseAll: () => change(session, () => (session.expanded = new Set()), { scroll: false }),
@@ -340,28 +337,6 @@
 
   function owned(node) {
     return tree.owns(node) || diagram.owns(node) || focus.owns(node) || page.ownsLine(node);
-  }
-
-  // Loads another variant's review in place. The selected chunk stays selected when the new variant has a chunk
-  // of the same name; otherwise the selection and the focus are cleared.
-  async function switchVariant(session, variant) {
-    if (current !== session || !live() || variant === session.review.variant) return;
-    session.switching = (session.switching ?? 0) + 1;
-    const mine = session.switching;
-    source.pickVariant(page.runKey(session.pr), variant);
-    const review = await source.loadReview(session.pr.owner, session.pr.repo, session.pr.pr, variant, page.runKey(session.pr));
-    if (current !== session || !live() || mine !== session.switching) return;
-    if (review && !review.error) {
-      leaveLine();
-      deactivate(session);
-      const kept = variants.keepSelection(session.review, session.selectedN, review);
-      session.selectedN = kept;
-      session.order = tree.defaultOrder(review);
-      session.expanded = new Set([kept ?? tree.orderChunks(review.chunks, session.order)[0]?.n]);
-      session.review = review;
-      save(session);
-    }
-    refresh({ scroll: false });
   }
 
   // A link to a chunk's start line, such as the PR brief card's, carries that line's anchor in the URL fragment.

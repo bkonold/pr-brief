@@ -11,19 +11,12 @@
     }
   }
 
-  // The variant picked on the page for each PR (by run key), kept for this page visit only.
-  const picks = new Map();
-
-  function pickVariant(key, variant) {
-    picks.set(key, variant);
-  }
-
-  // `variant` is a variant to show; without it the pick made on this page for the PR, else the background script's
-  // choice (see choose_variant.js). `key` is the PR's folder under runs/, which is not the PR number for every host.
+  // `variant` is a variant to show; without it the background script's choice (see choose_variant.js). `key` is the
+  // PR's folder under runs/, which is not the PR number for every host.
   async function loadReview(owner, repo, pr, variant, key = String(pr)) {
     if (!alive()) return null;
     try {
-      return (await chrome.runtime.sendMessage({ type: "loadReview", owner, repo, pr, variant: variant ?? picks.get(key), key })) ?? null;
+      return (await chrome.runtime.sendMessage({ type: "loadReview", owner, repo, pr, variant, key })) ?? null;
     } catch {
       return null;
     }
@@ -34,7 +27,7 @@
   async function loadBrief(owner, repo, pr, key = String(pr)) {
     if (!alive()) return null;
     try {
-      const brief = await chrome.runtime.sendMessage({ type: "loadBrief", owner, repo, pr, key, variant: picks.get(key) });
+      const brief = await chrome.runtime.sendMessage({ type: "loadBrief", owner, repo, pr, key });
       return brief && !brief.error ? brief : null;
     } catch {
       return null;
@@ -66,7 +59,7 @@
   const cancelRun = (run) => ask({ type: "cancelRun", ...run });
 
   ns.alive = alive;
-  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha, pickVariant };
+  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha };
 })();
 
 if (typeof module !== "undefined") module.exports = { alive: globalThis.prFocus.alive, ...globalThis.prFocus.source };

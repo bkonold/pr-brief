@@ -10,16 +10,19 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 - A toggle, "By review" / "GitHub tree", and an "Expand all" / "Collapse all" button. "GitHub tree" brings
   GitHub's own tree back and shows every diff; the toggle stays so you can switch again.
-- One group per chunk, with its file count, review level and why.
+- One line per chunk: its number, its name and, at the right, its review level as a word (`careful` for "read carefully", in the
+  warning text colour; `read` and `skim` muted). Only the open chunk lists its files; the others stay one line.
   Groups are ordered by review level ("read carefully", "read", "skim"), then "Unchunked"; skim-level chunks and "Unchunked" are muted.
-  When the run's chunks carry a `step` (v16), the order is the flow of the change as `review.json` lists it, each group
-  shows its step beside its name, and an "Order: by flow | by risk" switch under the toggle reorders the list. The
+  When the run's chunks carry a `step` (v16), the order is the flow of the change as `review.json` lists it, and a quiet
+  "Order: by flow | by risk" switch under the toggle reorders the list. The
   switch changes only the order: numbers, selection, `↳` jumps and the diagram highlight are by chunk, so they work in
-  both. It is not remembered, so each load opens in flow order; a run with no steps opens by risk and has no switch. A "Not in review" group lists loaded diffs no chunk names.
-- Files show their basename, `+N` and `-N`. Each folder shared by consecutive files is named once in a dim monospace header above them, trimmed from the left when it doesn't fit; the file order is the chunk's own.
-- Clicking a chunk header focuses the diffs on that chunk, expands it, collapses the others and scrolls to the
-  chunk's first file; clicking it again shows all diffs. The chevron only expands or collapses.
-  Clicking a file focuses its chunk and scrolls to its diff.
+  both. It is not remembered, so each load opens in flow order; a run with no steps opens by risk and has no switch. A "Not in review" group, in the same one-line style, lists loaded diffs no chunk names.
+- Files show only their basename, in small monospace; the chunk's start file is in the primary text colour and the rest are
+  muted. A basename shared by two files of the list gets its folder as a dim suffix; the full path is the row's tooltip. The
+  file order is the chunk's own.
+- Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and scrolls to the
+  chunk's first file; clicking it again shows all diffs and leaves it open.
+  Clicking a file focuses its chunk and scrolls to its diff. A chunk opened with "Expand all" closes again with "Collapse all" or when another chunk is clicked.
 - A `↳` button on a chunk with a start line (the `start` field of `review.json`, the one line the model says to read
   first; hovering or keyboard-focusing it, after 300ms, shows a card with `path:line` and the quoted text directly below the
   chunk's header in the list, pushing the rows below it down; Esc closes it) jumps to that line, centres it, flashes the row amber three times over two seconds (under `prefers-reduced-motion`: no flash, a static amber tint on the row while it is the target). If another chunk is
@@ -44,23 +47,19 @@ note with the base URL, the command to start the server (`pd serve`) and a Retry
 fetches again and mounts the full list on success. A 404 or an unusable review shows the "Generate brief" line below,
 unless the run server says it will not run that repository.
 
-## Variant switcher
+## Which variant is shown
 
-`background.js` also fetches `runs/<pr>/variants.json` (`[{variant, label, description}]`, written by `compare.py`). `background.js` also reads the
-server's `GET /api/config` (`{default_variant, variants}`). When more than one variant is both active (listed in
-`variants`) and present for the PR, the toggle bar shows a `<select>` of the labels, each option titled with the variant's
-description. Changing it reloads `review.json` and the diagram in place
-and keeps the selected chunk when the new variant has a chunk of the same name; otherwise the selection and the focus are
-cleared. The run shown is, in order: the variant picked on the page during this visit (kept in memory, never in storage); the
-server's `default_variant` if the PR has it; the newest active variant the PR has; the newest variant the PR has at
-all. If the server's config can't be read (server down, token missing), the newest variant the PR has is shown and
-the switcher is hidden. Without `variants.json`, only the pick and the server's default are tried. "Newest" compares
-variant names with digit runs as numbers (`v9` < `v10`). The saved per-PR selection is restored only for the variant it was made in.
+`background.js` fetches `runs/<pr>/variants.json` (`[{variant, label, description}]`, written by `compare.py`) and reads the
+server's `GET /api/config` (`{default_variant, variants}`). The run shown is, in order: the server's `default_variant` if
+the PR has it; the newest active variant the PR has (active: listed in the config's `variants`); the newest variant the PR
+has at all. If the server's config can't be read (server down, token missing), the newest variant the PR has is shown.
+Without `variants.json`, only the server's default is tried. "Newest" compares variant names with digit runs as numbers
+(`v9` < `v10`). The saved per-PR selection is restored only for the variant it was made in. The files view has no variant
+control; the PR brief card on the conversation page names the variant it shows.
 
 ## Boxes and files
 
-When `review.json` has `nodes` (`[{id, number, files}]`, written for `v11*` runs), each file row in the list shows a small
-badge with the number of every box that covers it. Clicking a box selects the chunk holding its first file, as a header click
+When `review.json` has `nodes` (`[{id, number, files}]`, written for `v11*` runs), clicking a box selects the chunk holding its first file, as a header click
 does, and smooth-scrolls to that file. A context box (no files) is dashed, has a default cursor and does nothing when clicked.
 The scroll lands the file's header just below GitHub's sticky chrome: the offset is measured when the click happens, as
 the lowest stuck edge of the page's sticky or fixed elements that span the diff column (the file-row click and a chunk's
@@ -71,7 +70,7 @@ first-file scroll use the same code). The clicked box becomes the active box:
 - Diff: every loaded file the box covers gets a 3px accent bar on its header, which stays while the box is active, and a header
   background flash of about 1.2s. The first file's header also carries a chip, `Box 3 · <box title>` (the title is the first line
   of the box's SVG label), that fades out after 2.5s.
-- List: the box's file rows get an accent background, its chunk expands and their box-number badges flash once.
+- List: the box's file rows get an accent background and its chunk opens.
 
 The active state clears when another box, a chunk header (including unselecting it), a file row, the mode toggle or the jump
 button is used, or the variant changes. Under `prefers-reduced-motion` only the end states show: no pulse, flash or fade; the
@@ -177,7 +176,7 @@ the page's data, and its header links to the files view. Without a run it is the
 
 The list appears only when `runs/<key>/<variant>/review.json` exists for the PR (404, a server that
 is down or a different repo leave the page untouched). `<key>` is the PR number on GitHub and `fj-<number>` on
-Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant comes from the server (`default_variant` in `local.toml`, see Variant switcher); the extension's options page holds the server URL and token. The
+Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant comes from the server (`default_variant` in `local.toml`, see Which variant is shown); the extension's options page holds the server URL and token. The
 manifest allows `http://127.0.0.1:8765` for the runs and `http://localhost:3300` for Forgejo, so another origin
 also needs a `host_permissions` entry (and a `matches` entry for a Forgejo elsewhere). Loading a version that adds a host
 makes Chrome ask for the new permission when the extension is reloaded.
@@ -200,9 +199,8 @@ Run the pure tests with `node --test test/*.test.js`.
 | `tree.js`, `tree.css`, `focus.css` | The grouped list and the class `focus.js` toggles |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
-| `choose_variant.js` | Which variant to load and which the switcher lists (an ES module, used by `background.js`) |
-| `boxes.js` | Box badges for file rows and a box's target file |
-| `variants.js` | Which chunk stays selected after a variant switch |
+| `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
+| `boxes.js` | A box's target file and title |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
 | `source.js` | Content-script side of the fetch |
 | `brief_text.js` | Turns a run's `body.html` into the card's safe HTML, and reorders the review-order rows by flow or risk (pure string work, tested without a DOM) |

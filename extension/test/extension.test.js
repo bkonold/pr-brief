@@ -7,10 +7,9 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, groupByFolder, orderChunks, revealTarget, startCard, readFirstReason } = require("../tree.js");
+const { staleMessage, ambiguousNames, levelLabel, orderChunks, revealTarget, startCard, readFirstReason } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
-const { keepSelection } = require("../variants.js");
-const { fileBadges, targetOfNode, boxTitle } = require("../boxes.js");
+const { targetOfNode, boxTitle } = require("../boxes.js");
 
 test("prFromUrl matches the changes and files pages", () => {
   const expected = { owner: "example-org", repo: "example-repo", pr: 42, view: "files" };
@@ -43,24 +42,17 @@ test("staleMessage reports only a known, different head", () => {
   );
 });
 
-test("groupByFolder names each shared folder once and keeps the file order", () => {
-  const dir = "web/app/routes/_layout.items.$itemType.$slot";
-  const files = [{ path: `${dir}/route.tsx` }, { path: `${dir}/route.test.tsx` }, { path: `${dir}/utils.ts` }];
-  assert.deepEqual(groupByFolder(files), [{ folder: dir, files }]);
+test("ambiguousNames lists the basenames that more than one file shares", () => {
+  const files = [{ path: "a/x/route.tsx" }, { path: "a/y/route.tsx" }, { path: "a/x/utils.ts" }, { path: "README.md" }];
+  assert.deepEqual([...ambiguousNames(files)], ["route.tsx"]);
+  assert.equal(ambiguousNames([{ path: "a/x.ts" }, { path: "b/y.ts" }]).size, 0);
+  assert.equal(ambiguousNames([]).size, 0);
 });
 
-test("groupByFolder starts a new run when the folder changes, even for a folder seen before", () => {
-  const files = [{ path: "a/x/route.tsx" }, { path: "a/y/route.tsx" }, { path: "a/x/utils.ts" }, { path: "a/x/more.ts" }, { path: "README.md" }];
-  assert.deepEqual(
-    groupByFolder(files).map(({ folder, files: run }) => [folder, run.map((file) => file.path)]),
-    [
-      ["a/x", ["a/x/route.tsx"]],
-      ["a/y", ["a/y/route.tsx"]],
-      ["a/x", ["a/x/utils.ts", "a/x/more.ts"]],
-      ["", ["README.md"]],
-    ],
-  );
-  assert.deepEqual(groupByFolder([]), []);
+test("levelLabel shortens read carefully and leaves the other levels as they are", () => {
+  assert.equal(levelLabel("read carefully"), "careful");
+  assert.equal(levelLabel("read"), "read");
+  assert.equal(levelLabel("skim"), "skim");
 });
 
 test("orderChunks sorts by review level, keeps ties in order and puts Unchunked after skim", () => {
@@ -212,45 +204,6 @@ test("the switcher lists only variants that are active and present, in the PR's 
   assert.deepEqual(switcherVariants(OLD_AND_NEW, config).map((entry) => entry.variant), ["v15", "v16"]);
 });
 
-test("the switcher is hidden when one or no active variant is present, or the config is unavailable", async () => {
-  const { switcherVariants } = await import("../choose_variant.js");
-  const { variantSwitcherShown } = require("../tree.js");
-  const config = { default_variant: "v16", variants: ["v16"] };
-  assert.equal(variantSwitcherShown({ variants: switcherVariants(OLD_AND_NEW, config) }), false);
-  assert.equal(variantSwitcherShown({ variants: switcherVariants([{ variant: "v10" }], config) }), false);
-  assert.equal(variantSwitcherShown({ variants: switcherVariants(OLD_AND_NEW, null) }), false);
-  assert.equal(variantSwitcherShown({ variants: switcherVariants(OLD_AND_NEW, { ...config, variants: ["v15", "v16"] }) }), true);
-});
-
-test("a variant picked on the page is sent with later loads of that PR and is not stored", async () => {
-  const sent = [];
-  const stored = [];
-  globalThis.chrome = {
-    runtime: { id: "abc", sendMessage: async (message) => (sent.push(message), null) },
-    storage: { sync: { set: async (value) => stored.push(value) } },
-  };
-  const source = require("../source.js");
-  source.pickVariant("fj-7", "v10");
-  await source.loadReview("acme", "widgets", 7, undefined, "fj-7");
-  await source.loadBrief("acme", "widgets", 7, "fj-7");
-  await source.loadReview("acme", "widgets", 8, undefined, "8");
-  await source.loadReview("acme", "widgets", 7, "v15", "fj-7");
-  assert.deepEqual(sent.map((message) => message.variant), ["v10", "v10", undefined, "v15"]);
-  assert.deepEqual(stored, []);
-  assert.equal(source.saveVariant, undefined);
-  delete globalThis.chrome;
-});
-
-test("keepSelection follows the selected chunk by name into the new variant", () => {
-  const before = { chunks: [{ n: 1, name: "Item list screen" }, { n: 2, name: "Migration" }] };
-  const after = { chunks: [{ n: 1, name: "Migration" }, { n: 2, name: "Item list screen" }, { n: 3, name: "SDK" }] };
-  assert.equal(keepSelection(before, 1, after), 2);
-  assert.equal(keepSelection(before, 2, after), 1);
-  assert.equal(keepSelection(before, 2, { chunks: [{ n: 1, name: "Other" }] }), null);
-  assert.equal(keepSelection(before, null, after), null);
-  assert.equal(keepSelection(before, 9, after), null);
-});
-
 const BOX_REVIEW = {
   chunks: [
     { n: 1, name: "API", files: [{ path: "a/Controller.java" }, { path: "a/Service.java" }] },
@@ -264,15 +217,6 @@ const BOX_REVIEW = {
     { id: "lane", number: null, files: ["web/route.tsx"] },
   ],
 };
-
-test("fileBadges lists each file's box numbers in ascending order", () => {
-  assert.deepEqual([...fileBadges(BOX_REVIEW)], [
-    ["a/Controller.java", [1, 2]],
-    ["a/Service.java", [2]],
-    ["web/route.tsx", [3]],
-  ]);
-  assert.equal(fileBadges({ chunks: [] }).size, 0);
-});
 
 test("targetOfNode names a box's first file and its chunk, and nothing for context boxes", () => {
   assert.deepEqual(targetOfNode(BOX_REVIEW, "svc"), { path: "a/Service.java", n: 1 });

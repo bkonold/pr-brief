@@ -12,7 +12,7 @@
   "content_scripts": [
     {
       "matches": ["https://github.com/*", "http://localhost:3300/*"],
-      "js": ["page_common.js", "github_page.js", "forgejo_page.js", "page.js", "source.js", "run_control.js", "variants.js", "boxes.js", "focus.js", "tree.js", "diagram.js", "brief_text.js", "brief.js", "content.js"],
+      "js": ["page_common.js", "github_page.js", "forgejo_page.js", "page.js", "source.js", "run_control.js", "boxes.js", "focus.js", "tree.js", "diagram.js", "brief_text.js", "brief.js", "content.js"],
       "css": ["focus.css", "tree.css", "diagram.css"],
       "run_at": "document_idle"
     }

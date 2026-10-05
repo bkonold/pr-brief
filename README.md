@@ -156,7 +156,7 @@ source run's model, timestamps and head sha plus its own name and file sha256, a
 fails if the source run is missing.
 
 `compare.toml` lists the variants that make up the default compare pages. `compare.py` also writes
-`runs/<pr>/variants.json` (and so does `run.py` after a successful run, adding that run's variant when `compare.toml` does not list it, so the extension finds a PR run from the server) (`[{variant, label, description}]`) for the extension's variant dropdown, using
+`runs/<pr>/variants.json` (and so does `run.py` after a successful run, adding that run's variant when `compare.toml` does not list it, so the extension finds a PR run from the server) (`[{variant, label, description}]`) for the extension's choice of variant, using
 the labels in `VARIANT_LABELS`.
 
 Variants are frozen once they have been compared. To change one, add a new file; `run.json` records the

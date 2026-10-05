@@ -3,21 +3,14 @@
   const ROOT_ID = "pr-focus-tree";
   const HOST_HIDDEN = "prf-tree-hidden";
   const EXTRA_KEY = "extra";
-  const BADGE_FLASH = "prf-badge-flash";
   const ROW_FLASH = "prf-row-flash";
   const UNCHUNKED = "Unchunked";
   const LOWEST_LEVEL = "skim";
-  const WHY_LIMIT = 140;
   const SHORT_SHA = 7;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const LIST_TREE_ICON = "M2.5 3h11M5.5 8h8M5.5 13h8M3 3.5v9.5M3 8h2.5M3 13h2.5";
   const FOLDER_ICON = "M1.75 3.5h4.25l1.5 1.75h6.75v7.5h-12.5z";
-  const DIAMOND_ICON = "M8 2l5 6-5 6-5-6z";
   const JUMP_ICON = "M2.5 3v10M5.5 8h8M10 4.5L13.5 8 10 11.5";
-  const CARET_ICON = "M4 6l4 4 4-4";
-  const FILE_ICON =
-    "M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z";
-
   const LEVEL_ORDER = ["read carefully", "read", "skim"];
 
   function groupRank(chunk) {
@@ -60,17 +53,23 @@
     return path.slice(path.lastIndexOf("/") + 1);
   }
 
-  // The files in their given order, split into runs that share a folder, so each folder is named once above
-  // its files. Order is kept, and a folder met again later starts a new run. A file at the repository root has
-  // the folder "".
-  function groupByFolder(files) {
-    const runs = [];
-    for (const file of files) {
-      const folder = folderOf(file.path);
-      if (runs.at(-1)?.folder === folder) runs.at(-1).files.push(file);
-      else runs.push({ folder, files: [file] });
+  // The basenames that more than one of `files` has, so those rows can show their folder to tell them apart.
+  function ambiguousNames(files) {
+    const seen = new Set();
+    const repeated = new Set();
+    for (const { path } of files) {
+      const name = baseNameOf(path);
+      if (seen.has(name)) repeated.add(name);
+      seen.add(name);
     }
-    return runs;
+    return repeated;
+  }
+
+  const LEVEL_LABELS = { "read carefully": "careful" };
+
+  // The short word a chunk row shows for its review level.
+  function levelLabel(review) {
+    return LEVEL_LABELS[review] ?? review;
   }
 
   function staleMessage(review, pageSha) {
@@ -90,16 +89,6 @@
     element.type = "button";
     element.addEventListener("click", onClick);
     return element;
-  }
-
-  function shorten(text, limit) {
-    return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
-  }
-
-  function fileIcon() {
-    const svg = svgIcon(FILE_ICON, 14, "prf-file-icon");
-    svg.setAttribute("fill", "currentColor");
-    return svg;
   }
 
   // A 16-unit icon drawn as an outline in the current text colour.
@@ -124,39 +113,26 @@
     return svg;
   }
 
-  function fileRow(file, onClick, boxes = [], active = false) {
+  // `options.start` marks the chunk's start file; `options.showFolder` adds the folder after a basename that another
+  // file in the list shares.
+  function fileRow(file, onClick, { active = false, start = false, showFolder = false } = {}) {
     const item = make("li", "prf-file-item");
     const row = button("prf-file", undefined, onClick);
     row.classList.toggle("prf-file-active", active);
+    row.classList.toggle("prf-file-start", start);
     row.title = file.path;
-    row.append(fileIcon(), make("span", "prf-file-name", baseNameOf(file.path)));
-    if (boxes.length) {
-      const badge = make("span", "prf-box");
-      badge.append(outlineIcon(DIAMOND_ICON, 10, "prf-box-icon"), boxes.join(", "));
-      badge.title = `Diagram ${boxes.length === 1 ? "box" : "boxes"} ${boxes.join(", ")}`;
-      row.append(badge);
-    }
-    if (file.additions !== undefined) {
-      row.append(make("span", "prf-add", `+${file.additions}`), make("span", "prf-del", `−${file.deletions}`));
-    }
+    row.append(make("span", "prf-file-name", baseNameOf(file.path)));
+    if (showFolder) row.append(make("span", "prf-file-dir", folderOf(file.path)));
     item.append(row);
     return item;
   }
 
-  // The rows of a file list, each shared folder named once in a dim header above its files. `rowFor(file)` builds a
-  // file's row.
-  function fileRows(files, rowFor) {
-    const rows = [];
-    for (const { folder, files: run } of groupByFolder(files)) {
-      if (folder) {
-        const header = make("li", "prf-folder");
-        header.title = folder;
-        header.append(make("bdi", "prf-folder-text", `${folder}/`));
-        rows.push(header);
-      }
-      for (const file of run) rows.push(rowFor(file));
-    }
-    return rows;
+  // The rows of a file list; `optionsFor(file)` gives each row's active and start options.
+  function fileRows(files, onSelect, optionsFor = () => ({})) {
+    const repeated = ambiguousNames(files);
+    return files.map((file) =>
+      fileRow(file, () => onSelect(file.path), { ...optionsFor(file), showFolder: repeated.has(baseNameOf(file.path)) }),
+    );
   }
 
   function group({ key, expanded, selected, muted }, header, files) {
@@ -167,13 +143,6 @@
     element.classList.toggle("prf-muted", muted);
     element.append(header);
     if (expanded) element.append(files);
-    return element;
-  }
-
-  function chevron(expanded, onClick) {
-    const element = button("prf-chevron", "›", onClick);
-    element.setAttribute("aria-expanded", String(expanded));
-    element.setAttribute("aria-label", expanded ? "Collapse group" : "Expand group");
     return element;
   }
 
@@ -275,26 +244,21 @@
     const expanded = state.expanded.has(chunk.n);
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.n));
     main.setAttribute("aria-pressed", String(chunk.n === state.selectedN));
-    const line = make("span", "prf-line");
-    line.append(make("span", "prf-name", `${chunk.n} · ${chunk.name}`));
-    if (chunk.step) line.append(make("span", "prf-step", chunk.step));
-    line.append(make("span", "prf-count", String(chunk.files.length)));
-    if (isMuted(chunk)) line.append(make("span", "prf-tag", chunk.name === UNCHUNKED ? UNCHUNKED : chunk.review));
-    const level = make("span", "prf-meta");
-    level.append(make("span", `prf-level prf-level-${chunk.review.replace(/\s+/g, "-")}`, chunk.review));
-    const why = make("span", "prf-why");
-    if (chunk.why) why.append(outlineIcon(DIAMOND_ICON, 10, "prf-why-icon"));
-    why.append(make("span", "prf-why-text", shorten(chunk.why ?? "", WHY_LIMIT)));
-    why.title = chunk.why ?? "";
-    main.append(line, level, why);
+    main.append(
+      make("span", "prf-num", String(chunk.n)),
+      make("span", "prf-name", chunk.name),
+      make("span", `prf-level prf-level-${chunk.review.replace(/\s+/g, "-")}`, levelLabel(chunk.review)),
+    );
 
     const header = make("div", "prf-head");
-    header.append(chevron(expanded, () => handlers.onToggleGroup(chunk.n)), outlineIcon(FOLDER_ICON, 14, "prf-folder-icon"), main);
+    header.append(main);
     if (chunk.start) header.append(startButton(chunk, handlers));
     const files = make("ul", "prf-files");
     files.append(
-      ...fileRows(chunk.files, (file) =>
-        fileRow(file, () => handlers.onSelectFile(chunk.n, file.path), state.badges?.get(file.path), state.activeFiles?.has(file.path)),
+      ...fileRows(
+        chunk.files,
+        (path) => handlers.onSelectFile(chunk.n, path),
+        (file) => ({ active: state.activeFiles?.has(file.path), start: file.path === chunk.start?.path }),
       ),
     );
     return group({ key: chunk.n, expanded, selected: chunk.n === state.selectedN, muted: isMuted(chunk) }, header, files);
@@ -303,13 +267,11 @@
   function extraGroup(extras, state, handlers) {
     const expanded = state.expanded.has(EXTRA_KEY);
     const main = button("prf-head-main", undefined, () => handlers.onToggleGroup(EXTRA_KEY));
-    const line = make("span", "prf-line");
-    line.append(make("span", "prf-name", "Not in review"), make("span", "prf-count", String(extras.length)));
-    main.append(line);
+    main.append(make("span", "prf-name", "Not in review"));
     const header = make("div", "prf-head");
-    header.append(chevron(expanded, () => handlers.onToggleGroup(EXTRA_KEY)), outlineIcon(FOLDER_ICON, 14, "prf-folder-icon"), main);
+    header.append(main);
     const files = make("ul", "prf-files");
-    files.append(...fileRows(extras, (file) => fileRow(file, () => handlers.onSelectFile(null, file.path))));
+    files.append(...fileRows(extras, (path) => handlers.onSelectFile(null, path)));
     return group({ key: EXTRA_KEY, expanded, selected: false, muted: true }, header, files);
   }
 
@@ -336,31 +298,8 @@
     return element;
   }
 
-  // The switcher is offered only when the run came with more than one variant to choose from.
-  function variantSwitcherShown(review) {
-    return (review.variants?.length ?? 0) > 1;
-  }
-
-  function variantSelect(review, handlers) {
-    const select = make("select", "prf-variant");
-    select.setAttribute("aria-label", "Review variant");
-    for (const entry of review.variants) {
-      const option = make("option", undefined, entry.label);
-      option.value = entry.variant;
-      option.title = entry.description ?? "";
-      option.selected = entry.variant === review.variant;
-      select.append(option);
-    }
-    select.title = review.variants.find((entry) => entry.variant === review.variant)?.description ?? "";
-    select.addEventListener("change", () => handlers.onSwitchVariant(select.value));
-    const pill = make("label", "prf-variant-pill");
-    pill.append(make("span", "prf-variant-label", "Variant:"), select, outlineIcon(CARET_ICON, 12, "prf-variant-caret"));
-    return pill;
-  }
-
   function bar(review, state, handlers) {
     const element = make("div", "prf-bar");
-    if (variantSwitcherShown(review)) element.append(variantSelect(review, handlers));
     element.append(modeToggle(state, handlers));
     if (state.mode === "review" && hasSteps(review.chunks)) element.append(orderSwitch(state, handlers));
     if (state.mode === "review") {
@@ -395,10 +334,9 @@
   }
 
   // state: { mode: "review" | "github", order: "flow" | "risk", selectedN, expanded: Set of chunk numbers and "extra",
-  //          extras: [{ path }], pageSha, note, badges: Map of path -> diagram box numbers,
-  //          activeFiles: Set of the active box's paths }
+  //          extras: [{ path }], pageSha, note, activeFiles: Set of the active box's paths }
   // handlers: onMode(mode), onToggleGroup(key), onSelectChunk(n), onSelectFile(n | null, path),
-  //           onJumpToStart(n), onExpandAll(), onCollapseAll(), onSwitchVariant(variant), onOrder(order)
+  //           onJumpToStart(n), onExpandAll(), onCollapseAll(), onOrder(order)
   function render(review, state, handlers) {
     const mount = mountPoint();
     if (!mount) return;
@@ -508,17 +446,6 @@
     }
   }
 
-  // Flashes once the box-number badge of every file row of the active box. A re-render during the flash ends it.
-  function flashBadges() {
-    if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    for (const badge of document.querySelectorAll(`#${ROOT_ID} .prf-file-active .prf-box`)) {
-      badge.classList.remove(BADGE_FLASH);
-      void badge.offsetWidth;
-      badge.classList.add(BADGE_FLASH);
-      badge.addEventListener("animationend", () => badge.classList.remove(BADGE_FLASH), { once: true });
-    }
-  }
-
   function remove() {
     hideStartCard();
     document.getElementById(ROOT_ID)?.remove();
@@ -530,7 +457,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { variantSwitcherShown, render, renderServerNote, renderGenerateLine, flashBadges, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, hasSteps, defaultOrder, groupByFolder, staleMessage, EXTRA_KEY };
+  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

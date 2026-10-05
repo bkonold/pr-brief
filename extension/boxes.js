@@ -1,17 +1,6 @@
 (() => {
   const ns = (globalThis.prFocus ??= {});
 
-  // File path -> the box numbers whose `nodes` entry lists it, ascending. Empty when review.json has no `nodes`.
-  function fileBadges(review) {
-    const badges = new Map();
-    for (const node of review.nodes ?? []) {
-      if (node.number == null) continue;
-      for (const path of node.files) badges.set(path, [...(badges.get(path) ?? []), node.number]);
-    }
-    for (const numbers of badges.values()) numbers.sort((a, b) => a - b);
-    return badges;
-  }
-
   // The first file of a box and the chunk that holds it; null for an unknown box, a context box (no files) or
   // a file no chunk lists.
   function targetOfNode(review, nodeId) {
@@ -32,7 +21,7 @@
     return (first ?? "").replace(BOX_NUMBER, "").trim();
   }
 
-  ns.boxes = { fileBadges, targetOfNode, boxTitle };
+  ns.boxes = { targetOfNode, boxTitle };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.boxes;

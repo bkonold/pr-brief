@@ -29,7 +29,7 @@ Two risks are known and unresolved, so the brief should be treated as a guide an
    - writes `review.json` (schema 2): top level `nodes` and `diagram`; chunks with `n`, `name`, `review`,
      `why`, `files`, `start {path, side, line, text, why?}` and `nodes`;
    - applies the `chunk_box_fallback` (a box for every chunk the model left without one).
-4. `compare.py` builds side-by-side pages per PR and `variants.json` for the extension's dropdown.
+4. `compare.py` builds side-by-side pages per PR and `variants.json` for the extension's choice of variant.
 
 `PR_DESCRIBE_HOME` (default: the tool's folder) moves config, `compare.toml`, `runs/`, `.cache/` and extra
 variants out of the tool, so a repository can keep them in its own overlay repo with this tool as a submodule
@@ -72,15 +72,15 @@ arrowheads. The kind of change decides which diagrams appear, not how they look.
 
 What it does (see `extension/README.md`):
 
-- A "By review" chunk list, ordered read carefully, read, skim, replaces GitHub's file tree. Each folder shared
-  by consecutive files is shown once as a header.
+- A "By review" chunk list, ordered read carefully, read, skim, replaces GitHub's file tree, one line per chunk;
+  the open chunk lists its files by basename.
 - A diagram panel is the leftmost pane, before the chunk list. It collapses, resizes, highlights the selected
   chunk's boxes, and has a legend and motion.
 - A chunk click lands its first file flush under the pinned toolbar.
 - The `↳` button jumps to the start line: it waits up to 10 seconds for GitHub to render the row, re-centres,
   flashes the row amber three times and pins a "Read first: <reason>" callout above it.
 - The hover card for the start line shows in the sidebar. Clicking a diagram box selects its chunk.
-- A "server down" note offers Retry. The variant dropdown reads `variants.json`.
+- A "server down" note offers Retry. `variants.json` tells the extension which variants a PR has.
 
 Verified only by injecting code into the page, never through a real extension reload: the sidebar hover card, the
 callout, the pulse visibility, the panel move, the light theme, and the saved width and collapsed state. Reload
