@@ -49,7 +49,8 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   goes whenever the line target clears (another selection, a new jump or teardown) and comes back if the host re-renders the
   row. When a jump lands, its callout pulses once: a purple ring that swells from its resting
   width to 3px wider and back, three times over about two seconds (666ms each). It fires on
-  every jump (a chunk or box click, "Start here", the callout's buttons, a link to a start line), only for the jumped-to chunk,
+  every jump from the chunk list or the diagram (a chunk or box click, "Start here") and from a link to a start line, but not
+  from the callout's own Next and ↑ buttons, since the reader is already following the callouts. Only the jumped-to chunk pulses,
   and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 

@@ -367,8 +367,9 @@
 
     // A diff's rows may be rendered only once the diff is near the window, so the file's diff is scrolled
     // to first; then the line's row is waited for, highlighted, and scrolled to the centre together with its callout. If
-    // the row never appears the view stays at the file's header. Returns whether the row ended centred.
-    async function jumpToLine(path, side, line) {
+    // the row never appears the view stays at the file's header. Returns whether the row ended centred. `pulse: false`
+    // lands without the pulse.
+    async function jumpToLine(path, side, line, { pulse = true } = {}) {
       const mine = ++latestJump;
       cancelPendingJump?.();
       clearLineTarget();
@@ -388,7 +389,7 @@
         return false;
       }
       row.classList.add(LINE_TARGET);
-      pulseTarget(row);
+      if (pulse) pulseTarget(row);
       return landed;
     }
 

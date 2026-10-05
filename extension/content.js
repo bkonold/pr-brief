@@ -210,26 +210,28 @@
   }
 
   // Runs the jump to `chunk`'s start line: its diff scrolls into view and the line is highlighted with its callout.
-  async function jumpToStart(session, chunk) {
+  async function jumpToStart(session, chunk, options) {
     if (current !== session || !live()) return;
     const { path, side, line } = chunk.start;
-    await page.jumpToLine(path, side, line);
+    await page.jumpToLine(path, side, line, options);
   }
 
   // The callouts of the review's start lines, one per chunk that has one: each is built when its row is placed, and
-  // its buttons select a chunk as a click on that chunk in the list would.
+  // its buttons select a chunk as a click on that chunk in the list would, without the pulse: the reader is already
+  // following the callouts, so nothing needs finding.
   async function calloutsFor(session) {
     const { chunks } = session.review;
     const anchors = await Promise.all(chunks.map((chunk) => (chunk.start ? page.lineAnchor(chunk.start.path, chunk.start.side, chunk.start.line) : null)));
     return chunks.flatMap((chunk, index) =>
-      anchors[index] ? [{ key: chunk.n, anchor: anchors[index], render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target)) }] : [],
+      anchors[index] ? [{ key: chunk.n, anchor: anchors[index], render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, null, { pulse: false })) }] : [],
     );
   }
 
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
   // jumps to its start line; a chunk with no start line lands on that file's header instead. `boxId` is the diagram
   // box the selection came from, which pulses once the jump has landed. Selecting the open chunk again jumps again.
-  async function selectChunk(session, chunk, boxId = null) {
+  // `jump` passes on to the line jump, e.g. `{ pulse: false }`.
+  async function selectChunk(session, chunk, boxId = null, jump = undefined) {
     const path = chunk.start?.path ?? chunk.files[0]?.path;
     await change(
       session,
@@ -245,7 +247,7 @@
     );
     if (current !== session || !live()) return;
     tree.revealGroup(chunk.n);
-    if (chunk.start) await jumpToStart(session, chunk);
+    if (chunk.start) await jumpToStart(session, chunk, jump);
     else if (path) await landOnFile(session, path);
     if (boxId && current === session && live() && session.activeBox?.id === boxId) diagram.pulse(boxId);
   }

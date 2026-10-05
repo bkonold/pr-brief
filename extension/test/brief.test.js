@@ -753,7 +753,7 @@ test("a chunk's start jump and the diagram highlight work in both orders", async
     const { handlers } = renders.at(-1);
     jumps.length = 0;
     await handlers.onJumpToStart(3);
-    assert.deepEqual(jumps, [["db/V1.sql", "R", 2]]);
+    assert.deepEqual(jumps, [["db/V1.sql", "R", 2, undefined]]);
     await handlers.onSelectChunk(2);
     assert.deepEqual(emphasized.at(-1), ["b"]);
     assert.equal(renders.at(-1).state.order, order);
@@ -766,7 +766,7 @@ test("clicking a chunk opens it and jumps to its start line, again on every clic
   for (const click of [1, 2]) {
     jumps.length = 0;
     await renders.at(-1).handlers.onSelectChunk(2);
-    assert.deepEqual(jumps, [["src/api.js", "R", 9]], `click ${click}`);
+    assert.deepEqual(jumps, [["src/api.js", "R", 9, undefined]], `click ${click}`);
     const { state } = renders.at(-1);
     assert.deepEqual([state.selectedN, [...state.expanded]], [2, [2]]);
   }
@@ -790,7 +790,7 @@ test("clicking a diagram box does what clicking its chunk does, and a box no chu
   assert.deepEqual([jumps, renders.at(-1).state.selectedN], [[], null]);
   diagramHandlers.at(-1).onNode("c");
   await settle();
-  assert.deepEqual(jumps, [["db/V1.sql", "R", 2]]);
+  assert.deepEqual(jumps, [["db/V1.sql", "R", 2, undefined]]);
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded], emphasized.at(-1)], [3, [3], ["c"]]);
 });
 
@@ -819,14 +819,14 @@ test("the callouts are shown in the review and removed in the host's own tree vi
   assert.equal(callouts.at(-1).length, 3);
 });
 
-test("a callout's next and previous buttons open that chunk and jump to its start line", async () => {
+test("a callout's next and previous buttons open that chunk and jump to its start line without the pulse", async () => {
   const { callouts, jumps, renders } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
   jumps.length = 0;
   const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
   assert.equal(chunk.n, 1);
   await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
-  assert.deepEqual(jumps, [["src/api.js", "R", 9]]);
+  assert.equal(JSON.stringify(jumps), JSON.stringify([["src/api.js", "R", 9, { pulse: false }]]));
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [2, [2]]);
 });
 
