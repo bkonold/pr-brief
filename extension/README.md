@@ -126,11 +126,11 @@ that expands it.
   dims the rest to 0.25 opacity. A chunk with no nodes dims the whole diagram slightly. "GitHub tree" mode or no
   selection restores it.
 - Clicking a box selects its chunk and jumps to its start line (see "Boxes and files").
-- The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Pinch (Chrome reports a trackpad
-  pinch as Ctrl + wheel), or Cmd/Ctrl + scroll, zooms around the pointer (25% to 400%). Pressing and dragging anywhere on
-  the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click. A
-  plain scroll or two-finger swipe over the diagram is not captured and scrolls the page as usual. The header has −, the
-  current zoom (click it for 100%), + and Fit. Panning stops when a diagram edge reaches the middle of the canvas. Each
+- The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Any scroll wheel or trackpad
+  scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
+  Ctrl + wheel); the page does not scroll while the pointer is over the canvas. Pressing and dragging anywhere on
+  the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
+  The header has −, the current zoom (click it for 100%), + and Fit. Panning stops when a diagram edge reaches the middle of the canvas. Each
   new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
   position are not saved.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.

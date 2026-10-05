@@ -75,8 +75,8 @@
     return event.deltaMode === 1 ? LINE_PIXELS : event.deltaMode === 2 ? PAGE_PIXELS : 1;
   }
 
-  // The scale multiplier for a ctrl/cmd wheel or pinch event: smooth for a trackpad's small deltas and bounded for
-  // a mouse wheel's notches.
+  // The scale multiplier for a wheel event: smooth for a trackpad's small deltas (a pinch arrives as ctrl + wheel)
+  // and bounded for a mouse wheel's notches.
   function wheelZoomFactor(event) {
     const delta = Math.max(-WHEEL_ZOOM_CAP, Math.min(WHEEL_ZOOM_CAP, event.deltaY * wheelUnit(event)));
     return Math.exp(-delta * WHEEL_ZOOM_RATE);
@@ -323,8 +323,8 @@
 
   // The pan-and-zoom canvas: `svg` is absolutely positioned in `viewport` and moved by a translate + scale
   // transform. The view is a { scale, x, y } in viewport pixels; `fitted` keeps it matched to the viewport width
-  // until the user zooms or pans. A pinch (ctrl/cmd + wheel) zooms around the pointer, a drag anywhere pans, and a
-  // press that stays under DRAG_THRESHOLD is a click on the box under it. A plain wheel is left to the page.
+  // until the user zooms or pans. Any wheel event, pinch included, zooms around the pointer and never scrolls the
+  // page, a drag anywhere pans, and a press that stays under DRAG_THRESHOLD is a click on the box under it.
   function createCanvas(viewport, svg, { onNode, onView }) {
     const content = contentSize(svg.getAttribute("viewBox"), svg.getAttribute("width"), svg.getAttribute("height"));
     svg.style.width = `${content.w}px`;
@@ -361,7 +361,6 @@
     }
 
     function onWheel(event) {
-      if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       const { x, y } = pointInViewport(event);
       zoomTo(view.scale * wheelZoomFactor(event), x, y);
@@ -560,7 +559,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { render, emphasize, setActive, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor };
+  ns.diagram = { render, emphasize, setActive, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;
