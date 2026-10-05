@@ -64,10 +64,20 @@ def variant_description(name: str) -> str:
     return tomllib.loads(path.read_text()).get("description", "") if path else ""
 
 
-def variants_json(pr_dir: Path) -> list[dict[str, str]]:
-    names: list[str] = tomllib.loads((HOME / "compare.toml").read_text())["variants"]
+def variants_json(pr_dir: Path, extra: str | None = None) -> list[dict[str, str]]:
+    """The variants of compare.toml (when it exists) that have a run with a review.json, in its order, then
+    `extra` when it has one too and compare.toml does not list it."""
+    path: Path = HOME / "compare.toml"
+    names: list[str] = tomllib.loads(path.read_text())["variants"] if path.exists() else []
+    if extra and extra not in names:
+        names = [*names, extra]
     return [{"variant": name, "label": VARIANT_LABELS.get(name, name), "description": variant_description(name)}
             for name in names if (pr_dir / name / "review.json").exists()]
+
+
+def write_variants_json(pr_dir: Path, extra: str | None = None) -> None:
+    """Writes runs/<key>/variants.json, which is how the browser extension finds the variants a PR has."""
+    (pr_dir / "variants.json").write_text(json.dumps(variants_json(pr_dir, extra), indent=2) + "\n")
 
 
 def column(run_dir: Path) -> str:
@@ -140,7 +150,7 @@ def main() -> int:
         if missing:
             print(f"{run_label(pr)}: no run for {', '.join(missing)}", file=sys.stderr)
         run_dirs = [by_name[n] for n in names if n in by_name]
-    (pr_dir / "variants.json").write_text(json.dumps(variants_json(pr_dir), indent=2) + "\n")
+    write_variants_json(pr_dir)
     title: str = f"{run_label(pr)}: {pr_title(pr_dir)}"
     (pr_dir / "index.html").write_text(page(title, f"<h1>{html.escape(title)}</h1><div class=\"cols\" style=\"grid-template-columns: repeat({len(run_dirs)}, minmax(0, 1fr))\">{''.join(column(d) for d in run_dirs)}</div>"))
 

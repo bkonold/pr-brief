@@ -26,6 +26,7 @@ KEYS: frozenset[str] = frozenset({
     "sdk_dir", "sdk_specifier", "workspace_alias", "workspace_root",
     "test_dirs", "callers_exclude_globs", "routes_dir",
     "host", "forgejo_url", "forgejo_token_file",
+    "default_variant", "serve_repos",
 })
 
 

@@ -78,7 +78,7 @@ Forgejo, so the two hosts' numbers cannot collide: `prompt.txt`, `answer.yaml` (
 data the run used), `run.json` (including `diagram_edges`, the labelled and total arrows of the diagram),
 `body.md`, `body.html`, `diagram.svg`, `review.json` (chunked variants only; the extension reads it),
 `context.md` and `contract.json` (when the variant has a context pack with a contract section) and `error.txt` on failure or when the renderer
-dropped something. Open any `.html` straight from disk. A rerun of the same PR and variant overwrites its
+dropped something. Open any `.html` straight from disk. `runs/<key>/status.json` (beside the variant folders) says how far the latest run has got (see Serve the runs). A rerun of the same PR and variant overwrites its
 folder. `runs/` is git-ignored: it holds the diffs and prompts of whatever repository you ran against.
 
 ## Hosts
@@ -93,8 +93,30 @@ start-line links point at the host the run came from (`run.json`'s `host`; a run
 ## Serve the runs and load the extension
 
 ```bash
-python3 -m http.server 8765 --bind 127.0.0.1     # from the repository root
+python3 serve.py        # from the repository root; an overlay's own wrapper does the same (`pd serve`)
 ```
+
+`serve.py` binds to 127.0.0.1:8765 only, uses the standard library, and does two things:
+
+- it serves `$PR_DESCRIBE_HOME` (default: the tool's folder) as static files, so the extension can read the runs;
+- it lets the extension start a brief on demand, through three endpoints under `/api/`.
+
+| Endpoint | Input | Output |
+| --- | --- | --- |
+| `POST /api/run` | `{host, owner, repo, n}` | `{key, state}`; starts `run.py` in the background with `default_variant` |
+| `GET /api/status?key=` | `key` (`7` or `fj-7`); optionally `host`, `owner`, `repo` | `{state, stage, elapsed, error?, allowed?}` from `runs/<key>/status.json` |
+| `POST /api/cancel` | `{key}` | `{state}`; kills the run's process group |
+
+`state` is `idle`, `running`, `done`, `failed` or `canceled`; `stage` is `fetch`, `context`, `write` or `render`.
+`run.py` writes `status.json` at each stage and, on failure, the last line of the error. One run per key (a second
+request for a running key returns it), at most two runs at once (a third gets 429), and a run left `running` by a
+server that died is marked `failed` ("server restarted") at startup. `local.toml` needs `default_variant` and
+`serve_repos` (the repositories a run may be started for); a request for any other repository is refused.
+
+Every `/api/` request must carry the server token in an `X-PR-Describe-Token` header and an `Origin` starting with
+`chrome-extension://`, or it gets 403. The token is created on first start in `~/.config/pr-describe/token`
+(mode 0600) and is never logged; paste it into the extension's options page ("Server token"). Static files need
+neither.
 
 Then open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick the `extension/`
 folder. Open a PR's Files changed page (`https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
@@ -130,7 +152,7 @@ source run's model, timestamps and head sha plus its own name and file sha256, a
 fails if the source run is missing.
 
 `compare.toml` lists the variants that make up the default compare pages. `compare.py` also writes
-`runs/<pr>/variants.json` (`[{variant, label, description}]`) for the extension's variant dropdown, using
+`runs/<pr>/variants.json` (and so does `run.py` after a successful run, adding that run's variant when `compare.toml` does not list it, so the extension finds a PR run from the server) (`[{variant, label, description}]`) for the extension's variant dropdown, using
 the labels in `VARIANT_LABELS`.
 
 Variants are frozen once they have been compared. To change one, add a new file; `run.json` records the

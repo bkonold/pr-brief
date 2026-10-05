@@ -60,3 +60,13 @@ callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
 # A React Router flat-routes folder. Files under it are labelled by their route URL
 # (`_layout.items.$id` becomes /items/:id) in the grouped file list. Leave unset for other layouts.
 routes_dir = "web/app/routes/"
+
+# serve.py (`serve.py`, or `pd serve` in an overlay) starts briefs on demand for the browser extension.
+# default_variant is the variant a started run uses. serve_repos is the only list of repositories a run may be
+# started for, per host, as "owner/name"; a request for any other repository is refused. Both are required to
+# start runs; without serve_repos the server still serves the runs but refuses every request to start one.
+default_variant = "one_path_risk_chunked_v15_nocontext"
+
+[serve_repos]
+github = ["example-org/example-repo"]
+# forgejo = ["me/example-repo"]

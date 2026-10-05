@@ -26,9 +26,11 @@ from typing import Any
 
 from jinja2 import Environment
 
+from compare import write_variants_json
 from config import HOME, ROOT, load_local, variant_file
 from context_pack import Pack, build, ensure_commits
 from hosts import get_host, host_names, run_key
+from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
 COLLAPSIBLE_FILE_LIST_THRESHOLD = 6
@@ -86,7 +88,41 @@ def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def render_only(key: str, name: str, variant_path: Path, source_name: str) -> int:
+class Progress:
+    """Writes runs/<key>/status.json as the run moves through its stages (see run_status.py). It does
+    nothing until `begin` names the run, so a --prompt-only run leaves no status behind."""
+
+    def __init__(self) -> None:
+        self.key: str | None = None
+        self.error: str | None = None
+
+    def begin(self, key: str) -> None:
+        self.key = key
+        existing: dict[str, Any] | None = read_status(HOME, key)
+        if existing and existing.get("state") == RUNNING:
+            self.stage("fetch")
+        else:
+            begin_status(HOME, key)
+
+    def _canceled(self) -> bool:
+        existing: dict[str, Any] | None = read_status(HOME, self.key) if self.key else None
+        return bool(existing and existing.get("state") == CANCELED)
+
+    def stage(self, name: str) -> None:
+        if self.key and not self._canceled():
+            write_status(HOME, self.key, state=RUNNING, stage=name)
+
+    def finish(self, code: int, message: str | None = None) -> None:
+        if not self.key or self._canceled():
+            return
+        if code == 0:
+            write_status(HOME, self.key, state=DONE, finished=datetime.now().timestamp())
+            return
+        error: str = last_line(message or self.error or "") or f"run exited with status {code}"
+        write_status(HOME, self.key, state=FAILED, finished=datetime.now().timestamp(), error=error)
+
+
+def render_only(key: str, name: str, variant_path: Path, source_name: str, progress: Progress) -> int:
     """Copy the source variant's run into this variant's folder and render it with this variant's settings."""
     source_dir: Path = HOME / "runs" / key / source_name
     copied: tuple[str, ...] = ("prompt.txt", "answer.yaml", "pr.json", "run.json")
@@ -108,10 +144,14 @@ def render_only(key: str, name: str, variant_path: Path, source_name: str) -> in
         "variant_sha256": hashlib.sha256(variant_path.read_bytes()).hexdigest(),
         "render_from": source_name,
     }, indent=2) + "\n")
-    return subprocess.run([sys.executable, str(ROOT / "render.py"), str(run_dir)]).returncode
+    progress.stage("render")
+    code: int = subprocess.run([sys.executable, str(ROOT / "render.py"), str(run_dir)]).returncode
+    if code == 0:
+        write_variants_json(run_dir.parent, name)
+    return code
 
 
-def main() -> int:
+def execute(progress: Progress) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("pr")
     p.add_argument("--variant", required=True)
@@ -126,6 +166,8 @@ def main() -> int:
     if a.repo is None and a.host == local.get("host", "github"):
         a.repo = local.get("repo")
     key: str = run_key(a.host, a.pr)
+    if not a.prompt_only:
+        progress.begin(key)
 
     variant_path: Path | None = variant_file(a.variant)
     if variant_path is None:
@@ -135,7 +177,7 @@ def main() -> int:
     if "render_from" in variant:
         if a.prompt_only:
             raise SystemExit(f"{a.variant} renders from {variant['render_from']} and has no prompt of its own")
-        return render_only(key, a.variant, variant_path, variant["render_from"])
+        return render_only(key, a.variant, variant_path, variant["render_from"], progress)
     if not a.repo:
         p.error(f"--repo owner/name is required: local.toml sets no `repo` for the {a.host} host")
     owner, _, name = a.repo.partition("/")
@@ -147,6 +189,7 @@ def main() -> int:
     diff: str = host.diff(owner, name, a.pr)
     pack: Pack | None = None
     if variant.get("context"):
+        progress.stage("context")
         ensure_commits([pr["baseRefOid"], pr["headRefOid"]], a.host)
         pack = build(pr, diff, variant["context"], options=variant.get("context_options"))
     context_md: str = pack.markdown() if pack else ""
@@ -170,6 +213,7 @@ def main() -> int:
             (run_dir / "contract.json").write_text(json.dumps(pack.contract, indent=2) + "\n")
     (run_dir / "pr.json").write_text(json.dumps(pr, indent=2) + "\n")
 
+    progress.stage("write")
     started: datetime = now()
     out = subprocess.run(
         ["claude", "-p", "--system-prompt", system, "--tools", "", "--model", a.model],
@@ -179,6 +223,7 @@ def main() -> int:
     (run_dir / "answer.yaml").write_text(out.stdout)
     if out.returncode != 0:
         (run_dir / "error.txt").write_text(f"claude exited with status {out.returncode}\n{out.stderr}")
+        progress.error = f"claude exited with status {out.returncode}: {last_line(out.stderr)}"
 
     (run_dir / "run.json").write_text(json.dumps({
         "variant": a.variant,
@@ -199,8 +244,29 @@ def main() -> int:
 
     if out.returncode != 0:
         sys.stderr.write(out.stderr)
+    progress.stage("render")
     rendered: subprocess.CompletedProcess[bytes] = subprocess.run([sys.executable, str(ROOT / "render.py"), str(run_dir)])
-    return out.returncode or rendered.returncode
+    if rendered.returncode != 0 and progress.error is None:
+        error_file: Path = run_dir / "error.txt"
+        progress.error = last_line(error_file.read_text()) if error_file.exists() else f"render exited with status {rendered.returncode}"
+    code: int = out.returncode or rendered.returncode
+    if code == 0:
+        write_variants_json(run_dir.parent, a.variant)
+    return code
+
+
+def main() -> int:
+    progress = Progress()
+    try:
+        code: int = execute(progress)
+    except SystemExit as stop:
+        progress.finish(1 if isinstance(stop.code, str) else int(stop.code or 0), stop.code if isinstance(stop.code, str) else None)
+        raise
+    except Exception as error:
+        progress.finish(1, f"{type(error).__name__}: {error}")
+        raise
+    progress.finish(code)
+    return code
 
 
 if __name__ == "__main__":
