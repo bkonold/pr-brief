@@ -26,12 +26,13 @@ class VariantV22(unittest.TestCase):
         for key in ("context", "context_options", "extra_instructions", "schema_additions", "example_additions"):
             self.assertEqual(self.v22[key], self.v21[key], key)
 
-    def test_only_the_layout_flag_differs_in_the_render_settings(self) -> None:
-        self.assertEqual(self.v22["render"], {**self.v21["render"], "contract_layout": "by_chunk"})
+    def test_only_the_layout_and_review_order_flags_differ_in_the_render_settings(self) -> None:
+        self.assertEqual(self.v22["render"], {**self.v21["render"], "contract_layout": "by_chunk", "review_order": False})
 
-    def test_no_older_variant_sets_the_flag(self) -> None:
+    def test_no_older_variant_sets_the_flags(self) -> None:
         for name in NAMES[:-1]:
-            self.assertNotIn("contract_layout", load(name).get("render", {}), name)
+            for flag in ("contract_layout", "review_order"):
+                self.assertNotIn(flag, load(name).get("render", {}), f"{name} {flag}")
 
     def test_the_comparison_labels_it(self) -> None:
         self.assertEqual(compare.VARIANT_LABELS["one_path_risk_chunked_v22"], "22: contract and data by chunk")

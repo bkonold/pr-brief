@@ -1209,6 +1209,11 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         raise AnswerError(f"unknown render contract_layout {layout_mode!r}, expected 'by_chunk'")
     if layout_mode and not (cfg.get("contract_block") and cfg.get("files") == "chunks"):
         raise AnswerError("render contract_layout 'by_chunk' needs contract_block and files = 'chunks'")
+    review_order: bool = cfg.get("review_order", True)
+    if not isinstance(review_order, bool):
+        raise AnswerError(f"render review_order must be true or false, got {review_order!r}")
+    if not review_order and cfg.get("files") != "chunks":
+        raise AnswerError("render review_order = false needs files = 'chunks'")
     lineset: layout.LineSet | None = build_lineset(run, pr, contract, diff_text) if layout_mode else None
     if lineset is not None:
         ordered["contract"] = ordered["data"] = ""
@@ -1257,7 +1262,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
     if diagram:
         ordered["changes_diagram"] = diagram
     if cfg.get("files") == "chunks":
-        ordered["pr_files"] = True
+        if review_order:
+            ordered["pr_files"] = True
     elif data.get("pr_files"):
         ordered["pr_files"] = data["pr_files"]
 

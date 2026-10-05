@@ -133,7 +133,7 @@ One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own)
 `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
-`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `file_start`, `chunk_box_fallback`, `one_box_per_chunk`, `contract_block`, `contract_layout` and `review_labels`. `review_floor.toml` sets the minimum review level per
+`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `file_start`, `chunk_box_fallback`, `one_box_per_chunk`, `contract_block`, `contract_layout`, `review_order` and `review_labels`. `review_floor.toml` sets the minimum review level per
 path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
 breaking change (a removal or a newly required field) the run's `contract.json` lists (see `review_floor.example.toml`).
 
@@ -152,7 +152,7 @@ breaking change (a removal or a newly required field) the run's `contract.json` 
 | `one_path_risk_chunked_v19` | v18 with one diagram box per chunk: each chunk's `nodes` is exactly one box, each changed box is exactly one chunk, and one file's changes that serve two steps are merged into one box |
 | `one_path_risk_chunked_v20` | v19 with a start that is a line when one clearly anchors the chunk, else a file and why to open it first (`line_text` is optional; the renderer's `file_start` option keeps a file-only start) |
 | `one_path_risk_chunked_v21` | v20 with effort levels (`verify`, `read`, `skim`) and check labels on each chunk: the model gives each chunk one level and up to three of `logic`, `contract`, `data`, `access`; the renderer adds `breaking`, `destructive` and `generated` (the `review_labels` render option) |
-| `one_path_risk_chunked_v22` | v21's prompt with the "Contract and data" block replaced by a Contract section and a Data section grouped by chunk (the `contract_layout = "by_chunk"` render option); a chunk is `breaking` or `destructive` by the lines it owns |
+| `one_path_risk_chunked_v22` | v21's prompt with the "Contract and data" block replaced by a Contract section and a Data section grouped by chunk (the `contract_layout = "by_chunk"` render option) and no Review order in the brief (`review_order = false`); a chunk is `breaking` or `destructive` by the lines it owns |
 
 A variant with `render_from = "<variant name>"` is render-only. `run.py` makes no model call for it: it
 copies `prompt.txt`, `answer.yaml` and `pr.json` from `runs/<pr>/<that variant>/`, writes `run.json` with the
@@ -252,11 +252,16 @@ sha256 of the variant file that produced each run.
   `verify`. `review.json` gains, on each chunk, `contract` and `data` (`[{impact, text, path, side, line}]`; `impact` is
   null for an `other statement` line and `side` and `line` are null when the diff does not settle the line) and, at the
   top level, `unchunked: {contract, data}`. Both layouts' older variants render exactly as before; the schema stays 2.
+- `review_order = false` (v22; needs `files = "chunks"`) leaves the Review order table out of `body.md` and `body.html`,
+  so the brief holds the PR type, the description, Contract, Data and the diagram. The chunks, their order, steps, starts
+  and whys are all in `review.json`, which the extension's files view reads, and `review.json` is the same either way.
+  The default, `true`, writes the table.
 - `chunk_order = "flow"` keeps the chunks in the model's order instead of sorting them by review level, so a
   floor raises a chunk's level without moving it; `numbering = "flow"` numbers the diagram's boxes with the flow
   step of the chunk that owns them. A chunk's optional `step` (one or two words, such as `UI`, `API`, `Database`)
   is kept in `review.json` and shown under its number; a longer `step` is dropped with a note. The review table
-  rows carry `data-flow` and `data-risk` so the extension can switch between the two orders.
+  rows (when `review_order` writes the table) carry `data-flow`, the chunk number, and `data-risk`, which the extension
+  uses only for a run whose `review.json` it does not have.
 - Inside every chunk, whatever the variant, the files are written in this order: the start file (when the chunk has a
   resolved start), then the other files in the model's order, test files last. A file is a test when it matches
   `test_globs` in `local.toml` (default: `**/test/**`, `**/tests/**`, `**/*Test.*`, `**/*Tests.*`, `**/*.test.*`,

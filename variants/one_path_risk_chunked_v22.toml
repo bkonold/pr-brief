@@ -93,3 +93,4 @@ contract_block = true
 file_start = true
 review_labels = true
 contract_layout = "by_chunk"
+review_order = false
