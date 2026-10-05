@@ -46,12 +46,16 @@ unless the run server says it will not run that repository.
 
 ## Variant switcher
 
-`background.js` also fetches `runs/<pr>/variants.json` (`[{variant, label, description}]`, written by `compare.py`). When
-the list has more than one entry, the toggle bar shows a `<select>` of the labels, each option titled with the variant's
-description. Changing it stores the new default in `chrome.storage.sync`, reloads `review.json` and the diagram in place
+`background.js` also fetches `runs/<pr>/variants.json` (`[{variant, label, description}]`, written by `compare.py`). `background.js` also reads the
+server's `GET /api/config` (`{default_variant, variants}`). When more than one variant is both active (listed in
+`variants`) and present for the PR, the toggle bar shows a `<select>` of the labels, each option titled with the variant's
+description. Changing it reloads `review.json` and the diagram in place
 and keeps the selected chunk when the new variant has a chunk of the same name; otherwise the selection and the focus are
-cleared. If the stored default has no run for the PR, the first entry of `variants.json` is used; without the file, only the
-stored default is tried. The saved per-PR selection is restored only for the variant it was made in.
+cleared. The run shown is, in order: the variant picked on the page during this visit (kept in memory, never in storage); the
+server's `default_variant` if the PR has it; the newest active variant the PR has; the newest variant the PR has at
+all. If the server's config can't be read (server down, token missing), the newest variant the PR has is shown and
+the switcher is hidden. Without `variants.json`, only the pick and the server's default are tried. "Newest" compares
+variant names with digit runs as numbers (`v9` < `v10`). The saved per-PR selection is restored only for the variant it was made in.
 
 ## Boxes and files
 
@@ -156,7 +160,7 @@ the page's data, and its header links to the files view. Without a run it is the
 - A chunk's start link opens the files view with that line's anchor in the fragment. When the files page loads with a
   fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's `↳` button; any other
   fragment is left to the page.
-- `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the stored variant selects,
+- `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,
   the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the
   "Generate brief" bar, except where the server says it will not run the PR's repository: then nothing is mounted.
 - The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
@@ -171,8 +175,7 @@ the page's data, and its header links to the files view. Without a run it is the
 
 The list appears only when `runs/<key>/<variant>/review.json` exists for the PR (404, a server that
 is down or a different repo leave the page untouched). `<key>` is the PR number on GitHub and `fj-<number>` on
-Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant defaults to
-`one_path_risk_chunked_v11b`; change it and the server URL on the extension's options page. The
+Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant comes from the server (`default_variant` in `local.toml`, see Variant switcher); the extension's options page holds the server URL and token. The
 manifest allows `http://127.0.0.1:8765` for the runs and `http://localhost:3300` for Forgejo, so another origin
 also needs a `host_permissions` entry (and a `matches` entry for a Forgejo elsewhere). Loading a version that adds a host
 makes Chrome ask for the new permission when the extension is reloaded.
@@ -195,7 +198,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `tree.js`, `tree.css`, `focus.css` | The grouped list and the class `focus.js` toggles |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
-| `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
+| `choose_variant.js` | Which variant to load and which the switcher lists (an ES module, used by `background.js`) |
 | `boxes.js` | Box badges for file rows and a box's target file |
 | `variants.js` | Which chunk stays selected after a variant switch |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |

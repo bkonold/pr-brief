@@ -99,13 +99,14 @@ python3 serve.py        # from the repository root; an overlay's own wrapper doe
 `serve.py` binds to 127.0.0.1:8765 only, uses the standard library, and does two things:
 
 - it serves `$PR_DESCRIBE_HOME` (default: the tool's folder) as static files, so the extension can read the runs;
-- it lets the extension start a brief on demand, through three endpoints under `/api/`.
+- it lets the extension start a brief on demand and read which variant to show, through the endpoints under `/api/`.
 
 | Endpoint | Input | Output |
 | --- | --- | --- |
 | `POST /api/run` | `{host, owner, repo, n}` | `{key, state}`; starts `run.py` in the background with `default_variant` |
 | `GET /api/status?key=` | `key` (`7` or `fj-7`); optionally `host`, `owner`, `repo` | `{state, stage, elapsed, error?, allowed?}` from `runs/<key>/status.json` |
 | `POST /api/cancel` | `{key}` | `{state}`; kills the run's process group |
+| `GET /api/config` | none | `{default_variant, variants}`: the variant a brief shows, and the active variants, which are `compare.toml`'s `variants` read at startup (`[default_variant]` without that file) |
 
 `state` is `idle`, `running`, `done`, `failed` or `canceled`; `stage` is `fetch`, `context`, `write` or `render`.
 `run.py` writes `status.json` at each stage and, on failure, the last line of the error. One run per key (a second

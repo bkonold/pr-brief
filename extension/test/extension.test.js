@@ -155,13 +155,90 @@ test("clampWidth keeps the panel between 220px and 65% of the viewport", () => {
   assert.equal(clampWidth(undefined, 1680), 280);
 });
 
-test("chooseVariant keeps the stored default when the PR has a run for it, else the first listed", async () => {
+const OLD_AND_NEW = [{ variant: "v10" }, { variant: "v11b" }, { variant: "v15" }, { variant: "v16" }];
+
+test("chooseVariant takes this visit's pick first", async () => {
   const { chooseVariant } = await import("../choose_variant.js");
-  const listed = [{ variant: "v10" }, { variant: "v11a" }, { variant: "v11d" }];
-  assert.equal(chooseVariant("v11a", listed), "v11a");
-  assert.equal(chooseVariant("v9", listed), "v10");
-  assert.equal(chooseVariant("v9", []), "v9");
-  assert.equal(chooseVariant("v9", undefined), "v9");
+  const config = { default_variant: "v16", variants: ["v16"] };
+  assert.equal(chooseVariant("v10", config, OLD_AND_NEW), "v10");
+});
+
+test("chooseVariant ignores a pick the PR has no run for and takes the server's default", async () => {
+  const { chooseVariant } = await import("../choose_variant.js");
+  const config = { default_variant: "v16", variants: ["v16"] };
+  assert.equal(chooseVariant("v9", config, OLD_AND_NEW), "v16");
+  assert.equal(chooseVariant(undefined, config, OLD_AND_NEW), "v16");
+});
+
+test("chooseVariant takes the newest active variant when the PR lacks the server's default", async () => {
+  const { chooseVariant } = await import("../choose_variant.js");
+  const config = { default_variant: "v16", variants: ["v11b", "v15", "v16"] };
+  assert.equal(chooseVariant(undefined, config, [{ variant: "v10" }, { variant: "v11b" }, { variant: "v15" }]), "v15");
+  assert.equal(chooseVariant(undefined, config, [{ variant: "v15" }, { variant: "v11b" }]), "v15");
+});
+
+test("chooseVariant takes the newest variant the PR has when none of them is active", async () => {
+  const { chooseVariant } = await import("../choose_variant.js");
+  const config = { default_variant: "v16", variants: ["v16"] };
+  assert.equal(chooseVariant(undefined, config, [{ variant: "v10" }, { variant: "v9" }, { variant: "v11b" }]), "v11b");
+});
+
+test("chooseVariant takes the newest variant the PR has when the server's config is unavailable", async () => {
+  const { chooseVariant } = await import("../choose_variant.js");
+  assert.equal(chooseVariant(undefined, null, OLD_AND_NEW), "v16");
+  assert.equal(chooseVariant(undefined, null, [{ variant: "v9" }, { variant: "v10" }]), "v10");
+  assert.equal(chooseVariant("v10", null, OLD_AND_NEW), "v10");
+});
+
+test("chooseVariant orders versions by number and treats a longer name as newer", async () => {
+  const { newest } = await import("../choose_variant.js");
+  assert.equal(newest(["x_v9", "x_v10", "x_v11b"]), "x_v11b");
+  assert.equal(newest(["x_v15", "x_v15_nocontext", "x_v14"]), "x_v15_nocontext");
+  assert.equal(newest([]), undefined);
+});
+
+test("chooseVariant without a variants list falls back to the pick, then the server's default", async () => {
+  const { chooseVariant } = await import("../choose_variant.js");
+  const config = { default_variant: "v16", variants: ["v16"] };
+  assert.equal(chooseVariant("v10", config, []), "v10");
+  assert.equal(chooseVariant(undefined, config, undefined), "v16");
+  assert.equal(chooseVariant(undefined, config, null), "v16");
+  assert.equal(chooseVariant(undefined, null, []), undefined);
+});
+
+test("the switcher lists only variants that are active and present, in the PR's order", async () => {
+  const { switcherVariants } = await import("../choose_variant.js");
+  const config = { default_variant: "v16", variants: ["v16", "v15", "v14"] };
+  assert.deepEqual(switcherVariants(OLD_AND_NEW, config).map((entry) => entry.variant), ["v15", "v16"]);
+});
+
+test("the switcher is hidden when one or no active variant is present, or the config is unavailable", async () => {
+  const { switcherVariants } = await import("../choose_variant.js");
+  const { variantSwitcherShown } = require("../tree.js");
+  const config = { default_variant: "v16", variants: ["v16"] };
+  assert.equal(variantSwitcherShown({ variants: switcherVariants(OLD_AND_NEW, config) }), false);
+  assert.equal(variantSwitcherShown({ variants: switcherVariants([{ variant: "v10" }], config) }), false);
+  assert.equal(variantSwitcherShown({ variants: switcherVariants(OLD_AND_NEW, null) }), false);
+  assert.equal(variantSwitcherShown({ variants: switcherVariants(OLD_AND_NEW, { ...config, variants: ["v15", "v16"] }) }), true);
+});
+
+test("a variant picked on the page is sent with later loads of that PR and is not stored", async () => {
+  const sent = [];
+  const stored = [];
+  globalThis.chrome = {
+    runtime: { id: "abc", sendMessage: async (message) => (sent.push(message), null) },
+    storage: { sync: { set: async (value) => stored.push(value) } },
+  };
+  const source = require("../source.js");
+  source.pickVariant("fj-7", "v10");
+  await source.loadReview("acme", "widgets", 7, undefined, "fj-7");
+  await source.loadBrief("acme", "widgets", 7, "fj-7");
+  await source.loadReview("acme", "widgets", 8, undefined, "8");
+  await source.loadReview("acme", "widgets", 7, "v15", "fj-7");
+  assert.deepEqual(sent.map((message) => message.variant), ["v10", "v10", undefined, "v15"]);
+  assert.deepEqual(stored, []);
+  assert.equal(source.saveVariant, undefined);
+  delete globalThis.chrome;
 });
 
 test("keepSelection follows the selected chunk by name into the new variant", () => {

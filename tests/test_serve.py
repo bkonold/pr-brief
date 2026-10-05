@@ -269,6 +269,50 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(self.runner.recover(), [])
 
 
+class ConfigTest(unittest.TestCase):
+    CONFIG = {"default_variant": "v2", "variants": ["v2", "v3"]}
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name)
+        runner = serve.Runner(self.home, {}, lambda *_: [], max_running=1)
+        self.server = serve.make_server(self.home, runner, TOKEN, 0, self.CONFIG)
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+        self.addCleanup(self.stop)
+        self.client = Client(self.server.server_address[1])
+
+    def stop(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+    def test_config_reports_the_default_and_active_variants(self) -> None:
+        self.assertEqual(self.client.call("GET", "/api/config"), (200, self.CONFIG))
+        self.assertEqual(self.client.call("GET", "/api/config", origin=None), (200, self.CONFIG))
+
+    def test_config_needs_the_token_and_an_extension_origin(self) -> None:
+        for token, origin in [(None, ORIGIN), ("wrong", ORIGIN), (TOKEN, "https://github.com")]:
+            with self.subTest(token=token, origin=origin):
+                self.assertEqual(self.client.call("GET", "/api/config", token=token, origin=origin)[0], 403)
+
+    def test_config_is_read_only(self) -> None:
+        self.assertEqual(self.client.call("POST", "/api/config", {})[0], 405)
+
+    def test_active_variants_come_from_compare_toml(self) -> None:
+        (self.home / "compare.toml").write_text('variants = ["v3", "v1"]\n')
+        self.assertEqual(serve.load_active_variants(self.home, "v3"), ["v3", "v1"])
+
+    def test_active_variants_fall_back_to_the_default_without_compare_toml(self) -> None:
+        self.assertEqual(serve.load_active_variants(self.home, "v3"), ["v3"])
+        (self.home / "compare.toml").write_text("# no variants\n")
+        self.assertEqual(serve.load_active_variants(self.home, "v3"), ["v3"])
+
+    def test_a_malformed_variants_list_is_refused(self) -> None:
+        (self.home / "compare.toml").write_text('variants = "v3"\n')
+        with self.assertRaises(SystemExit):
+            serve.load_active_variants(self.home, "v3")
+
+
 class ProgressTest(unittest.TestCase):
     """run.py's Progress, which writes the status the server reads."""
 

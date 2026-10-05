@@ -336,7 +336,11 @@
     return element;
   }
 
-  // Offered only when the PR has runs for more than one variant.
+  // The switcher is offered only when the run came with more than one variant to choose from.
+  function variantSwitcherShown(review) {
+    return (review.variants?.length ?? 0) > 1;
+  }
+
   function variantSelect(review, handlers) {
     const select = make("select", "prf-variant");
     select.setAttribute("aria-label", "Review variant");
@@ -356,7 +360,7 @@
 
   function bar(review, state, handlers) {
     const element = make("div", "prf-bar");
-    if (review.variants?.length > 1) element.append(variantSelect(review, handlers));
+    if (variantSwitcherShown(review)) element.append(variantSelect(review, handlers));
     element.append(modeToggle(state, handlers));
     if (state.mode === "review" && hasSteps(review.chunks)) element.append(orderSwitch(state, handlers));
     if (state.mode === "review") {
@@ -526,7 +530,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, flashBadges, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, hasSteps, defaultOrder, groupByFolder, staleMessage, EXTRA_KEY };
+  ns.tree = { variantSwitcherShown, render, renderServerNote, renderGenerateLine, flashBadges, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, hasSteps, defaultOrder, groupByFolder, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

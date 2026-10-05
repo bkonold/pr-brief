@@ -348,7 +348,7 @@
     if (current !== session || !live() || variant === session.review.variant) return;
     session.switching = (session.switching ?? 0) + 1;
     const mine = session.switching;
-    await source.saveVariant(variant);
+    source.pickVariant(page.runKey(session.pr), variant);
     const review = await source.loadReview(session.pr.owner, session.pr.repo, session.pr.pr, variant, page.runKey(session.pr));
     if (current !== session || !live() || mine !== session.switching) return;
     if (review && !review.error) {

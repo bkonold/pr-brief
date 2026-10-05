@@ -9,6 +9,7 @@ extension finds runs/<key>/<variant>/..., and adds an API under /api/ that start
     POST /api/run     {host, owner, repo, n}  ->  {key, state}   start a run (or report the one in progress)
     GET  /api/status  ?key=fj-7[&host=&owner=&repo=]  ->  {state, stage, elapsed, error?, allowed?}
     POST /api/cancel  {key}                   ->  {state}        kill the run's process group
+    GET  /api/config                          ->  {default_variant, variants}   the variant a brief shows, and the active ones
 
 `state` is idle, running, done, failed or canceled; `status` reads runs/<key>/status.json, which run.py
 writes at each stage (see run_status.py). `allowed` is only present when host, owner and repo are given.
@@ -17,7 +18,9 @@ with chrome-extension://, or it gets 403. The token is created on first start in
 (mode 0600) and never logged. Static files need neither.
 
 local.toml sets `default_variant` (the variant a run uses) and `serve_repos`, the repositories a run may be
-started for, as a table of host to owner/name list; see local.example.toml. Standard library only.
+started for, as a table of host to owner/name list; see local.example.toml. `variants` in /api/config is the active
+list: compare.toml's `variants`, read at startup, or [default_variant] when compare.toml is missing or has none.
+Standard library only.
 """
 import argparse
 import hmac
@@ -30,6 +33,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -93,6 +97,19 @@ def parse_serve_repos(raw: Any) -> dict[str, frozenset[str]]:
             raise SystemExit(f"local.toml: serve_repos.{host} must be a list of owner/name strings")
         allowed[host] = frozenset(r.lower() for r in repos)
     return allowed
+
+
+def load_active_variants(home: Path, default_variant: str) -> list[str]:
+    """The active variants: `variants` of `home`/compare.toml, or [default_variant] without that file or key."""
+    path: Path = home / "compare.toml"
+    if not path.exists():
+        return [default_variant]
+    listed: Any = tomllib.loads(path.read_text()).get("variants")
+    if listed is None:
+        return [default_variant]
+    if not isinstance(listed, list) or not all(isinstance(name, str) for name in listed):
+        raise SystemExit("compare.toml: variants must be a list of variant names")
+    return list(listed)
 
 
 def default_argv_for(variant: str) -> ArgvFor:
@@ -245,6 +262,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     runner: Runner
     token: bytes
+    config: dict[str, Any]
 
     def log_message(self, format: str, *args: Any) -> None:
         if not self.path.startswith("/api/status"):
@@ -288,6 +306,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, self.runner.start(self._body()))
             elif (method, url.path) == ("POST", "/api/cancel"):
                 self._send_json(HTTPStatus.OK, self.runner.cancel(self._body()))
+            elif (method, url.path) == ("GET", "/api/config"):
+                self._send_json(HTTPStatus.OK, self.config)
             elif (method, url.path) == ("GET", "/api/status"):
                 query: dict[str, list[str]] = parse_qs(url.query)
                 key: str = query.get("key", [""])[0]
@@ -296,7 +316,7 @@ class Handler(SimpleHTTPRequestHandler):
                     repo = tuple(query.get(name, [None])[0] for name in ("host", "owner", "repo"))  # type: ignore[assignment]
                 self._send_json(HTTPStatus.OK, self.runner.status(key, repo))
             else:
-                known: bool = url.path in ("/api/run", "/api/cancel", "/api/status")
+                known: bool = url.path in ("/api/run", "/api/cancel", "/api/status", "/api/config")
                 self._send_json(HTTPStatus.METHOD_NOT_ALLOWED if known else HTTPStatus.NOT_FOUND, {"error": "not_found", "message": "no such endpoint"})
         except ApiError as error:
             self._send_json(error.status, {"error": error.code, "message": error.message})
@@ -320,8 +340,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed", "message": "POST is only for /api/"})
 
 
-def make_server(home: Path, runner: Runner, token: str, port: int = PORT) -> ThreadingHTTPServer:
-    handler = type("BoundHandler", (Handler,), {"runner": runner, "token": token.encode()})
+def make_server(home: Path, runner: Runner, token: str, port: int = PORT, config: dict[str, Any] | None = None) -> ThreadingHTTPServer:
+    """`config` is what GET /api/config answers: {default_variant, variants}."""
+    handler = type("BoundHandler", (Handler,), {"runner": runner, "token": token.encode(),
+                                                "config": config or {"default_variant": None, "variants": []}})
     server = ThreadingHTTPServer((ADDRESS, port), partial(handler, directory=str(home)))
     server.daemon_threads = True
     return server
@@ -344,8 +366,9 @@ def main() -> int:
     runner = Runner(HOME, allowed, default_argv_for(variant))
     for key in runner.recover():
         print(f"run {key} was left running by a server that died; marked failed", file=sys.stderr)
-    server = make_server(HOME, runner, token, args.port)
-    print(f"serving {HOME} on http://{ADDRESS}:{args.port} (token in {TOKEN_FILE}; variant {variant})", flush=True)
+    active: list[str] = load_active_variants(HOME, variant)
+    server = make_server(HOME, runner, token, args.port, {"default_variant": variant, "variants": active})
+    print(f"serving {HOME} on http://{ADDRESS}:{args.port} (token in {TOKEN_FILE}; variant {variant}; active {', '.join(active)})", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

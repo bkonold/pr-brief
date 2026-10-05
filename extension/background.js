@@ -1,4 +1,4 @@
-import { chooseVariant } from "./choose_variant.js";
+import { chooseVariant, switcherVariants } from "./choose_variant.js";
 import { classifyFetch } from "./classify.js";
 import { DEFAULTS, TOKEN_KEY } from "./defaults.js";
 import { TOKEN_HEADER, describeResponse } from "./serve_api.js";
@@ -7,7 +7,7 @@ const SAFE_NAME = /^[\w.-]+$/;
 
 async function settings() {
   const stored = await chrome.storage.sync.get(DEFAULTS);
-  return { variant: stored.variant || DEFAULTS.variant, baseUrl: (stored.baseUrl || DEFAULTS.baseUrl).replace(/\/+$/, "") };
+  return { baseUrl: (stored.baseUrl || DEFAULTS.baseUrl).replace(/\/+$/, "") };
 }
 
 // The server token lives in chrome.storage.local, which no other device or page script can read. Only this script
@@ -40,11 +40,17 @@ async function loadDiagram(baseUrl, variant, key, file) {
   return /^[\w.-]+\.svg$/.test(file ?? "") ? loadRunFile(baseUrl, variant, key, file) : null;
 }
 
-// The variants this PR has runs for, from runs/<key>/variants.json; empty when the file is missing.
+// The variants this PR has runs for, from runs/<key>/variants.json: empty when the file is missing, null when the
+// page server can't be reached.
 async function loadVariants(baseUrl, key) {
+  let response;
   try {
-    const response = await fetch(`${baseUrl}/runs/${key}/variants.json`, { cache: "no-store" });
-    if (!response.ok) return [];
+    response = await fetch(`${baseUrl}/runs/${key}/variants.json`, { cache: "no-store" });
+  } catch {
+    return null;
+  }
+  if (!response.ok) return [];
+  try {
     const listed = await response.json();
     return Array.isArray(listed)
       ? listed.filter((entry) => SAFE_NAME.test(entry?.variant ?? "")).map((entry) => ({ ...entry, label: entry.label || entry.variant }))
@@ -54,15 +60,23 @@ async function loadVariants(baseUrl, key) {
   }
 }
 
+// The server's { default_variant, variants }, or null when it can't be read (server down, token missing or wrong).
+async function loadConfig() {
+  const config = await callServer("/api/config");
+  return config.ok && Array.isArray(config.variants) ? config : null;
+}
+
 // The run a PR page shows: its review.json, the variant that was read and the PR's variants. Null when the PR has
 // no usable run; { error: "server" } when the page server can't be reached. The page server sends no CORS headers,
-// so the fetch happens here rather than in the content script. `requested` is a variant the user just picked;
-// otherwise the stored default decides.
+// so the fetch happens here rather than in the content script. `requested` is a variant picked on the page; otherwise
+// chooseVariant decides from the server's config. The variants returned are the ones the switcher may list.
 async function findRun({ owner, repo, pr, variant: requested, key: requestedKey }) {
-  const { variant: stored, baseUrl } = await settings();
+  const { baseUrl } = await settings();
   const key = SAFE_NAME.test(requestedKey ?? "") ? requestedKey : String(pr);
-  const variants = await loadVariants(baseUrl, key);
-  const variant = SAFE_NAME.test(requested ?? "") ? requested : chooseVariant(stored, variants);
+  const [available, config] = await Promise.all([loadVariants(baseUrl, key), loadConfig()]);
+  const variant = chooseVariant(SAFE_NAME.test(requested ?? "") ? requested : undefined, config, available);
+  if (!SAFE_NAME.test(variant ?? "")) return available === null && config === null ? { error: "server", baseUrl } : null;
+  const variants = switcherVariants(available, config);
   let response;
   let failure;
   try {
