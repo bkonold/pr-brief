@@ -256,8 +256,7 @@
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
   // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. `boxId` is the diagram
   // box the selection came from, which pulses once the jump has landed. Selecting the open chunk again jumps again.
-  // `jump` passes on to the line jump, e.g. `{ pulse: false }`. A selection from the list or the callout also pans the
-  // diagram to centre the chunk's boxes; a box click leaves the canvas where it is, since the box is already in view.
+  // `jump` passes on to the line jump, e.g. `{ pulse: false }`. Every selection pans the diagram to centre the chunk's boxes.
   async function selectChunk(session, chunk, boxId = null, jump = undefined) {
     const path = chunk.start?.path ?? chunk.files[0]?.path;
     await change(
@@ -273,11 +272,16 @@
       { scroll: false },
     );
     if (current !== session || !live()) return;
-    if (!boxId) diagram.centerOn(chunk.nodes ?? []);
+    centerDiagram(chunk);
     tree.revealGroup(chunk.n);
     if (chunk.start) await jumpToStart(session, chunk, jump);
     else if (path) await landOnFile(session, path);
     if (boxId && current === session && live() && session.activeBox?.id === boxId) diagram.pulse(boxId);
+  }
+
+  // Pans the diagram so the boxes of the chunk that was just focused are centred; a chunk with no boxes leaves it be.
+  function centerDiagram(chunk) {
+    diagram.centerOn(chunk.nodes ?? []);
   }
 
   // A box selects the first chunk, in list order, that lists it, as a click on that chunk would. A box no chunk lists
@@ -329,6 +333,8 @@
             { scroll: false },
           );
         }
+        if (current !== session || !live()) return;
+        centerDiagram(chunk);
         await jumpToStart(session, chunk);
       },
       // A contract or data line in a chunk's row selects that chunk and jumps to the line's place in the diff, without the
@@ -357,6 +363,7 @@
           { scroll: false },
         );
         if (current !== session || !live()) return;
+        centerDiagram(chunk);
         if (line.line == null) await page.jumpToFile(line.path, { pulse: false });
         else await page.jumpToLine(line.path, line.side, line.line, { pulse: false });
       },
@@ -374,6 +381,9 @@
           },
           { scroll: false },
         );
+        if (current !== session || !live()) return;
+        const chunk = session.review.chunks.find((candidate) => candidate.n === n);
+        if (chunk) centerDiagram(chunk);
         await landOnFile(session, path);
       },
       onOrder: (order) => change(session, () => (session.order = order), { scroll: false }),

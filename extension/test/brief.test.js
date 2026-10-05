@@ -927,17 +927,31 @@ test("opening the files page on a file start's diff anchor jumps to that file, a
   assert.deepEqual([elsewhere.fileJumps, elsewhere.jumps], [[], []]);
 });
 
-test("a chunk click and a callout button centre the diagram on the chunk's boxes, and a box click does not", async () => {
-  const { renders, callouts, centered, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
-  await settle();
-  diagramHandlers.at(-1).onNode("b");
+test("every action that focuses a chunk centres the diagram on the chunk's boxes", async () => {
+  const lined = { ...STEP_REVIEW, chunks: STEP_REVIEW.chunks.map((chunk) => ({ ...chunk, contract: [{ impact: "additive", text: "t", path: "src/ui.js", side: "R", line: 4 }] })) };
+  const { renders, callouts, centered, diagramHandlers } = loadContent({ run: null, view: "files", review: lined });
   await settle();
   assert.deepEqual(centered, []);
+  diagramHandlers.at(-1).onNode("b");
+  await settle();
+  assert.deepEqual(centered, [["b"]]);
   await renders.at(-1).handlers.onSelectChunk(3);
-  assert.deepEqual(centered, [["c"]]);
+  assert.deepEqual(centered.at(-1), ["c"]);
   const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
   await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
-  assert.deepEqual(centered, [["c"], ["b"]]);
+  assert.deepEqual(centered.at(-1), ["b"]);
+  await renders.at(-1).handlers.onJumpToStart(1);
+  assert.deepEqual(centered.at(-1), ["a"]);
+  await renders.at(-1).handlers.onJumpToStart(1);
+  assert.deepEqual(centered.at(-1), ["a"]);
+  await renders.at(-1).handlers.onSelectFile(2, "src/api.js");
+  assert.deepEqual(centered.at(-1), ["b"]);
+  await renders.at(-1).handlers.onJumpToLine(3, lined.chunks[2].contract[0]);
+  assert.deepEqual(centered.at(-1), ["c"]);
+  const count = centered.length;
+  await renders.at(-1).handlers.onSelectFile(null, "docs/readme.md");
+  await renders.at(-1).handlers.onToggleGroup(1);
+  assert.equal(centered.length, count);
 });
 
 test("a chunk with no boxes is centred on an empty list", async () => {

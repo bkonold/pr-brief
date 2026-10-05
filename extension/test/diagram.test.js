@@ -270,7 +270,7 @@ test("centerOn leaves the canvas alone for an empty list or boxes that are not d
   assert.equal(views.length, count);
 });
 
-test("a click on a box selects it without moving the canvas", () => {
+test("a click on a box is reported and does not move the canvas by itself", () => {
   const { views, clicked, clickBox } = boxCanvas();
   const count = views.length;
   clickBox("a");
