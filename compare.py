@@ -35,6 +35,7 @@ VARIANT_LABELS: dict[str, str] = {
     "one_path_risk_chunked_v14": "14: fallback only",
     "one_path_risk_chunked_v15": "15: line reason",
     "one_path_risk_chunked_v15_nocontext": "15: no context pack",
+    "one_path_risk_chunked_v16": "16: flow order + contract block",
 }
 
 STYLE = """

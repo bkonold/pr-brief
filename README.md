@@ -131,7 +131,7 @@ One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own)
 `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
-`boxes`), `start_line`, `chunk_box_fallback` and `contract_block`. `review_floor.toml` sets the minimum review level per
+`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `chunk_box_fallback` and `contract_block`. `review_floor.toml` sets the minimum review level per
 path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
 breaking change (a removal or a newly required field) the run's `contract.json` lists (see `review_floor.example.toml`).
 
@@ -144,6 +144,7 @@ breaking change (a removal or a newly required field) the run's `contract.json` 
 | `one_path_risk_chunked_v14` | Render-only: v11b's answer plus the renderer fallback |
 | `one_path_risk_chunked_v15` | v13's prompt plus a `why` of at most 15 words on each start line; renders with the fallback |
 | `one_path_risk_chunked_v15_nocontext` | v15 without a context pack, for repositories with no `local.toml` |
+| `one_path_risk_chunked_v16` | v15's prompt plus a `step` of one or two words on each chunk, chunks returned in the order the change flows through the system, and a "Contract and data" block after the description |
 
 A variant with `render_from = "<variant name>"` is render-only. `run.py` makes no model call for it: it
 copies `prompt.txt`, `answer.yaml` and `pr.json` from `runs/<pr>/<that variant>/`, writes `run.json` with the
@@ -180,6 +181,11 @@ sha256 of the variant file that produced each run.
   side and `migration_globs` in `local.toml` for the database side. `contract.json` lists `removals` and
   `newly_required` (the only entries that raise a review floor) and, for this block, `added`, `changed` and
   `schema_operations`.
+- `chunk_order = "flow"` keeps the chunks in the model's order instead of sorting them by review level, so a
+  floor raises a chunk's level without moving it; `numbering = "flow"` numbers the diagram's boxes with the flow
+  step of the chunk that owns them. A chunk's optional `step` (one or two words, such as `UI`, `API`, `Database`)
+  is kept in `review.json` and shown under its number; a longer `step` is dropped with a note. The review table
+  rows carry `data-flow` and `data-risk` so the extension can switch between the two orders.
 - `numbering = "boxes"` numbers the diagram's boxes 1 to N in declaration order, prefixes each label with its
   number and gives the Review order table a `Boxes` column.
 - `chunk_box_fallback = true`: after the model's node ids are validated, each chunk still without a node gets
@@ -188,7 +194,7 @@ sha256 of the variant file that produced each run.
 - Diagrams in `body.html` and `diagram.svg` share one minimal-outline theme (`DIAGRAM_STYLE` in
   `render.py`): rounded outlines, open-chevron arrowheads, hairline subgraphs. `body.md` is untouched.
 - `review.json` is schema 2: top-level `nodes` and `diagram`, and chunks with `n`, `name`, `review`, `why`,
-  `files`, `start` and `nodes`.
+  `files`, `start`, `nodes` and (v16) `step`.
 - With `routes_dir` set in `local.toml`, files under it are labelled by their React Router flat-route URL in
   the grouped file list.
 

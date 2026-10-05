@@ -358,6 +358,23 @@ def start_why(raw: Any, name: str, notes: list[str]) -> str | None:
     return why
 
 
+STEP_MAX_WORDS = 2
+
+
+def clean_step(raw: Any, name: str, notes: list[str]) -> str | None:
+    """The chunk's stage along the data path when it is one or two words; None when absent or invalid."""
+    if raw is None:
+        return None
+    step: str = " ".join(str(raw).split()).strip(".:,;")
+    if not step:
+        notes.append(f"chunk '{name}': step is empty, dropped")
+        return None
+    if len(step.split()) > STEP_MAX_WORDS:
+        notes.append(f"chunk '{name}': step is longer than {STEP_MAX_WORDS} words, dropped")
+        return None
+    return step
+
+
 # ---------------------------------------------------------------- review chunks
 
 @dataclass
@@ -371,6 +388,7 @@ class Chunk:
     boxes: list[int] = field(default_factory=list)
     raised_by: list[str] = field(default_factory=list)
     start: dict[str, Any] | None = None
+    step: str | None = None
 
 
 def clean_path(raw: Any) -> str:
@@ -386,7 +404,8 @@ UNCHUNKED = "Unchunked"
 
 
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
-                 notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None) -> list[Chunk]:
+                 notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None,
+                 flow_order: bool = False) -> list[Chunk]:
     chunks: list[Chunk] = []
     seen: set[str] = set()
     for item in raw_chunks if isinstance(raw_chunks, list) else []:
@@ -408,16 +427,23 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
         if review not in LEVELS:
             notes.append(f"chunk '{name}': unknown review level {review!r}, using 'read'")
             review = "read"
+        step: str | None = clean_step(item.get("step"), name, notes)
+        if flow_order and step is None and "step" not in item:
+            notes.append(f"chunk '{name}': no step")
         chunks.append(Chunk(name, review, str(item.get("why", "")).strip(), files, clean_nodes(item.get("nodes")),
-                            start=resolve_start(item.get("start"), name, files, diff_lines, notes)))
+                            start=resolve_start(item.get("start"), name, files, diff_lines, notes), step=step))
     missing: list[str] = [p for p in paths if p not in seen]
     if missing:
         notes.append("files the model left out of every chunk: " + ", ".join(missing))
         chunks.append(Chunk(UNCHUNKED, "read", "Not assigned to a chunk by the model", missing))
     for chunk in chunks:
         apply_floor(chunk, counts, floor_cfg, contract)
-    # Highest level first, ties in the model's order, and the catch-all chunk last, as the extension's list has it.
-    chunks.sort(key=lambda chunk: (chunk.name == UNCHUNKED, -LEVELS.index(chunk.review)))
+    if flow_order:
+        # The model's order is the flow of the change; the floors raise a level but do not move a chunk.
+        chunks.sort(key=lambda chunk: chunk.name == UNCHUNKED)
+    else:
+        # Highest level first, ties in the model's order, and the catch-all chunk last, as the extension's list has it.
+        chunks.sort(key=lambda chunk: (chunk.name == UNCHUNKED, -LEVELS.index(chunk.review)))
     for number, chunk in enumerate(chunks, 1):
         chunk.number = number
     return chunks
@@ -487,6 +513,13 @@ def number_boxes(diagram: str, chunks: list[Chunk], notes: list[str]) -> str:
     for chunk in chunks:
         chunk.boxes = sorted(position[node] + 1 for node in chunk.nodes)
     return prefix_labels(lines, lambda node: position[node] + 1)
+
+
+def number_by_flow(diagram: str, chunks: list[Chunk], notes: list[str]) -> str:
+    """Prefix every node label with the flow step (the number) of the first chunk, in flow order, that lists the node."""
+    lines: list[str] = diagram.split("\n")
+    owner: dict[str, int] = keep_diagram_nodes(chunks, declaration_positions(lines), notes)
+    return prefix_labels(lines, lambda node: chunks[owner[node]].number if node in owner else None)
 
 
 def also_block(lines: list[str]) -> tuple[int, int] | None:
@@ -678,13 +711,21 @@ def start_cell(chunk: Chunk, repo: str, pr: str) -> str:
             f'{html.escape(start["path"].split("/")[-1])}:{start["line"]}</a></sub><br><code>{html.escape(quote)}</code>')
 
 
+def risk_rank(chunk: Chunk) -> int:
+    """How high the chunk sits in the risk order: its level, with the catch-all chunk below every level."""
+    return -1 if chunk.name == UNCHUNKED else LEVELS.index(chunk.review)
+
+
 def chunks_walkthrough(chunks: list[Chunk], counts: dict[str, tuple[int, int]], paths: list[str],
-                       floor_cfg: dict[str, Any], repo: str, pr: str, numbering: str, show_start: bool) -> str:
+                       floor_cfg: dict[str, Any], repo: str, pr: str, numbering: str, show_start: bool,
+                       flow_order: bool = False) -> str:
     labels: dict[str, str] = directory_labels(paths)
     by_boxes: bool = numbering == "boxes"
+    with_steps: bool = any(chunk.step for chunk in chunks)
+    wide_first: bool = by_boxes or with_steps
 
     def boxes_width(width: str) -> str:
-        return f' style="width: {width}"' if by_boxes else ""
+        return f' style="width: {width}"' if wide_first else ""
 
     out: str = ('<details open> <summary><h3> Review order</h3></summary>\n\n'
                 f'<table class="review-order"><thead><tr><th{boxes_width("8%")}>{"Boxes" if by_boxes else "#"}</th>'
@@ -702,8 +743,11 @@ def chunks_walkthrough(chunks: list[Chunk], counts: dict[str, tuple[int, int]], 
             rows += (f'<tr><td><code title="{html.escape(directory or "(root)")}">{html.escape(labels[directory]).replace("/", "/<wbr>")}</code><br>'
                      f'<a href="{diff_link(repo, pr, path)}"><strong>{html.escape(path.split("/")[-1])}</strong></a> +{plus}/-{minus}{tags}</td></tr>')
         first_cell: str = format_boxes(chunk.boxes) if by_boxes else str(chunk.number)
+        if chunk.step:
+            first_cell += f"<br><sub>{html.escape(chunk.step)}</sub>"
         start: str = start_cell(chunk, repo, pr) if show_start else ""
-        out += (f"<tr><td>{first_cell}</td><td><strong>{inline(chunk.name)}</strong>{start}</td><td>{review}</td>"
+        order_data: str = f' data-flow="{chunk.number}" data-risk="{risk_rank(chunk)}"' if flow_order and with_steps else ""
+        out += (f"<tr{order_data}><td>{first_cell}</td><td><strong>{inline(chunk.name)}</strong>{start}</td><td>{review}</td>"
                 f"<td>{inline(chunk.why)}</td><td><table>{rows}</table></td></tr>")
     return out + "</tbody></table>\n\n</details>\n\n"
 
@@ -751,13 +795,16 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
             ordered[key] = data[key]
     if cfg.get("contract_block"):
         ordered["contract_and_data"] = contract_section(run, pr, contract, diff_text)
+    flow_order: bool = cfg.get("chunk_order") == "flow"
+    if cfg.get("chunk_order", "risk") not in ("risk", "flow"):
+        raise AnswerError(f"unknown render chunk_order {cfg['chunk_order']!r}, expected 'risk' or 'flow'")
     chunks: list[Chunk] = []
     if cfg.get("files") == "chunks":
-        chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract)
+        chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, flow_order)
     diagram: str = render_diagram(data.get("changes_diagram"), cfg)
     numbering: str = cfg.get("numbering", "chunks")
-    if numbering not in ("chunks", "boxes"):
-        raise AnswerError(f"unknown render numbering {numbering!r}, expected 'chunks' or 'boxes'")
+    if numbering not in ("chunks", "boxes", "flow"):
+        raise AnswerError(f"unknown render numbering {numbering!r}, expected 'chunks', 'boxes' or 'flow'")
     node_files: dict[str, list[str]] | None = None
     if diagram and "node_files" in data:
         node_files = clean_node_files(data["node_files"], declaration_positions(diagram.split("\n")), paths, notes)
@@ -768,6 +815,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         diagram = style_skim(diagram, chunks, notes)
     if diagram and numbering == "boxes":
         diagram = number_boxes(diagram, chunks, notes)
+    elif diagram and numbering == "flow":
+        diagram = number_by_flow(diagram, chunks, notes)
     elif diagram and any(isinstance(item, dict) and "nodes" in item for item in data.get("chunks") or []):
         diagram = number_chunks_by_path(diagram, chunks, notes)
     edges: tuple[int, int] = count_diagram_edges(diagram)
@@ -791,7 +840,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         if key == "pr_files":
             if cfg.get("files") == "chunks":
                 walkthrough = chunks_walkthrough(chunks, counts, paths, floor_cfg, run["repo"], pr_number, numbering,
-                                                bool(cfg.get("start_line")))
+                                                bool(cfg.get("start_line")), flow_order)
             else:
                 include_summary: bool = len(pr["files"]) <= COLLAPSIBLE_FILE_LIST_THRESHOLD
                 labels = file_label_dict(value, include_summary)
@@ -832,6 +881,7 @@ def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], ha
                     "nodes": c.nodes,
                     "files": [{"path": path, "additions": counts[path.lower()][0], "deletions": counts[path.lower()][1]}
                               for path in c.files],
+                    **({"step": c.step} if c.step else {}),
                     **({"start": c.start} if c.start else {})} for c in chunks],
     }
 
