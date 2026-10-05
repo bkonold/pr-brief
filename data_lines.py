@@ -51,6 +51,18 @@ def expression_text(expression: str) -> str:
     return text if len(text) <= DEFAULT_EXPRESSION_LIMIT else text[:DEFAULT_EXPRESSION_LIMIT - 1] + "…"
 
 
+UNNAMED_WORDS: frozenset[str] = frozenset({"IF", "NOT", "EXISTS", "ONLY", "OR", "REPLACE", "ON", "TABLE", "COLUMN"})
+
+
+def kind_and_target(text: str) -> str:
+    """The first two words of a statement the classifier does not know, then the first name after them (`ALTER
+    SEQUENCE` `seq_a`); the words alone when no name follows."""
+    words: list[str] = re.findall(r"[\w.\"]+", text)
+    head: str = " ".join(word.upper() for word in words[:2])
+    target: str | None = next((sql_name(word) for word in words[2:] if word.upper() not in UNNAMED_WORDS), None)
+    return f"{head} {code(target)}" if target else f"{head} statement" if head else "other statement"
+
+
 def split_statements(lines: list[DiffLine]) -> list[tuple[str, int]]:
     """The SQL statements in the added lines of a migration, each with the line it starts on. Comments are dropped;
     `;` inside a string, a quoted identifier or a `$tag$ ... $tag$` body does not end a statement."""
@@ -222,8 +234,8 @@ def alter_actions(table: str, rest: str) -> list[Action]:
             actions.append(Action(REWRITES, "set not null", table, column, f"set {code(f'{table}.{column}')} NOT NULL",
                                   change=f"{code(column)} set NOT NULL"))
         else:
-            head: str = " ".join(re.findall(r"[A-Za-z]+", part)[:2]).upper() or "other change"
-            actions.append(Action(None, "other", table, None, f"{head} on {code(table)}", change=f"{head} on {code(table)}"))
+            unknown: str = f"{kind_and_target(part)} on {code(table)}"
+            actions.append(Action(None, "other", table, None, unknown, change=unknown))
     return actions
 
 
@@ -290,9 +302,8 @@ def classify_statement(statement: str) -> list[Action]:
             return [Action(level, verb, name, None, f"{words} {code(name)}", change=change)]
     if found := re.match(rf"ALTER\s+TABLE\s+(?:ONLY\s+|IF\s+EXISTS\s+)*({SQL_NAME})\s+(.*)$", text, re.I):
         return alter_actions(sql_name(found.group(1)), found.group(2))
-    head: str = " ".join(re.findall(r"[A-Za-z]+", text)[:2]).upper()
-    return [Action(None, "other", "", None, f"{head} statement" if head else "other statement",
-                   change=f"{head} statement" if head else "other statement")]
+    kind: str = kind_and_target(text)
+    return [Action(None, "other", "", None, kind, change=kind)]
 
 
 SWEEP_VERBS: dict[str, str] = {"add column": "add", "drop column": "drop", "set not null": "set NOT NULL on",

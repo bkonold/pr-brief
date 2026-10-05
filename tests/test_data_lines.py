@@ -174,11 +174,17 @@ class Lines(unittest.TestCase):
     def test_unclassified_statements_are_named_by_kind_and_file_without_a_level(self) -> None:
         sql = "DO $$ BEGIN NULL; END $$;\nGRANT SELECT ON a TO reader;\nCREATE TABLE a (id bigint);\n"
         self.assertEqual(lines_for(sql), [(ADDITIVE, "create table `a`"), (None, "DO block in V9__widgets.sql"),
-                                          (None, "GRANT SELECT statement in V9__widgets.sql")])
+                                          (None, "GRANT SELECT `a` in V9__widgets.sql")])
 
     def test_repeated_unclassified_kind_in_one_file_is_one_line_with_its_count(self) -> None:
         sql = "DO $$ BEGIN NULL; END $$;\nDO $$ BEGIN NULL; END $$;\n"
         self.assertEqual(lines_for(sql), [(None, "DO block in V9__widgets.sql (2 statements)")])
+
+    def test_an_unknown_alter_table_action_names_its_verb_and_both_targets(self) -> None:
+        self.assertEqual(levels("ALTER TABLE w ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY"),
+                         [(None, "ALTER COLUMN `id` on `w`")])
+        self.assertEqual(levels("ALTER SEQUENCE IF EXISTS seq_a OWNED BY w.id"), [(None, "ALTER SEQUENCE `seq_a`")])
+        self.assertEqual(levels("VACUUM"), [(None, "VACUUM statement")])
 
     def test_default_changes_are_additive_and_name_the_column_and_value(self) -> None:
         self.assertEqual(levels("ALTER TABLE slides ALTER COLUMN position SET DEFAULT 0;"),
