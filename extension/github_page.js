@@ -21,6 +21,11 @@
 
   const CHANGES_PAGE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/(?:changes|files)(?:\/|$)/;
   const PULL_PAGE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:\/|$)/;
+  const CONVERSATION_PAGE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/;
+
+  // The conversation page's timeline is a sequence of .TimelineItem.js-comment-container elements inside
+  // .js-discussion, and the first is the PR's opening comment (the description).
+  const DESCRIPTION = ".js-discussion .js-comment-container";
 
   const idCache = new Map();
 
@@ -83,6 +88,8 @@
     origin: "https://github.com",
     changesPage: CHANGES_PAGE,
     pullPage: PULL_PAGE,
+    conversationPage: CONVERSATION_PAGE,
+    filesPath: (pr) => `/${pr.owner}/${pr.repo}/pull/${pr.pr}/files`,
     runKey: (pr) => String(pr.pr),
     readHeadSha,
     blockSelector: DIFF_BLOCK,
@@ -97,6 +104,7 @@
     contentSelector: DIFF_CONTENT,
     diagramHost,
     treeHost,
+    descriptionHost: () => document.querySelector(DESCRIPTION),
   });
 
   ns.githubPage = page;

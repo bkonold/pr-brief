@@ -29,6 +29,11 @@
 
   const CHANGES_PAGE = /^\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/files(?:\/|$)/;
   const PULL_PAGE = /^\/([^/]+)\/([^/]+)\/pulls\/(\d+)(?:\/|$)/;
+  const CONVERSATION_PAGE = /^\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/?$/;
+
+  // The conversation page's .ui.timeline holds the opening comment (the description) as its first
+  // .timeline-item.comment, marked .first.
+  const DESCRIPTION = ".ui.timeline > .timeline-item.comment.first";
 
   // The CSS the extension ships uses GitHub Primer's custom properties, with light fallbacks. Forgejo defines
   // its own colours (light and dark), so the Primer names are pointed at them for as long as this adapter runs.
@@ -104,6 +109,8 @@
     origin: "http://localhost:3300",
     changesPage: CHANGES_PAGE,
     pullPage: PULL_PAGE,
+    conversationPage: CONVERSATION_PAGE,
+    filesPath: (pr) => `/${pr.owner}/${pr.repo}/pulls/${pr.pr}/files`,
     // Forgejo's PR numbers are its own, so its runs sit beside GitHub's under a prefix.
     runKey: (pr) => `fj-${pr.pr}`,
     readHeadSha,
@@ -121,6 +128,10 @@
       return diagramHost();
     },
     treeHost,
+    descriptionHost: () => {
+      installTheme();
+      return document.querySelector(DESCRIPTION);
+    },
   });
 
   ns.forgejoPage = page;

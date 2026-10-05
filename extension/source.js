@@ -22,6 +22,18 @@
     }
   }
 
+  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg }, or null when the PR has no run or the page
+  // server is down.
+  async function loadBrief(owner, repo, pr, key = String(pr)) {
+    if (!alive()) return null;
+    try {
+      const brief = await chrome.runtime.sendMessage({ type: "loadBrief", owner, repo, pr, key });
+      return brief && !brief.error ? brief : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function saveVariant(variant) {
     if (!alive()) return;
     try {
@@ -32,7 +44,7 @@
   }
 
   ns.alive = alive;
-  ns.source = { loadReview, saveVariant };
+  ns.source = { loadReview, loadBrief, saveVariant };
 })();
 
 if (typeof module !== "undefined") module.exports = { alive: globalThis.prFocus.alive, ...globalThis.prFocus.source };

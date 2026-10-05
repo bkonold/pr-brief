@@ -1,5 +1,5 @@
 (() => {
-  const { page, source, variants, boxes, focus, tree, diagram, alive } = globalThis.prFocus;
+  const { page, source, variants, boxes, focus, tree, diagram, brief, alive } = globalThis.prFocus;
   if (!page) return;
 
   const SETTLE_MS = 150;
@@ -12,6 +12,37 @@
   let stopObserving = null;
   let stopNavigating = null;
   let shutDown = false;
+  let briefState = null;
+  let briefToken = 0;
+
+  // The PR brief card, on the conversation page: { key, card, stop }. `card` stays null while the run loads and when
+  // the PR has no run. There is one card per page; it is moved back above the description whenever the page drops or
+  // moves it, never built twice.
+  function placeBrief() {
+    const host = briefState?.card ? page.descriptionHost() : null;
+    if (host && (briefState.card.nextElementSibling !== host || !briefState.card.isConnected)) host.before(briefState.card);
+  }
+
+  function unmountBrief() {
+    briefToken += 1;
+    briefState?.stop?.();
+    briefState?.card?.remove();
+    briefState = null;
+  }
+
+  async function mountBrief(pr) {
+    const key = `${pr.owner}/${pr.repo}#${pr.pr}`;
+    if (briefState?.key === key) return;
+    unmountBrief();
+    const token = briefToken;
+    const state = { key, card: null, stop: null };
+    briefState = state;
+    const run = await source.loadBrief(pr.owner, pr.repo, pr.pr, page.runKey(pr));
+    if (!live() || token !== briefToken || !run) return;
+    state.card = brief.buildBrief({ key: page.runKey(pr), variant: run.variant, bodyHtml: run.bodyHtml, diagramSvg: run.diagramSvg, filesUrl: page.filesUrl(pr) });
+    state.stop = page.onChange(placeBrief);
+    placeBrief();
+  }
 
   function storageKey(pr) {
     return `prFocus:${pr.owner}/${pr.repo}#${pr.pr}`;
@@ -278,6 +309,20 @@
     refresh({ scroll: false });
   }
 
+  // A link to a chunk's start line, such as the PR brief card's, carries that line's anchor in the URL fragment.
+  // Opening the files page on it does what the ↳ button does. Any other fragment is left to the page.
+  async function jumpToLinkedStart(session) {
+    const wanted = location.hash.slice(1);
+    if (!wanted.startsWith("diff-") || !session?.review || !live()) return;
+    for (const chunk of session.review.chunks) {
+      const { start } = chunk;
+      if (start && (await page.lineAnchor(start.path, start.side, start.line)) === wanted) {
+        if (current === session && live()) handlersFor(session).onJumpToStart(chunk.n);
+        return;
+      }
+    }
+  }
+
   // Fetches the review again and mounts the full list when the server is back; otherwise the note returns.
   function retry(session) {
     if (current !== session || !live()) return;
@@ -314,6 +359,7 @@
   // extension, so it removes everything it added and stops listening.
   function shutdown() {
     shutDown = true;
+    unmountBrief();
     teardown();
     stopNavigating?.();
     stopNavigating = null;
@@ -329,6 +375,12 @@
   async function start() {
     if (!live()) return;
     const pr = page.prFromUrl(location);
+    if (pr?.view === "conversation") {
+      if (current || stopObserving) teardown();
+      await mountBrief(pr);
+      return;
+    }
+    unmountBrief();
     if (!pr) {
       if (current || stopObserving) teardown();
       return;
@@ -363,7 +415,7 @@
       startedAt: Date.now(),
     };
     stopObserving = page.onChange(onMutations);
-    refresh({ scroll: selectedN !== null });
+    refresh({ scroll: selectedN !== null }).then(() => jumpToLinkedStart(current));
   }
 
   stopNavigating = page.onNavigate(start);

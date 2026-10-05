@@ -7,6 +7,8 @@
 //   name, treeLabel, hosts          display name, the label of the host's own tree, the location.host values it serves
 //   origin, changesPage, pullPage   a base for relative URLs, and the patterns of the files page and of any page of a
 //                                   PR, each capturing owner, repo and number
+//   conversationPage, filesPath(pr) the pattern of the conversation page (same captures), and the path of a PR's
+//                                   files view
 //   runKey(pr)                      the runs/<key> folder of a parsed PR
 //   readHeadSha()                   the head commit sha the page shows, or null
 //   blockSelector, pathOfBlock(b)   the element holding one file's diff, and the path it shows
@@ -18,6 +20,8 @@
 //   contentSelector                 the diffs' column
 //   diagramHost()                   where the diagram panel docks, or null
 //   treeHost()                      the host's own file tree element, or null
+//   descriptionHost()               the element the PR brief card is inserted before (the PR's opening comment on the
+//                                   conversation page), or null
 // }
 (() => {
   const ns = (globalThis.prFocus ??= {});
@@ -109,8 +113,16 @@
       return match ? { owner: match[1], repo: match[2], pr: Number(match[3]) } : null;
     }
 
+    // The PR a files page or a conversation page shows, with which of the two it is: view "files" or "conversation".
     function prFromUrl(location) {
-      return parsePull(spec.changesPage, location);
+      const files = parsePull(spec.changesPage, location);
+      if (files) return { ...files, view: "files" };
+      const conversation = parsePull(spec.conversationPage, location);
+      return conversation ? { ...conversation, view: "conversation" } : null;
+    }
+
+    function filesUrl(pr) {
+      return new URL(spec.filesPath(pr), spec.origin).href;
     }
 
     function pullFromUrl(location) {
@@ -124,7 +136,7 @@
 
     function headSha() {
       const current = prFromUrl(location);
-      if (!initialPull || !current || initialPull.owner !== current.owner || initialPull.repo !== current.repo || initialPull.pr !== current.pr) {
+      if (!initialPull || current?.view !== "files" || initialPull.owner !== current.owner || initialPull.repo !== current.repo || initialPull.pr !== current.pr) {
         return null;
       }
       if (cachedHeadSha === undefined) cachedHeadSha = spec.readHeadSha() ?? null;
@@ -373,6 +385,7 @@
       treeLabel: spec.treeLabel,
       hosts: spec.hosts,
       prFromUrl,
+      filesUrl,
       pullFromUrl,
       runKey: spec.runKey,
       headSha,
@@ -395,6 +408,7 @@
       cancelJump,
       diagramHost: spec.diagramHost,
       treeHost: spec.treeHost,
+      descriptionHost: spec.descriptionHost,
       onChange,
       onNavigate,
     };

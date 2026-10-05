@@ -13,7 +13,7 @@ const { keepSelection } = require("../variants.js");
 const { fileBadges, targetOfNode, boxTitle } = require("../boxes.js");
 
 test("prFromUrl matches the changes and files pages", () => {
-  const expected = { owner: "example-org", repo: "example-repo", pr: 42 };
+  const expected = { owner: "example-org", repo: "example-repo", pr: 42, view: "files" };
   assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/42/changes" }), expected);
   assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/42/files" }), expected);
   assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/42/changes/abc..def" }), expected);
@@ -21,7 +21,6 @@ test("prFromUrl matches the changes and files pages", () => {
 });
 
 test("prFromUrl rejects other pages", () => {
-  assert.equal(prFromUrl({ pathname: "/o/r/pull/1" }), null);
   assert.equal(prFromUrl({ pathname: "/o/r/pull/1/commits" }), null);
   assert.equal(prFromUrl({ pathname: "/o/r/pull/1/changesfoo" }), null);
   assert.equal(prFromUrl({ pathname: "/o/r/issues/1/files" }), null);
@@ -349,7 +348,7 @@ test("each adapter names itself and its tree for the interface", () => {
   assert.deepEqual([githubPage.name, githubPage.treeLabel], ["GitHub", "GitHub tree"]);
   assert.deepEqual([forgejoPage.name, forgejoPage.treeLabel], ["Forgejo", "Forgejo tree"]);
   for (const page of [githubPage, forgejoPage]) {
-    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "diffEntries", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "ownsLine", "cancelJump", "diagramHost", "treeHost", "onChange", "onNavigate"]) {
+    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "diffEntries", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
       assert.equal(typeof page[member], "function", `${page.name}.${member}`);
     }
   }
@@ -361,13 +360,12 @@ test("a GitHub pull request's runs are keyed by its number", () => {
 
 test("a Forgejo files page maps to the fj- run key", () => {
   const url = { pathname: "/acme/widgets/pulls/7/files" };
-  assert.deepEqual(forgejoPage.prFromUrl(url), { owner: "acme", repo: "widgets", pr: 7 });
+  assert.deepEqual(forgejoPage.prFromUrl(url), { owner: "acme", repo: "widgets", pr: 7, view: "files" });
   assert.equal(forgejoPage.runKey(forgejoPage.prFromUrl(url)), "fj-7");
   assert.equal(forgejoPage.runKey(forgejoPage.prFromUrl("http://localhost:3300/acme/widgets/pulls/120/files?style=unified#diff-abc")), "fj-120");
 });
 
-test("a Forgejo URL that is not a files page maps to nothing", () => {
-  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7" }), null);
+test("a Forgejo URL that is neither a files nor a conversation page maps to nothing", () => {
   assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7/commits" }), null);
   assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7/filesfoo" }), null);
   assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pull/7/files" }), null);

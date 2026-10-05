@@ -19,7 +19,7 @@ You also need:
   through its REST API with a token file named in `local.toml`);
 - Google Chrome, for prerendering the diagram to `diagram.svg` (a run still works without it; the
   failure is noted in `error.txt`);
-- Node 18 or later, only for the extension's tests (`node --test extension/test/extension.test.js`). The host
+- Node 18 or later, only for the extension's tests (`node --test extension/test/*.test.js`). The host
   and mirror tests run with `.venv/bin/python -m unittest discover -s tests`.
 
 ### Per-repository settings
@@ -101,7 +101,7 @@ folder. Open a PR's Files changed page (`https://github.com/<owner>/<repo>/pull/
 `<forgejo_url>/<owner>/<repo>/pulls/<n>/files`). The extension finds `runs/<key>/<variant>/review.json` on that
 server (`<key>` is `<n>` on GitHub and `fj-<n>` on Forgejo); it shows nothing when the run is missing.
 `extension/README.md` lists what it does and every GitHub selector it depends on. Run its tests with
-`node --test extension/test/extension.test.js`.
+`node --test extension/test/*.test.js`.
 
 ## Variants
 

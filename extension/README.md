@@ -99,6 +99,30 @@ overlay; Esc or a click outside closes it.
   `data-id="L_<from>_<to>_<n>"` (its label group has the same `data-id`). Node ids can contain underscores, so edge
   ends are matched against the known node ids.
 
+## The PR brief card
+
+On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR brief"
+card above the PR's description when the PR has a run (`prFromUrl` returns `view: "conversation"`; the files page is
+`view: "files"` and behaves as before). The card is local: its badge says "local, not posted", nothing is written to
+the page's data, and its header links to the files view.
+
+- It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
+  are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.
+- `body.html` from `render.py` is a standalone page that draws itself: the description is a markdown string in a
+  script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
+  `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
+  "Diagram Walkthrough" heading are left out; `diagram.svg` is shown next to the description instead, with the
+  legend under it, on a white panel in both themes.
+- The review order shows with its `<details>` closed, and each chunk's file list is a closed `<details>` headed by the
+  file count. Links into the PR's files view are rewritten to this host's files view, fragment kept.
+- A chunk's start link opens the files view with that line's anchor in the fragment. When the files page loads with a
+  fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's `↳` button; any other
+  fragment is left to the page.
+- `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the stored variant selects,
+  the way it fetches `review.json`. With no run (or the page server down) nothing is mounted and nothing is logged.
+- The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
+  back above the description; `onNavigate` mounts it again after client-side navigation, and one card exists at a time.
+
 ## Load it
 
 1. From the `pr-describe` root, serve the runs: `python3 -m http.server 8765 --bind 127.0.0.1`.
@@ -115,7 +139,7 @@ also needs a `host_permissions` entry (and a `matches` entry for a Forgejo elsew
 makes Chrome ask for the new permission when the extension is reloaded.
 After editing a file, reload the extension on `chrome://extensions` and refresh the GitHub tab.
 
-Run the pure tests with `node --test test/extension.test.js`.
+Run the pure tests with `node --test test/*.test.js`.
 
 ## Files
 
@@ -135,15 +159,17 @@ Run the pure tests with `node --test test/extension.test.js`.
 | `variants.js` | Which chunk stays selected after a variant switch |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
 | `source.js` | Content-script side of the fetch |
+| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
+| `brief.js` | Builds the PR brief card in a shadow root |
 
 The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in the order listed in `manifest.json`.
 
 ### The page adapter
 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
-`prFromUrl` / `pullFromUrl` (`{owner, repo, pr}`), `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
+`prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
 `diffEntries`, `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
-`restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `onChange` and `onNavigate`. A new host is a
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)
@@ -160,6 +186,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Pane divider | `[class*="prc-PageLayout-PaneVerticalDivider"]` inside the pane, made transparent by a `<style>` carried in the panel (`:has(+ #pr-focus-diagram)`, so it applies only while the panel follows the pane) |
 | Tree host | `#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]`: GitHub's tree with its "File tree" heading. `#pr-file-tree` also holds the "Filter files" box as its first child, so the list is inserted before the host and the host is hidden with a class |
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed and scrolled to the middle of the window. |
+| Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
 | Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, trusted only for the PR the page was first opened on |
 
 If a chunk hides nothing, the list is missing, or the list says it couldn't find the diff blocks, GitHub changed these;
@@ -180,6 +207,7 @@ All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
 | Line row | `.lines-num [rel="diff-<sha1 of path>R<line>"]` (`L` for a removed line); its closest `tr`. The cell is `td.lines-num-new` / `td.lines-num-old` with `data-line-num` |
 | Tree host | `#diff-file-tree > .diff-file-tree-items`: the Vue-rendered tree inside the sticky 380px column `#diff-file-tree`. The list is mounted before it in that column and the tree is hidden with a class |
 | Diagram host | pane `#diff-file-tree`, content `#diff-content-container`, both children of the flex row `#diff-container`; the panel goes right after the pane |
+| Description host (conversation page) | `.ui.timeline > .timeline-item.comment.first`: the PR's opening comment, which the card is inserted before |
 | Head SHA | `/src/commit/<sha>/` in the `href` of the first `#diff-container .diff-file-box a[href*="/src/commit/"]` ("View file"), trusted only for the PR the page was first opened on |
 | Colours | the Primer custom properties the CSS uses are pointed at Forgejo's `--color-*` variables by a `<style id="prf-forgejo-theme">` added to the page |
 
