@@ -63,15 +63,24 @@ html[data-color-mode="dark"] .prf-reason-row {
 }
 
 .prf-reason-row > td {
-  padding: 4px 12px 4px 16px;
+  padding: 6px 12px 6px 16px;
   overflow: visible;
   font-family: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 12px;
   line-height: 1.4;
-  color: var(--fgColor-muted, #59636e);
+  color: var(--fgColor-default, #1f2328);
   text-overflow: clip;
   white-space: normal;
   overflow-wrap: anywhere;
-  background-color: var(--prf-attn-bg) !important;
+  background-color: color-mix(in srgb, var(--prf-attn-bg) 60%, transparent) !important;
   border: 0;
+}
+
+.prf-reason-label {
+  margin-right: 6px;
+  font-weight: 600;
+}
+
+.prf-reason-label::after {
+  content: ":";
 }

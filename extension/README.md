@@ -32,8 +32,9 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   load); on a timeout the view stays at the file's header. The button's tooltip is `file:line`. Opening the files page on
   a link to a chunk's start line (the PR brief card's links) does the same.
 - The start line is highlighted with a warning-tinted background and a 4px warning-coloured bar on its left edge, and its
-  reason sits on its own row directly below it, as one line of secondary text, wrapping if it is long: the chunk's
-  `start.why`, else the chunk's own `why`. The file, line number and code are not repeated, since the diff row shows them.
+  reason sits on its own full-width row directly above it, with the same bar and a fainter tint, so the two read as one
+  callout: a bold "Why the model starts here" label, then the reason, wrapping if it is long: the chunk's `start.why`,
+  else the chunk's own `why`. The jump centres the reason row and the line together. The file, line number and code are not repeated, since the diff row shows them.
   Only one start line exists; it goes whenever the line target clears (another selection, a new jump or teardown) and
   comes back if GitHub re-renders the row. There is no animation.
 - A banner appears when the review was generated for an older head commit than the page's.

@@ -1,5 +1,5 @@
 // The page behaviour shared by every host: scrolling a diff under the sticky chrome, jumping to a line, the
-// reason shown under it, and watching for changes. createPage(spec) returns the adapter the rest of the extension
+// reason shown above it, and watching for changes. createPage(spec) returns the adapter the rest of the extension
 // calls through prFocus.page (see page.js). The spec holds everything that differs per host, which is all
 // the DOM knowledge and nothing else; a host's spec lives in its own file (github_page.js, forgejo_page.js).
 //
@@ -31,6 +31,8 @@
 
   const LINE_TARGET = "prf-line-target";
   const REASON_ROW = "prf-reason-row";
+  const REASON_LABEL = "prf-reason-label";
+  const REASON_TITLE = "Why the model starts here";
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
   const JUMP_TIMEOUT_MS = 10000;
@@ -181,7 +183,7 @@
     }
 
     // The row that is the line target now: its anchor, so a re-render of the row by the host can be undone, and the
-    // reason shown under it ("" when the jump had none).
+    // reason shown above it ("" when the jump had none).
     let lineTarget = null;
 
     function findRow(anchor) {
@@ -192,18 +194,27 @@
       for (const element of document.querySelectorAll(`.${REASON_ROW}`)) element.remove();
     }
 
-    // The reason is a full-width table row directly below the target row, so the host's columns stay as they are.
+    function reasonRowOf(row) {
+      const above = row.previousElementSibling;
+      return above?.classList.contains(REASON_ROW) ? above : null;
+    }
+
+    // The reason is a full-width table row directly above the target row, so the host's columns stay as they are
+    // and the two read as one block: a label, then the reason.
     function syncReason(row) {
       if (!lineTarget.reason) return removeReason();
-      if (row.nextElementSibling?.classList.contains(REASON_ROW)) return;
+      if (reasonRowOf(row)) return;
       removeReason();
+      const label = document.createElement("span");
+      label.className = REASON_LABEL;
+      label.textContent = REASON_TITLE;
       const cell = document.createElement("td");
       cell.colSpan = Math.max(1, row.children.length);
-      cell.textContent = lineTarget.reason;
+      cell.append(label, lineTarget.reason);
       const reason = document.createElement("tr");
       reason.className = REASON_ROW;
       reason.append(cell);
-      row.after(reason);
+      row.before(reason);
     }
 
     function clearLineTarget() {
@@ -294,12 +305,21 @@
       return scrollUntilLanded(() => landingDelta(entry.getBoundingClientRect().top, currentStickyOffset(entry)), newScrollToken());
     }
 
-    // Scrolls the row for `anchor` to the middle of the window. The row is looked up again on every measurement,
-    // since the host can replace it while the diffs around it load.
+    // The box of a line target: the row and, when it has one, the reason row above it.
+    function targetRect(row) {
+      const rect = row.getBoundingClientRect();
+      const reason = reasonRowOf(row);
+      if (!reason) return rect;
+      const { top } = reason.getBoundingClientRect();
+      return { top, height: rect.bottom - top };
+    }
+
+    // Scrolls the row for `anchor`, with its reason row, to the middle of the window. The row is looked up again on
+    // every measurement, since the host can replace it while the diffs around it load.
     function scrollToRow(anchor, token) {
       return scrollUntilLanded(() => {
         const row = findRow(anchor);
-        return row ? centeringDelta(row.getBoundingClientRect(), innerHeight) : 0;
+        return row ? centeringDelta(targetRect(row), innerHeight) : 0;
       }, token);
     }
 
@@ -330,9 +350,9 @@
     }
 
     // A diff's rows may be rendered only once the diff is near the window, so the file's diff is scrolled
-    // to first; then the line's row is waited for, scrolled to the centre and highlighted, with `reason` shown on
-    // its own row beneath it. If the row never appears the view stays at the file's header. Returns whether the row
-    // ended centred.
+    // to first; then the line's row is waited for, highlighted, and scrolled to the centre together with `reason`,
+    // shown on its own row above it. If the row never appears the view stays at the file's header. Returns whether
+    // the row ended centred.
     async function jumpToLine(path, side, line, reason = "") {
       const mine = ++latestJump;
       cancelPendingJump?.();
