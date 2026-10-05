@@ -38,9 +38,17 @@ SAVE_CLASS_DEF = "classDef save fill:#fff4e5,stroke:#b26a00"
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 SKIM_COLORS = ("#eef0f2", "#afb8c1")  # fill, stroke; a muted grey, solid, so it differs from the dashed white context box
 SKIM_CLASS_DEF = f"classDef skim fill:{SKIM_COLORS[0]},stroke:{SKIM_COLORS[1]},color:#6e7781;"
+LEVEL_CLASS = "lv-"
+CHECK_CLASS = "chk-"
 ALSO_ID = "also"
 ALSO_SUBGRAPH = f'subgraph {ALSO_ID}["Also in this PR"]'
-LEVELS: list[str] = ["skim", "read", "read carefully"]
+LEVELS: list[str] = ["skim", "read", "verify"]
+# The level words that older variants ask the model for.
+LEGACY_LEVELS: dict[str, str] = {"read carefully": "verify"}
+CHECK_ORDER: list[str] = ["logic", "contract", "breaking", "data", "destructive", "access", "generated"]
+# The labels the model sets; the renderer sets the others (`breaking`, `destructive`, `generated`).
+MODEL_CHECKS: list[str] = ["logic", "contract", "data", "access"]
+MAX_MODEL_CHECKS = 3
 ROUTES_DIR: str = load_local().get("routes_dir", "")
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
 DEFAULT_TEST_GLOBS: list[str] = ["**/test/**", "**/tests/**", "**/*Test.*", "**/*Tests.*", "**/*.test.*", "**/*_test.*"]
@@ -239,6 +247,14 @@ def breaking_change_counts(rule: dict[str, Any], path: str, deletions: int, cont
     return deletions > 0
 
 
+def normalize_level(raw: Any) -> str | None:
+    """The review level a word names: one of LEVELS, with the words of older variants mapped to their level;
+    None for anything else."""
+    word: str = " ".join(str(raw or "").lower().split())
+    word = LEGACY_LEVELS.get(word, word)
+    return word if word in LEVELS else None
+
+
 def file_floor(floor_cfg: dict[str, Any], path: str, deletions: int,
                contract: dict[str, Any] | None = None) -> tuple[str, str] | None:
     """The highest (level, rule name) among the rules that match the file, or None."""
@@ -246,7 +262,10 @@ def file_floor(floor_cfg: dict[str, Any], path: str, deletions: int,
     for rule in floor_cfg.get("floor", []):
         if not matches(rule["globs"], path):
             continue
-        level: str = rule["level_if_deleted"] if breaking_change_counts(rule, path, deletions, contract) else rule["level"]
+        word: str = rule["level_if_deleted"] if breaking_change_counts(rule, path, deletions, contract) else rule["level"]
+        level: str | None = normalize_level(word)
+        if level is None:
+            raise AnswerError(f"review floor {rule['name']!r} has an unknown level {word!r}")
         if best is None or LEVELS.index(level) > LEVELS.index(best[0]):
             best = (level, rule["name"])
     return best
@@ -254,6 +273,69 @@ def file_floor(floor_cfg: dict[str, Any], path: str, deletions: int,
 
 def file_tags(floor_cfg: dict[str, Any], path: str) -> list[str]:
     return [tag["name"] for tag in floor_cfg.get("tag", []) if matches(tag["globs"], path)]
+
+
+# ---------------------------------------------------------------- check labels
+
+GENERATED_TAG = "generated"
+# Added migration lines that lose or narrow stored data. `ON DELETE` is a foreign key's delete rule, and dropping a
+# default or a NOT NULL only loosens a column.
+DESTRUCTIVE_SQL = re.compile(
+    r"\bDROP\b(?!\s+(?:NOT\s+NULL|DEFAULT)\b)|(?<!\bON\s)\bDELETE\b|\bTRUNCATE\b"
+    r"|\bALTER\s+(?:COLUMN\s+)?\S+\s+(?:SET\s+DATA\s+)?TYPE\b|\bSET\s+NOT\s+NULL\b", re.IGNORECASE)
+HTTP_OPERATION = re.compile(r"\b(?:GET|PUT|POST|DELETE|PATCH|HEAD|OPTIONS|TRACE)\s+(/\S*)")
+SCHEMA_NAME = re.compile(r"[A-Za-z_]\w*")
+
+
+def clean_checks(raw: Any, name: str, notes: list[str]) -> list[str]:
+    """The labels the model gave the chunk, in display order: only logic, contract, data and access, at most
+    MAX_MODEL_CHECKS of them."""
+    items: list[Any] = re.split(r"[,\s]+", raw) if isinstance(raw, str) else raw if isinstance(raw, list) else []
+    given: set[str] = set()
+    for item in items:
+        check: str = str(item).strip().strip("`'\"").lower()
+        if not check:
+            continue
+        if check in MODEL_CHECKS:
+            given.add(check)
+        else:
+            notes.append(f"chunk '{name}': unknown check {check!r}, dropped")
+    ordered: list[str] = [check for check in CHECK_ORDER if check in given]
+    if len(ordered) > MAX_MODEL_CHECKS:
+        notes.append(f"chunk '{name}': {len(ordered)} checks, kept the first {MAX_MODEL_CHECKS}")
+    return ordered[:MAX_MODEL_CHECKS]
+
+
+def is_destructive_sql(added_lines: list[str]) -> bool:
+    """Whether a migration's added lines drop, delete or truncate, or narrow a column (a type change or NOT NULL)."""
+    return any(DESTRUCTIVE_SQL.search(line.split("--", 1)[0]) for line in added_lines)
+
+
+def generated_share(floor_cfg: dict[str, Any], files: list[str]) -> str:
+    """"all" when every file carries the `generated` tag, "none" when no file does, else "mixed"."""
+    tagged: int = sum(GENERATED_TAG in file_tags(floor_cfg, path) for path in files)
+    return "all" if tagged == len(files) else "none" if tagged == 0 else "mixed"
+
+
+def breaking_probes(contract: dict[str, Any]) -> list[re.Pattern[str]]:
+    """One pattern per breaking change in contract.json that finds where hand-written code names it: the schema's
+    name as a word, or, for an operation, the last literal segment of its path between quotes or slashes."""
+    probes: list[re.Pattern[str]] = []
+    for item in [*(contract.get("removals") or []), *(contract.get("newly_required") or [])]:
+        operation: re.Match[str] | None = HTTP_OPERATION.search(item)
+        if operation:
+            literal: list[str] = [part for part in operation.group(1).split("/") if part and not part.startswith("{")]
+            if literal:
+                probes.append(re.compile(r'(?<=["/])' + re.escape(literal[-1]) + r'(?=["/{])'))
+            continue
+        schema: re.Match[str] | None = SCHEMA_NAME.match(item)
+        if schema:
+            probes.append(re.compile(rf"\b{re.escape(schema.group(0))}\b"))
+    return probes
+
+
+def has_breaking_change(contract: dict[str, Any] | None) -> bool:
+    return bool(contract and (contract.get("removals") or contract.get("newly_required")))
 
 
 # ---------------------------------------------------------------- directory labels
@@ -422,6 +504,8 @@ class Chunk:
     start: dict[str, Any] | None = None
     step: str | None = None
     following: list[int] = field(default_factory=list)
+    checks: list[str] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
 
 
 def clean_path(raw: Any) -> str:
@@ -445,7 +529,8 @@ def order_files(files: list[str], start: dict[str, Any] | None) -> list[str]:
 
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
                  notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None,
-                 flow_order: bool = False, file_start: bool = False) -> list[Chunk]:
+                 flow_order: bool = False, file_start: bool = False, review_labels: bool = False,
+                 migration_added: dict[str, list[str]] | None = None) -> list[Chunk]:
     chunks: list[Chunk] = []
     seen: set[str] = set()
     for item in raw_chunks if isinstance(raw_chunks, list) else []:
@@ -463,22 +548,29 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
         if not files:
             notes.append(f"chunk '{name}': dropped, it has no files")
             continue
-        review: str = str(item.get("review", "")).strip().lower()
-        if review not in LEVELS:
-            notes.append(f"chunk '{name}': unknown review level {review!r}, using 'read'")
+        review: str | None = normalize_level(item.get("review"))
+        if review is None:
+            notes.append(f"chunk '{name}': unknown review level {str(item.get('review', '')).strip().lower()!r}, using 'read'")
             review = "read"
         step: str | None = clean_step(item.get("step"), name, notes)
         if flow_order and step is None and "step" not in item:
             notes.append(f"chunk '{name}': no step")
         start: dict[str, Any] | None = resolve_start(item.get("start"), name, files, diff_lines, notes, file_start)
-        chunks.append(Chunk(name, review, str(item.get("why", "")).strip(), order_files(files, start),
-                            clean_nodes(item.get("nodes")), start=start, step=step))
+        chunk: Chunk = Chunk(name, review, str(item.get("why", "")).strip(), order_files(files, start),
+                             clean_nodes(item.get("nodes")), start=start, step=step)
+        if review_labels:
+            chunk.checks = clean_checks(item.get("checks"), name, notes)
+        chunks.append(chunk)
     missing: list[str] = [p for p in paths if p not in seen]
     if missing:
         notes.append("files the model left out of every chunk: " + ", ".join(missing))
-        chunks.append(Chunk(UNCHUNKED, "read", "Not assigned to a chunk by the model", order_files(missing, None)))
-    for chunk in chunks:
-        apply_floor(chunk, counts, floor_cfg, contract)
+        chunks.append(Chunk(UNCHUNKED, "skim" if review_labels else "read", "Not assigned to a chunk by the model",
+                            order_files(missing, None)))
+    raising: dict[int, list[tuple[str, str]]] = {}
+    if review_labels:
+        raising = apply_labels(chunks, floor_cfg, diff_lines, contract, migration_added or {}, notes)
+    for index, chunk in enumerate(chunks):
+        apply_floor(chunk, counts, floor_cfg, contract, raising.get(index, []))
     if flow_order:
         # The model's order is the flow of the change; the floors raise a level but do not move a chunk.
         chunks.sort(key=lambda chunk: chunk.name == UNCHUNKED)
@@ -649,6 +741,29 @@ def style_skim(diagram: str, chunks: list[Chunk], notes: list[str]) -> str:
     return "\n".join(lines)
 
 
+def style_levels(diagram: str, chunks: list[Chunk], notes: list[str]) -> str:
+    """Give every box a chunk owns a class for its review level (`lv-<level>`, the highest level among its chunks)
+    and one class per label (`chk-<label>`, in the labels' display order), before the closing fence. A box that no
+    chunk owns gets none."""
+    lines: list[str] = diagram.split("\n")
+    positions: dict[str, int] = declaration_positions(lines)
+    keep_diagram_nodes(chunks, positions, notes)
+    by_level: dict[str, list[str]] = {level: [] for level in reversed(LEVELS)}
+    by_label: dict[str, list[str]] = {label: [] for label in CHECK_ORDER}
+    for node in positions:
+        owners: list[Chunk] = [chunk for chunk in chunks if node in chunk.nodes]
+        if not owners:
+            continue
+        by_level[max((chunk.review for chunk in owners), key=LEVELS.index)].append(node)
+        for label in CHECK_ORDER:
+            if any(label in chunk.labels for chunk in owners):
+                by_label[label].append(node)
+    statements: list[str] = [f"  class {','.join(nodes)} {LEVEL_CLASS}{level}" for level, nodes in by_level.items() if nodes]
+    statements += [f"  class {','.join(nodes)} {CHECK_CLASS}{label}" for label, nodes in by_label.items() if nodes]
+    lines[len(lines) - 1:len(lines) - 1] = statements
+    return "\n".join(lines)
+
+
 def clean_node_files(raw: Any, position: dict[str, int], paths: list[str], notes: list[str]) -> dict[str, list[str]]:
     """Node id -> the changed files that box covers, for every node on the diagram in declaration order.
     A node the model left out, or whose files were all dropped, gets an empty list: unchanged context."""
@@ -748,9 +863,18 @@ def save_colors(diagram: str) -> tuple[str, str]:
     return props.get("fill", default["fill"]).strip(), props.get("stroke", default["stroke"]).strip()
 
 
-def swatch(fill: str, stroke: str, dashed: bool = False) -> str:
+# Box borders by review level, as the diagram's theme draws them: (stroke, width in px, dashed, fill).
+LEVEL_LOOKS: dict[str, tuple[str, int, bool, str]] = {
+    "verify": ("#1f2328", 2, False, "#fff"),
+    "read": ("#1f2328", 1, False, "#fff"),
+    "skim": ("#8c959f", 1, True, "#f6f8fa"),
+}
+LEVEL_CLASS_LINE = re.compile(rf"^\s*class\s+(?P<ids>[\w,\s-]+?)\s+{LEVEL_CLASS}(?P<level>\w+)\s*$", re.MULTILINE)
+
+
+def swatch(fill: str, stroke: str, dashed: bool = False, width: float = 1.5) -> str:
     style: str = (f"display:inline-block;width:14px;height:9px;vertical-align:middle;border-radius:2px;"
-                  f"background:{fill};border:1.5px {'dashed' if dashed else 'solid'} {stroke}")
+                  f"background:{fill};border:{width}px {'dashed' if dashed else 'solid'} {stroke}")
     return f'<span style="{style}"></span>'
 
 
@@ -767,9 +891,18 @@ def diagram_legend(diagram: str, context_nodes: list[str]) -> str:
     for found in SKIM_CLASS_LINE.finditer(diagram):
         skim.update(re.split(r"[,\s]+", found.group("ids").strip()))
     skim &= nodes
+    leveled: dict[str, set[str]] = {level: set() for level in reversed(LEVELS)}
+    for found in LEVEL_CLASS_LINE.finditer(diagram):
+        if found.group("level") in leveled:
+            leveled[found.group("level")].update(re.split(r"[,\s]+", found.group("ids").strip()))
     fill, stroke = DEFAULT_BOX
     entries: list[str] = []
-    if nodes - saved - context - skim:
+    if any(leveled.values()):
+        for level, members in leveled.items():
+            if members & nodes:
+                border, width, dashed, level_fill = LEVEL_LOOKS[level]
+                entries.append(f"{swatch(level_fill, border, dashed, width)} {level}")
+    elif nodes - saved - context - skim:
         entries.append(f"{swatch(fill, stroke)} changed step")
     if saved:
         entries.append(f"{swatch(*save_colors(diagram))} writes data")
@@ -794,8 +927,10 @@ def format_boxes(boxes: list[int]) -> str:
 
 
 def apply_floor(chunk: Chunk, counts: dict[str, tuple[int, int]], floor_cfg: dict[str, Any],
-                contract: dict[str, Any] | None = None) -> None:
-    floors: list[tuple[str, str]] = []
+                contract: dict[str, Any] | None = None, extra: list[tuple[str, str]] | None = None) -> None:
+    """Raise the chunk's level to the highest floor of its files and of `extra` (level, reason) pairs, and record
+    in `raised_by` the names behind the new level."""
+    floors: list[tuple[str, str]] = list(extra or [])
     for path in chunk.files:
         found: tuple[str, str] | None = file_floor(floor_cfg, path, counts[path.lower()][1], contract)
         if found:
@@ -804,6 +939,85 @@ def apply_floor(chunk: Chunk, counts: dict[str, tuple[int, int]], floor_cfg: dic
     if top > LEVELS.index(chunk.review):
         chunk.raised_by = list(dict.fromkeys(name for level, name in floors if LEVELS.index(level) == top))
         chunk.review = LEVELS[top]
+
+
+def derive_labels(checks: list[str], breaking: bool, destructive: bool, generated: bool) -> list[str]:
+    """A chunk's labels in display order: the model's checks, `breaking` in place of `contract` and `destructive` in
+    place of `data`, then `generated`."""
+    present: set[str] = set(checks)
+    if breaking:
+        present.discard("contract")
+        present.add("breaking")
+    if destructive:
+        present.discard("data")
+        present.add("destructive")
+    if generated:
+        present.add(GENERATED_TAG)
+    return [label for label in CHECK_ORDER if label in present]
+
+
+def breaking_owners(chunks: list[Chunk], floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
+                    contract: dict[str, Any] | None, notes: list[str]) -> set[int]:
+    """Indexes of the chunks that own the PR's breaking API change, from the run's contract.json.
+
+    The change is listed against the spec file, which is generated, so it is placed on the hand-written chunk that
+    makes it. Chunks that hold only generated files never get it. A breaking change that hand-written code names (a
+    schema's name in a file name or a diff line, an operation's last path segment in a diff line, test files left
+    out) goes to the chunks that code is in, preferring those the model labelled `contract`. When no code names any,
+    it goes to the one chunk the model labelled `contract`; with several, to the chunk holding the spec file; with
+    none, to that chunk too if nothing else is left."""
+    if not has_breaking_change(contract):
+        return set()
+    spec: str = contract["path"]
+    candidates: list[int] = [i for i, chunk in enumerate(chunks) if generated_share(floor_cfg, chunk.files) != "all"]
+    tagged: set[int] = {i for i in candidates if "contract" in chunks[i].checks}
+
+    def code_of(index: int) -> list[str]:
+        paths: list[str] = [p for p in chunks[index].files
+                            if p != spec and GENERATED_TAG not in file_tags(floor_cfg, p) and not is_test_path(p)]
+        return [Path(p).stem for p in paths] + [text for p in paths for _, _, text in diff_lines.get(p, [])]
+
+    code: dict[int, list[str]] = {i: code_of(i) for i in candidates}
+    owners: set[int] = set()
+    for probe in breaking_probes(contract):
+        hits: list[int] = [i for i in candidates if any(probe.search(text) for text in code[i])]
+        owners.update([i for i in hits if i in tagged] or hits)
+    if owners:
+        return owners
+    spec_chunk: int | None = next((i for i, chunk in enumerate(chunks) if spec in chunk.files), None)
+    if len(tagged) == 1:
+        owners = set(tagged)
+    elif spec_chunk is not None and spec_chunk in candidates:
+        owners = {spec_chunk}
+    elif tagged:
+        owners = {min(tagged)}
+    elif spec_chunk is not None:
+        owners = {spec_chunk}
+    if owners:
+        notes.append("breaking change: no hand-written file names it, placed on chunk "
+                     + ", ".join(f"'{chunks[i].name}'" for i in sorted(owners)))
+    return owners
+
+
+def apply_labels(chunks: list[Chunk], floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
+                 contract: dict[str, Any] | None, migration_added: dict[str, list[str]],
+                 notes: list[str]) -> dict[int, list[tuple[str, str]]]:
+    """Set every chunk's `labels` and return, by chunk index, the (level, reason) pairs that raise a chunk to `verify`:
+    a breaking API change or a destructive migration. `migration_added` holds the added lines of each migration file."""
+    breaking: set[int] = breaking_owners(chunks, floor_cfg, diff_lines, contract, notes)
+    raising: dict[int, list[tuple[str, str]]] = {}
+    for index, chunk in enumerate(chunks):
+        destructive: bool = any(is_destructive_sql(migration_added.get(path, [])) for path in chunk.files)
+        share: str = generated_share(floor_cfg, chunk.files)
+        if share == "mixed":
+            notes.append(f"chunk '{chunk.name}': mixes generated and hand-written files")
+        chunk.labels = derive_labels(chunk.checks, index in breaking, destructive, share == "all")
+        reasons: list[tuple[str, str]] = [("verify", reason) for reason, applies in
+                                          (("breaking change", index in breaking), ("destructive migration", destructive))
+                                          if applies]
+        if reasons:
+            raising[index] = reasons
+    return raising
 
 
 def inline(text: str) -> str:
@@ -849,7 +1063,9 @@ def chunks_walkthrough(chunks: list[Chunk], counts: dict[str, tuple[int, int]], 
                 '<th align="left">Chunk</th><th align="left">Review</th>'
                 f'<th align="left"{boxes_width("27%")}>Why</th><th align="left">Files</th></tr></thead><tbody>')
     for chunk in chunks:
-        review: str = f"<strong>{chunk.review}</strong>" if chunk.review == "read carefully" else chunk.review
+        review: str = f"<strong>{chunk.review}</strong>" if chunk.review == "verify" else chunk.review
+        if chunk.labels:
+            review += f"<br><sub>{html.escape(' · '.join(chunk.labels))}</sub>"
         if chunk.raised_by:
             review += f"<br><sub>raised by {html.escape(', '.join(chunk.raised_by))}</sub>"
         rows: str = ""
@@ -917,8 +1133,11 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         raise AnswerError(f"unknown render chunk_order {cfg['chunk_order']!r}, expected 'risk' or 'flow'")
     chunks: list[Chunk] = []
     if cfg.get("files") == "chunks":
+        migration_added: dict[str, list[str]] = {
+            f["path"]: [line.text for line in file_diff_lines(diff_text, f["path"]) if line.kind == "+"]
+            for f in pr["files"] if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"}
         chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, flow_order,
-                              bool(cfg.get("file_start")))
+                              bool(cfg.get("file_start")), bool(cfg.get("review_labels")), migration_added)
     diagram: str = render_diagram(data.get("changes_diagram"), cfg)
     numbering: str = cfg.get("numbering", "chunks")
     if numbering not in ("chunks", "boxes", "flow"):
@@ -931,7 +1150,9 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         note_box_sharing(diagram, chunks, notes)
     if diagram and chunks and cfg.get("chunk_box_fallback"):
         diagram = add_chunk_boxes(diagram, chunks, node_files, counts, notes)
-    if diagram:
+    if diagram and cfg.get("review_labels"):
+        diagram = style_levels(diagram, chunks, notes)
+    elif diagram:
         diagram = style_skim(diagram, chunks, notes)
     if diagram and numbering == "boxes":
         diagram = number_boxes(diagram, chunks, notes)
@@ -987,7 +1208,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
 # ---------------------------------------------------------------- review.json
 
 def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], has_diagram: bool,
-                nodes: list[dict[str, Any]] | None) -> dict[str, Any]:
+                nodes: list[dict[str, Any]] | None, review_labels: bool = False) -> dict[str, Any]:
     """The chunks in review order, for the browser extension that groups the Files changed page by chunk."""
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     return {
@@ -1000,6 +1221,7 @@ def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], ha
         **({"nodes": nodes} if nodes is not None else {}),
         "chunks": [{"n": c.number, "name": c.name, "review": c.review, "raised_by": c.raised_by, "why": c.why,
                     "nodes": c.nodes,
+                    **({"labels": c.labels} if review_labels else {}),
                     "files": [{"path": path, "additions": counts[path.lower()][0], "deletions": counts[path.lower()][1]}
                               for path in c.files],
                     "next": c.following,
@@ -1025,6 +1247,19 @@ const DIAGRAM_CONFIG = {
     .node.save rect.label-container { fill: #fff4e5; stroke: #b26a00; }
     .node.context rect.label-container { fill: none; stroke: #b4b2a9; stroke-dasharray: 4 4; }
     .node.skim rect.label-container { fill: #eef0f2; stroke: #afb8c1; }
+    .node.lv-verify rect.label-container { stroke: #1f2328; stroke-width: 2px; stroke-dasharray: none; }
+    .node.lv-read rect.label-container { stroke: #1f2328; stroke-width: 1px; stroke-dasharray: none; }
+    .node.lv-skim rect.label-container { fill: #f6f8fa; stroke: #8c959f; stroke-width: 1px; stroke-dasharray: 4 3; }
+    .node.lv-skim .nodeLabel, .node.lv-skim .label div { color: #6e7781; }
+    .node.lv-skim .nodeLabel .t { font-weight: 600; }
+    .node.lv-skim .nodeLabel .eh .n, .node.lv-skim .nodeLabel .s { color: #8c959f; }
+    .nodeLabel .eh { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; text-align: left; }
+    .nodeLabel .es { display: block; margin-top: 2px; text-align: left; }
+    .nodeLabel .ec { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .node .nodeLabel .lv { flex: none; font-size: 11px; font-weight: 400; color: #57606a; }
+    .node .nodeLabel .eh .n { color: #57606a; }
+    .node .nodeLabel .chip { display: inline-block; padding: 0 8px; font-size: 12px; line-height: 16px; font-weight: 400; color: #57606a; border: 1px solid #8c959f; border-radius: 9px; }
+    .node .nodeLabel .chip-breaking, .node .nodeLabel .chip-destructive { color: #fff; background: #1f2328; border-color: #1f2328; font-weight: 600; }
     .node .nodeLabel, .node .label div { color: #26215c; text-align: center; }
     .node .nodeLabel p { margin: 0; }
     .nodeLabel .n { color: #9370db; }
@@ -1047,12 +1282,29 @@ const DIAGRAM_CONFIG = {
   `,
 };
 
-// The leading box number, the title and the second line of a node label each get a class the theme styles.
+// The leading box number, the title and the second line of a node label each get a class the theme styles. A box
+// with a `lv-<level>` class statement is laid out as a header (number and title left, level word right), the second
+// line, and a row of chips, one per `chk-<label>` class statement, in the order the statements are written.
 // Node declarations only: subgraph titles and edge labels stay as written. The save, context and skim classDefs are
 // dropped because the theme styles those classes.
+function boxTraits(text) {
+  const traits = new Map();
+  for (const line of text.split('\n')) {
+    const found = /^\s*class\s+([\w,\s-]+?)\s+(lv|chk)-(\w+)\s*;?\s*$/.exec(line);
+    if (!found) continue;
+    for (const id of found[1].split(/[,\s]+/).filter(Boolean)) {
+      const entry = traits.get(id) ?? { level: null, checks: [] };
+      if (found[2] === 'lv') entry.level = found[3]; else entry.checks.push(found[3]);
+      traits.set(id, entry);
+    }
+  }
+  return traits;
+}
+
 function styleDiagramText(text) {
   const skip = /^\s*(%%|classDef\b|class\b|style\b|linkStyle\b|subgraph\b|click\b|direction\b)/;
   const themed = /^\s*classDef\s+(save|context|skim)\b/;
+  const traits = boxTraits(text);
   return text.split('\n').filter((line) => !themed.test(line)).map((line) => skip.test(line) ? line : line.replace(
     /(^|[^\w-])([A-Za-z0-9_][\w-]*)\["([^"]*)"\]/g,
     (match, before, id, label) => {
@@ -1060,6 +1312,15 @@ function styleDiagramText(text) {
       const number = /^(\d+)\s*·\s*/.exec(first);
       const title = number ? first.slice(number[0].length) : first;
       const lead = number ? "<span class='n'>" + number[1] + " ·</span> " : '';
+      const box = traits.get(id);
+      if (box?.level) {
+        const second = rest.length ? "<span class='es s'>" + rest.join('<br/>') + '</span>' : '';
+        const chips = box.checks.length
+          ? "<span class='ec'>" + box.checks.map((check) => "<span class='chip chip-" + check + "'>" + check + '</span>').join('') + '</span>'
+          : '';
+        return before + id + '["' + "<span class='eh'><span>" + lead + "<span class='t'>" + title + "</span></span><span class='lv'>" + box.level +
+          '</span></span>' + second + chips + '"]';
+      }
       const second = rest.length ? "<br/><span class='s'>" + rest.join('<br/>') + '</span>' : '';
       return before + id + '["' + lead + "<span class='t'>" + title + '</span>' + second + '"]';
     })).join('\n');
@@ -1087,7 +1348,10 @@ function restyleLegend(root) {
     [/^changed/, 'none', '#9370db', 'solid'],
     [/^writes/, '#fff4e5', '#b26a00', 'solid'],
     [/^unchanged/, 'none', '#b4b2a9', 'dashed'],
-    [/^skim/, '#eef0f2', '#afb8c1', 'solid'],
+    [/^skim, off/, '#eef0f2', '#afb8c1', 'solid'],
+    [/^verify/, '#fff', '#1f2328', 'solid', 2],
+    [/^read/, '#fff', '#1f2328', 'solid', 1],
+    [/^skim/, '#f6f8fa', '#8c959f', 'dashed', 1],
   ];
   for (const paragraph of root.querySelectorAll('p')) {
     if (!paragraph.textContent.startsWith('Legend:')) continue;
@@ -1096,7 +1360,7 @@ function restyleLegend(root) {
       const look = looks.find(([pattern]) => pattern.test(word));
       if (!look) continue;
       swatch.style.cssText = 'display:inline-block;width:14px;height:9px;vertical-align:middle;border-radius:7px;' +
-        'background:' + look[1] + ';border:1px ' + look[3] + ' ' + look[2];
+        'background:' + look[1] + ';border:' + (look[4] ?? 1) + 'px ' + look[3] + ' ' + look[2];
     }
   }
 }
@@ -1254,7 +1518,7 @@ def main() -> int:
     (run_dir / "body.html").write_text(markdown_page(md))
     has_diagram: bool = write_diagram_svg(md, run_dir, notes)
     if cfg.get("files") == "chunks":
-        (run_dir / "review.json").write_text(json.dumps(review_json(run, pr, chunks, has_diagram, nodes), indent=2) + "\n")
+        (run_dir / "review.json").write_text(json.dumps(review_json(run, pr, chunks, has_diagram, nodes, bool(cfg.get("review_labels"))), indent=2) + "\n")
     if notes:
         (run_dir / "error.txt").write_text("Rendered with these fixes:\n" + "\n".join(f"- {n}" for n in notes) + "\n")
     return 0

@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from context_pack import contract_breaks, contract_lines  # noqa: E402
 from render import build_chunks, file_floor  # noqa: E402
 
-FLOORS = {"floor": [{"name": "schema file", "level": "read carefully", "globs": ["**/schema.json"]}]}
+FLOORS = {"floor": [{"name": "schema file", "level": "verify", "globs": ["**/schema.json"]}]}
 PATHS = ["src/a.js", "src/b.js", "src/c.js", "src/d.js", "api/schema.json"]
 COUNTS = {path.lower(): (1, 0) for path in PATHS}
 
@@ -27,7 +27,7 @@ class ChunkOrder(unittest.TestCase):
         chunks = build([raw("A", "read", "src/a.js"), raw("B", "skim", "src/b.js"), raw("C", "read", "api/schema.json")],
                        ["src/a.js", "src/b.js", "api/schema.json"])
         self.assertEqual([(c.name, c.review) for c in chunks],
-                         [("C", "read carefully"), ("A", "read"), ("B", "skim")])
+                         [("C", "verify"), ("A", "read"), ("B", "skim")])
         self.assertEqual(chunks[0].raised_by, ["schema file"])
 
     def test_the_models_order_holds_within_a_level(self) -> None:
@@ -46,7 +46,7 @@ class ChunkOrder(unittest.TestCase):
 
 
 SPEC = "api/openapi.json"
-RULE = {"name": "OpenAPI spec", "level": "read", "level_if_deleted": "read carefully", "globs": [SPEC]}
+RULE = {"name": "OpenAPI spec", "level": "read", "level_if_deleted": "verify", "globs": [SPEC]}
 
 
 class ContractFloor(unittest.TestCase):
@@ -60,20 +60,20 @@ class ContractFloor(unittest.TestCase):
 
     def test_a_spec_with_a_listed_removal_is_raised(self) -> None:
         contract = {"path": SPEC, "removals": ["removed operation GET /widgets"]}
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read carefully")
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "verify")
 
     def test_a_rule_without_the_key_counts_deleted_lines_as_before(self) -> None:
         contract = {"path": SPEC, "removals": []}
-        self.assertEqual(self.level(RULE, contract), "read carefully")
+        self.assertEqual(self.level(RULE, contract), "verify")
         self.assertEqual(self.level(RULE, contract, deletions=0), "read")
 
     def test_a_run_with_no_contract_json_counts_deleted_lines_as_before(self) -> None:
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None), "read carefully")
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None), "verify")
         self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None, deletions=0), "read")
 
     def test_a_newly_required_field_raises_the_spec(self) -> None:
         contract = {"path": SPEC, "removals": [], "newly_required": ["Widget.size (now required)"]}
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read carefully")
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "verify")
 
     def test_a_removal_listed_for_another_file_does_not_raise_this_one(self) -> None:
         contract = {"path": "other/openapi.json", "removals": ["removed operation GET /widgets"]}

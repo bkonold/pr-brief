@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from render import build_body, build_chunks, clean_step  # noqa: E402
 
-FLOORS = {"floor": [{"name": "schema file", "level": "read carefully", "globs": ["db/*.sql"]}]}
+FLOORS = {"floor": [{"name": "schema file", "level": "verify", "globs": ["db/*.sql"]}]}
 PATHS = ["src/ui.js", "src/api.js", "db/V1__t.sql"]
 COUNTS = {path.lower(): (1, 0) for path in PATHS}
 
@@ -26,7 +26,7 @@ class FlowOrder(unittest.TestCase):
     def test_flow_order_keeps_the_models_order_even_after_a_floor_raises_a_chunk(self) -> None:
         chunks = build_chunks(FLOW, COUNTS, PATHS, FLOORS, [], {}, flow_order=True)
         self.assertEqual([(c.number, c.name, c.review) for c in chunks],
-                         [(1, "Screen", "skim"), (2, "Endpoint", "read"), (3, "Table", "read carefully")])
+                         [(1, "Screen", "skim"), (2, "Endpoint", "read"), (3, "Table", "verify")])
 
     def test_risk_order_still_sorts_by_level(self) -> None:
         chunks = build_chunks(FLOW, COUNTS, PATHS, FLOORS, [], {})
