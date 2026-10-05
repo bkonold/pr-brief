@@ -368,6 +368,9 @@ def clean_nodes(raw: Any) -> list[str]:
     return list(dict.fromkeys(n for n in (str(item).strip().strip("`'\"") for item in items) if n))
 
 
+UNCHUNKED = "Unchunked"
+
+
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
                  notes: list[str], diff_lines: dict[str, list[DiffLine]]) -> list[Chunk]:
     chunks: list[Chunk] = []
@@ -396,10 +399,13 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
     missing: list[str] = [p for p in paths if p not in seen]
     if missing:
         notes.append("files the model left out of every chunk: " + ", ".join(missing))
-        chunks.append(Chunk("Unchunked", "read", "Not assigned to a chunk by the model", missing))
+        chunks.append(Chunk(UNCHUNKED, "read", "Not assigned to a chunk by the model", missing))
+    for chunk in chunks:
+        apply_floor(chunk, counts, floor_cfg)
+    # Highest level first, ties in the model's order, and the catch-all chunk last, as the extension's list has it.
+    chunks.sort(key=lambda chunk: (chunk.name == UNCHUNKED, -LEVELS.index(chunk.review)))
     for number, chunk in enumerate(chunks, 1):
         chunk.number = number
-        apply_floor(chunk, counts, floor_cfg)
     return chunks
 
 
