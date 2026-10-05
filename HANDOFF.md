@@ -73,7 +73,7 @@ arrowheads. The kind of change decides which diagrams appear, not how they look.
 
 What it does (see `extension/README.md`):
 
-- A "By review" chunk list, ordered read carefully, read, skim, replaces GitHub's file tree, one line per chunk;
+- A "By review" chunk list, ordered verify, read, skim, replaces GitHub's file tree, one line per chunk;
   the open chunk lists its files by basename.
 - A diagram panel is the leftmost pane, before the chunk list. It collapses, resizes, highlights the selected
   chunk's boxes, and has a legend and motion.

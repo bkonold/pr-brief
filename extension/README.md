@@ -10,9 +10,13 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 - A toggle, "By review" / "GitHub tree", and an "Expand all" / "Collapse all" button. "GitHub tree" brings
   GitHub's own tree back and shows every diff; the toggle stays so you can switch again.
-- One line per chunk: its number, its name and, at the right, its review level as a word (`careful` for "read carefully", in the
-  warning text colour; `read` and `skim` muted). Only the open chunk lists its files; the others stay one line.
-  Groups are ordered by review level ("read carefully", "read", "skim"), then "Unchunked"; skim-level chunks and "Unchunked" are muted.
+- One line per chunk: its number in bold and its name on the left and, right-aligned, its effort level as a word
+  (`verify` in bold default text; `read` and `skim` in the secondary colour). A run from an older variant that says
+  "read carefully" shows `verify`. Under the name, a row of check chips from the chunk's `labels` (`logic`, `contract`,
+  `breaking`, `data`, `destructive`, `access`, `generated`): outlined 12px pills in the secondary colour, except
+  `breaking` and `destructive`, which are filled in the text colour with the background colour as their text. No chip
+  or level uses red, green or amber, which read as diff changes. Only the open chunk lists its files; the others stay
+  one line plus chips. Groups are ordered by effort level (`verify`, `read`, `skim`), then "Unchunked"; skim-level chunks and "Unchunked" are muted.
   When the run's chunks carry a `step` (v16), the order is the flow of the change as `review.json` lists it, and a quiet
   "Order: by flow | by risk" switch under the toggle reorders the list. The
   switch changes only the order: numbers, selection, start jumps and the diagram highlight are by chunk, so they work in
@@ -112,7 +116,10 @@ that expands it.
   styles, so no glow is needed. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
   the viewport, 280px by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
-- A legend under the card lists only the styles the SVG uses (changed step,
+- In a v21 diagram each box shows `<n> · title` in bold at its top left, its effort level as a small secondary word at its
+  top right and its chips along the bottom (the same pills as the chunk list), and its border follows the level: `verify`
+  2px in the text colour, `read` 1px, `skim` dashed and muted. The selected box keeps the purple outline.
+- A legend under the card lists only the styles the SVG uses (changed step, verify, read, skim,
   writes data, unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected
   chunk" (the emphasis outline) and, when the diagram has lanes, a note that columns are code layers.
 - Selecting a chunk (header click, box click or the jump button) highlights its `nodes` and the edges between two of them, and
