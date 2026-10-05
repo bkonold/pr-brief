@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from contract_lines import Line, Member, rank_of
+from contract_lines import Line, Member, plural, rank_of
 
 DEFAULT_TAG_TEMPLATES: list[str] = ["{pascal}"]
 CONTRACT_COLUMNS: tuple[str, ...] = ("Impact", "Side", "Change", "On", "↗")
@@ -31,11 +31,6 @@ DATA_COLUMNS: tuple[str, ...] = ("Impact", "Change", "Table", "↗")
 # element's title. An endpoint (`GET /path`) is never cut: it wraps in its cell.
 NAME_LIMIT = 40
 SIDE_ORDER: tuple[str, ...] = ("request", "response", "both")
-GLANCE_WORDS: dict[str, tuple[str, str]] = {
-    "callers must change": ("caller must change", "callers must change"),
-    "consumers may break": ("consumer may break", "consumers may break"),
-    "rewrites rows": ("rewrites rows", "rewrite rows"),
-}
 
 
 @dataclass
@@ -172,18 +167,11 @@ def cell(text: str) -> str:
 
 
 def glance(lines: list[Line], levels: tuple[str, ...]) -> str:
-    """The count at each level as chips, worst first, zeros left out, and the lines with no level counted as `other`:
-    `2 callers must change` `1 additive`."""
-    counts: Counter[str | None] = Counter(line.impact if line.impact in levels else None for line in lines)
-    parts: list[str] = []
-    for level in levels:
-        if counts[level]:
-            singular, many = GLANCE_WORDS.get(level, (level, level))
-            rank: int = min(levels.index(level), 2)
-            label: str = f"{counts[level]} {singular if counts[level] == 1 else many}"
-            parts.append(f'<span class="pill p{rank}">{"<strong>" + label + "</strong>" if rank == 0 else label}</span>')
-    if counts[None]:
-        parts.append(f'<span class="pill">{counts[None]} other</span>')
+    """A chip for each level that a line has, worst first, then one for the lines with no level (`other`)."""
+    present: set[str | None] = {line.impact if line.impact in levels else None for line in lines}
+    parts: list[str] = [pill(level, levels) for level in levels if level in present]
+    if None in present:
+        parts.append('<span class="pill">other</span>')
     return " ".join(parts)
 
 
@@ -214,8 +202,10 @@ def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callab
 
 
 def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str]) -> str:
-    """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` with `heading` and the glance chips
-    in its summary and one table of every line in it, sorted by `sort_key` (lines of equal key keep their order)."""
+    """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` whose summary holds `heading`, the glance
+    chips and the number of lines in muted text, and one table of every line in it, sorted by `sort_key` (lines of equal
+    key keep their order)."""
     ordered: list[Line] = sorted(lines, key=lambda line: sort_key(kind, line, levels))
-    return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong> {glance(lines, levels)}</summary>\n\n'
+    return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong> {glance(lines, levels)} '
+            f'<span class="muted">{plural(len(lines), "change")}</span></summary>\n\n'
             f'<div class="table-wrap">\n\n{table(kind, levels, ordered, link_of)}\n\n</div>\n\n</details>')

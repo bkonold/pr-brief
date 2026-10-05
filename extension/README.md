@@ -199,7 +199,8 @@ the page's data, and its header links to the files view. Without a run it is the
 - A "Contract and data" section, when the run has one (v16), is a list of API operations and tables with badges; each
   line and badge is a link to the diff line it names, rewritten to this host's files view like the other links.
 - A v22 run has two sections instead, "Contract" and "Data". Each is a closed block like the Diagram's, its summary the
-  section's name in bold and the impact chips, so the counts stay visible while it is collapsed. Opened it is one table of
+  section's name in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible
+  while it is collapsed. Opened it is one table of
   every line (Contract: Impact, Side, Change, On, ↗; Data: Impact, Change, Table, ↗), with no grouping by chunk. The
   body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its own container, and a name cut in the
   middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's files view like the others. The chips

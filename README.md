@@ -195,8 +195,8 @@ sha256 of the variant file that produced each run.
   in an inline `allOf` member; v22 words them `added (required)`, and the others `now required`).
 - `contract_layout = "by_chunk"` (v22; needs `contract_block` and `files = "chunks"`) replaces the single block with two
   sections, **Contract** and **Data**. Each is one closed `<details>` (class `section`) whose summary holds the section's
-  name in bold and the count at each level as chips, worst first, zeros left out (`2 callers must change`
-  `1 consumer may break` `2 additive`), so the counts show while it is collapsed. Opened, it holds one GitHub markdown
+  name in bold, one chip for each level present, worst first (`callers must change` `additive`; no counts), and the number
+  of table rows as muted text (`3 changes`, `1 change`), so they show while it is collapsed. Opened, it holds one GitHub markdown
   table with a row per line, wherever the line was placed. The brief does not mention chunks. Contract rows are sorted
   by worst level, then request before response before both (then no side), then On alphabetically; Data rows by worst
   level, then table, then the document's order; rows with equal keys keep the document's order. With no lines a section

@@ -1542,6 +1542,7 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
  .pill.p1 { border-color: #1f2328; font-weight: 600; }
  details > summary .pill { margin: 0 4px; }
+ .muted { color: #59636e; font-size: 12px; }
  .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
  .table-wrap table { display: table; margin: 0; }
  .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }

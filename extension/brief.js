@@ -104,6 +104,7 @@
     .text details > ul { margin: 4px 0 8px; padding-left: 20px; }
     .text details li { margin-bottom: 4px; }
     .text details.section > summary { font-weight: 600; }
+    .muted { font-size: 12px; font-weight: 400; color: var(--muted); }
     .text .table-wrap { margin: 4px 0 8px; overflow-x: auto; }
     .text .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .text .table-wrap th, .text .table-wrap td { padding: 3px 12px 3px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }

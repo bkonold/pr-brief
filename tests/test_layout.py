@@ -91,19 +91,19 @@ def cells(row: str) -> list[str]:
 
 
 class Drawing(unittest.TestCase):
-    def test_the_glance_line_counts_levels_worst_first_and_omits_zeros(self) -> None:
+    def test_the_glance_line_has_a_chip_per_level_present_worst_first_with_no_counts(self) -> None:
         lines = [line("a", CALLERS), line("b", CALLERS), line("c", CONSUMERS), line("d", ADDITIVE), line("e", ADDITIVE), line("f", DEPRECATED)]
-        self.assertEqual(pills(glance(lines, CONTRACT_LEVELS)),
-                         ["2 callers must change", "1 consumer may break", "2 additive", "1 deprecated"])
-        self.assertEqual(pills(glance([line("a", ADDITIVE)], CONTRACT_LEVELS)), ["1 additive"])
+        self.assertEqual(pills(glance(lines, CONTRACT_LEVELS)), ["callers must change", "consumers may break", "additive", "deprecated"])
+        self.assertEqual(pills(glance([line("a", ADDITIVE)], CONTRACT_LEVELS)), ["additive"])
+        self.assertNotRegex(re.sub(r"<[^>]+>", "", glance(lines, CONTRACT_LEVELS)), r"\d")
 
     def test_the_glance_line_does_not_repeat_the_section_name(self) -> None:
         self.assertNotIn("Contract", glance([line("a", ADDITIVE)], CONTRACT_LEVELS))
         self.assertNotIn(":", re.sub(r"<[^>]+>", "", glance([line("a", ADDITIVE)], CONTRACT_LEVELS)))
 
-    def test_the_data_glance_line_counts_lines_with_no_level_as_other(self) -> None:
+    def test_the_data_glance_line_has_an_other_chip_for_lines_with_no_level(self) -> None:
         lines = [line("a", DESTRUCTIVE), line("b", REWRITES), line("c", REWRITES), line("d", None)]
-        self.assertEqual(pills(glance(lines, DATA_LEVELS)), ["1 destructive", "2 rewrite rows", "1 other"])
+        self.assertEqual(pills(glance(lines, DATA_LEVELS)), ["destructive", "rewrites rows", "other"])
 
     def test_the_top_level_is_bold_and_the_second_is_a_bold_outline(self) -> None:
         self.assertEqual(pill(CALLERS, CONTRACT_LEVELS), '<span class="pill p0"><strong>callers must change</strong></span>')
@@ -126,9 +126,16 @@ class Drawing(unittest.TestCase):
         self.assertTrue(text.startswith('<details class="section">\n<summary><strong>Contract</strong> <span class="pill p0">'))
         self.assertNotIn("open", text.split("\n")[0])
         summary = re.search(r"<summary>(.*?)</summary>", text).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract 1 caller must change 2 additive")
-        self.assertEqual(pills(summary), ["1 caller must change", "2 additive"])
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract callers must change additive 3 changes")
+        self.assertEqual(pills(summary), ["callers must change", "additive"])
+        self.assertTrue(summary.endswith(' <span class="muted">3 changes</span>'))
         self.assertTrue(text.endswith("</div>\n\n</details>"))
+
+    def test_the_total_is_singular_for_one_line_and_is_not_a_chip(self) -> None:
+        text = self.draw(self.lines(1))
+        summary = re.search(r"<summary>(.*?)</summary>", text).group(1)
+        self.assertTrue(summary.endswith(' <span class="muted">1 change</span>'))
+        self.assertEqual(pills(summary), ["additive"])
 
     def test_a_data_section_is_headed_data(self) -> None:
         text = self.draw([line("x", DESTRUCTIVE, change="c", on="`t`")], kind="data", levels=DATA_LEVELS)
@@ -136,7 +143,7 @@ class Drawing(unittest.TestCase):
 
     def test_the_section_has_no_chunk_wording_and_no_per_group_markup(self) -> None:
         text = self.draw(self.lines(3))
-        for gone in ("chunk", "group-row", "muted", "changes</span>", "<strong><code>"):
+        for gone in ("chunk", "group-row", "<strong><code>"):
             self.assertNotIn(gone, text)
 
     def test_a_single_line_is_still_a_table_in_the_details(self) -> None:

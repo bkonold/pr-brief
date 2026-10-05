@@ -74,7 +74,7 @@ class ChunkedSections(unittest.TestCase):
         (text, _, _, _, lineset), _ = render_body()
         contract = self.section_of(text, "Contract")
         summary = re.search(r"<summary>(.*?)</summary>", contract).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract 2 callers must change 1 consumer may break")
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract callers must change consumers may break 3 changes")
         rows = [re.sub(r"<[^>]+>", "", row) for row in contract.splitlines() if row.startswith("| <span")]
         self.assertEqual([re.sub(r" \| \[↗\].*", "", row) for row in rows],
                          ["| callers must change | request | + owner required | ItemRequest",
@@ -89,7 +89,7 @@ class ChunkedSections(unittest.TestCase):
         (text, _, _, _, _), _ = render_body()
         data = self.section_of(text, "Data")
         summary = re.search(r"<summary>(.*?)</summary>", data).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Data 1 destructive 1 additive")
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Data destructive additive 2 changes")
         self.assertEqual(data.count("<details"), 1)
         self.assertIn("| Impact | Change | Table | ↗ |", data)
         self.assertIn("| <code>− old</code> | <code>legacy</code> |", data)
