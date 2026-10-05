@@ -3,7 +3,6 @@
   const ROOT_ID = "pr-focus-diagram";
   const COLLAPSED_KEY = "prFocus:diagramCollapsed";
   const ON = "prd-on";
-  const OFF = "prd-off";
   const NODE_ID = /flowchart-(.+)-\d+$/;
   const EDGE_ID = /^L_(.+)_\d+$/;
   const DASHED_EDGE = /\bedge-pattern-(?:dotted|dashed)\b/;
@@ -150,7 +149,8 @@
     return document.importNode(root, true);
   }
 
-  // The svg's emphasizable parts: node groups by id, and edges with the nodes they join.
+  // The svg's emphasizable parts: node groups by id, edges with the nodes they join and the arrowheads they point
+  // with, and the halos drawn around the emphasized boxes by id.
   function index(svg) {
     const nodes = new Map();
     for (const group of svg.querySelectorAll("g.node")) {
@@ -161,26 +161,78 @@
     const edges = [];
     for (const element of svg.querySelectorAll("[data-id]")) {
       const ends = edgeEnds(element.getAttribute("data-id"), ids);
-      if (ends) edges.push({ element: element.localName === "path" ? element : (element.closest(".edgeLabel") ?? element), ends });
+      if (!ends) continue;
+      const isPath = element.localName === "path";
+      const markers = isPath ? MARKER_ATTRIBUTES.filter((name) => element.hasAttribute(name)).map((name) => [name, element.getAttribute(name)]) : [];
+      edges.push({ element: isPath ? element : (element.closest(".edgeLabel") ?? element), ends, markers });
     }
-    return { nodes, edges };
+    return { svg, nodes, edges, halos: new Map() };
   }
 
-  // null restores; an empty list dims the whole diagram a little, for a chunk that isn't on it.
+  // The reference to the accent copy of the marker that `reference` (`url(#id)`) names, made beside it on first use.
+  function accentMarker(svg, reference) {
+    const id = /^url\(#(.+)\)$/.exec(reference)?.[1];
+    const marker = id ? svg.querySelector(`[id="${id}"]`) : null;
+    if (!marker) return reference;
+    const copyId = `${id}-prd-on`;
+    if (!svg.querySelector(`[id="${copyId}"]`)) {
+      const copy = marker.cloneNode(true);
+      copy.id = copyId;
+      for (const path of copy.querySelectorAll("path")) path.style.setProperty("stroke", ACCENT, "important");
+      marker.after(copy);
+    }
+    return `url(#${copyId})`;
+  }
+
+  // A ring around a box's rect, HALO_GAP outside it; null for a shape that is not a rect with a position.
+  function haloOf(shape) {
+    const [x, y, width, height] = ["x", "y", "width", "height"].map((name) => Number(shape.getAttribute(name)));
+    if (![x, y, width, height].every(Number.isFinite) || shape.localName !== "rect") return null;
+    const ring = document.createElementNS(SVG_NS, "rect");
+    ring.setAttribute("class", "prd-halo");
+    ring.setAttribute("x", String(x - HALO_GAP));
+    ring.setAttribute("y", String(y - HALO_GAP));
+    ring.setAttribute("width", String(width + 2 * HALO_GAP));
+    ring.setAttribute("height", String(height + 2 * HALO_GAP));
+    ring.setAttribute("rx", String((Number(shape.getAttribute("rx")) || 0) + HALO_GAP));
+    return ring;
+  }
+
+  // null restores; an empty list dims the whole diagram a little, for a chunk that isn't on it. Otherwise the listed
+  // boxes are marked and ringed with a halo, and so is every edge with an end on one of them, which also points with
+  // an accent arrowhead. Nothing else changes.
   function applyEmphasis(card, found, ids) {
     card.classList.toggle("prd-none", Array.isArray(ids) && ids.length === 0);
     const active = new Set(ids ?? []);
-    const mark = (element, on) => {
-      element.classList.toggle(ON, ids !== null && on);
-      element.classList.toggle(OFF, ids !== null && ids.length > 0 && !on);
-    };
-    for (const [id, group] of found.nodes) mark(group, active.has(id));
-    for (const { element, ends } of found.edges) mark(element, ends.every((end) => active.has(end)));
+    for (const [id, group] of found.nodes) {
+      const on = ids !== null && active.has(id);
+      group.classList.toggle(ON, on);
+      const halo = found.halos.get(id);
+      if (on && !halo) {
+        const shape = group.querySelector(":scope > rect");
+        const ring = shape ? haloOf(shape) : null;
+        if (ring) {
+          shape.after(ring);
+          found.halos.set(id, ring);
+        }
+      } else if (!on && halo) {
+        halo.remove();
+        found.halos.delete(id);
+      }
+    }
+    for (const { element, ends, markers } of found.edges) {
+      const on = ids !== null && ends.some((end) => active.has(end));
+      element.classList.toggle(ON, on);
+      for (const [name, reference] of markers) element.setAttribute(name, on ? accentMarker(found.svg, reference) : reference);
+    }
   }
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const ACTIVE = "prd-active";
   const GEOMETRY = ["x", "y", "width", "height", "rx", "ry"];
+  const MARKER_ATTRIBUTES = ["marker-start", "marker-end"];
+  const ACCENT = "var(--prf-guide, #534ab7)";
+  const HALO_GAP = 6;
 
   let root = null;
   let card = null;
@@ -281,7 +333,8 @@
   function sampleSwatches(svg) {
     const measure = make("div", "prd-card prd-measure");
     const copy = svg.cloneNode(true);
-    for (const element of copy.querySelectorAll(".prd-on, .prd-off")) element.classList.remove("prd-on", "prd-off");
+    for (const element of copy.querySelectorAll(".prd-on")) element.classList.remove("prd-on");
+    for (const ring of copy.querySelectorAll(".prd-halo")) ring.remove();
     measure.append(copy);
     document.body.append(measure);
     const look = (selector) => {
@@ -418,14 +471,15 @@
       glideFrame = requestAnimationFrame(step);
     }
 
-    // The bounds of the listed boxes in diagram units, or null when none is drawn.
+    // The bounds of the listed boxes in diagram units, or null when none is drawn. A box is measured by its own shape,
+    // so its halo and pulse do not count.
     function boundsOf(ids) {
       const wanted = new Set(ids);
       const origin = svg.getBoundingClientRect();
       let box = null;
       for (const group of svg.querySelectorAll("g.node")) {
         if (!wanted.has(nodeIdOf(group.id))) continue;
-        const r = group.getBoundingClientRect();
+        const r = (group.querySelector(`:scope > :is(${SHAPES})`) ?? group).getBoundingClientRect();
         box = box
           ? { left: Math.min(box.left, r.left), top: Math.min(box.top, r.top), right: Math.max(box.right, r.right), bottom: Math.max(box.bottom, r.bottom) }
           : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
@@ -664,7 +718,8 @@
   }
 
   // A short stroke-width swell with an accent tint over the box, drawn as a transient copy of its outline so it
-  // isn't overridden by the highlight's own stroke. Skipped under reduced motion.
+  // isn't overridden by the highlight's own stroke, and after the box's halo so it plays over it. Skipped under
+  // reduced motion.
   function pulse(nodeId) {
     const group = found?.nodes.get(nodeId);
     const shape = group?.querySelector(":scope > rect");
@@ -673,7 +728,7 @@
     copy.setAttribute("class", "prd-pulse");
     for (const name of GEOMETRY) if (shape.hasAttribute(name)) copy.setAttribute(name, shape.getAttribute(name));
     copy.addEventListener("animationend", () => copy.remove(), { once: true });
-    shape.after(copy);
+    (found.halos.get(nodeId) ?? shape).after(copy);
   }
 
   // Moves the canvas to follow the boxes: centred horizontally, with their neighbours kept in view (see createCanvas).
@@ -703,7 +758,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { resetAction, zoomControls, render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

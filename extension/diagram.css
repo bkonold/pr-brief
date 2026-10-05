@@ -181,33 +181,41 @@
   transform-origin: 0 0;
 }
 
-.prd-off {
-  opacity: 0.25;
-}
-
 .prd-none svg {
   opacity: 0.5;
 }
 
-.prd-card g.node.prd-on > rect:not(.prd-pulse),
+.prd-card g.node.prd-on > rect:not(.prd-pulse):not(.prd-halo),
 .prd-card g.node.prd-on > polygon,
 .prd-card g.node.prd-on > path,
-.prd-card g.node.prd-active > rect:not(.prd-pulse) {
+.prd-card g.node.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
   stroke: var(--prf-guide, #534ab7) !important;
   stroke-width: 2px !important;
 }
 
-.prd-card g.node.save.prd-on > rect:not(.prd-pulse),
-.prd-card g.node.save.prd-active > rect:not(.prd-pulse) {
+.prd-card g.node.save.prd-on > rect:not(.prd-pulse):not(.prd-halo),
+.prd-card g.node.save.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
   stroke: #b26a00 !important;
 }
 
-.prd-card g.node.prd-active > rect:not(.prd-pulse) {
+.prd-card g.node.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
   fill: rgba(83, 74, 183, 0.14) !important;
 }
 
-.prd-card g.node.save.prd-active > rect:not(.prd-pulse) {
+.prd-card g.node.save.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
   fill: rgba(178, 106, 0, 0.18) !important;
+}
+
+.prd-halo {
+  --prd-accent: 83, 74, 183;
+  fill: none !important;
+  stroke: rgba(var(--prd-accent), 0.3) !important;
+  stroke-width: 5px !important;
+  pointer-events: none;
+}
+
+g.node.save .prd-halo {
+  --prd-accent: 178, 106, 0;
 }
 
 .prd-pulse {

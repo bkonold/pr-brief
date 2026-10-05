@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resetAction, zoomControls, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas } = require("../diagram.js");
+const { applyEmphasis, resetAction, zoomControls, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas } = require("../diagram.js");
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
 
@@ -216,19 +216,25 @@ function boxCanvas({ viewportSize = { w: 400, h: 500 } } = {}) {
       return views.at(-1).scale;
     },
   };
-  const group = (id) => ({
-    id: `diagram-flowchart-${id}-0`,
-    classList: { contains: () => false },
-    getBoundingClientRect: () => {
+  const HALO = 6;
+  const group = (id) => {
+    const rectOf = (grow) => {
       const b = boxes[id];
       return {
-        left: state.svgLeft + b.x * state.scale,
-        top: state.svgTop + b.y * state.scale,
-        right: state.svgLeft + (b.x + b.w) * state.scale,
-        bottom: state.svgTop + (b.y + b.h) * state.scale,
+        left: state.svgLeft + (b.x - grow) * state.scale,
+        top: state.svgTop + (b.y - grow) * state.scale,
+        right: state.svgLeft + (b.x + b.w + grow) * state.scale,
+        bottom: state.svgTop + (b.y + b.h + grow) * state.scale,
       };
-    },
-  });
+    };
+    const shape = { getBoundingClientRect: () => rectOf(0) };
+    return {
+      id: `diagram-flowchart-${id}-0`,
+      classList: { contains: () => false },
+      querySelector: (selector) => (selector.startsWith(":scope > :is(") ? shape : null),
+      getBoundingClientRect: () => rectOf(HALO),
+    };
+  };
   const groups = Object.keys(boxes).map(group);
   const svg = {
     style: {},
@@ -452,4 +458,117 @@ test("Reset refits a zoomed and panned canvas to the pane, then calls the host's
   assert.deepEqual(views.at(-1), fitted);
   resetAction(() => refit, {})();
   assert.deepEqual(order, ["fit", "onReset", "fit"]);
+});
+
+function emphasisFixture() {
+  const classes = () => {
+    const set = new Set();
+    return { set, toggle: (name, on) => (on ? set.add(name) : set.delete(name)), add: (name) => set.add(name), remove: (name) => set.delete(name), contains: (name) => set.has(name) };
+  };
+  const created = [];
+  global.document = {
+    createElementNS: () => {
+      const attrs = {};
+      const ring = {
+        attrs,
+        removed: false,
+        setAttribute: (name, value) => (attrs[name] = value),
+        getAttribute: (name) => attrs[name] ?? null,
+        remove() {
+          ring.removed = true;
+          const at = children.indexOf(ring);
+          if (at >= 0) children.splice(at, 1);
+        },
+      };
+      created.push(ring);
+      return ring;
+    },
+  };
+  const children = [];
+  const rectAttrs = { x: "100", y: "50", width: "80", height: "40", rx: "4" };
+  const shape = {
+    localName: "rect",
+    getAttribute: (name) => rectAttrs[name] ?? null,
+    after: (node) => children.splice(0, 0, node),
+  };
+  const node = (withShape = true) => ({ classList: classes(), querySelector: () => (withShape ? shape : null) });
+  const marker = { id: "head", cloneNode: () => ({ id: "", querySelectorAll: () => [], after() {} }), after() {} };
+  const svg = { querySelector: (selector) => (selector === '[id="head"]' ? marker : null) };
+  const edge = (ends) => {
+    const attrs = { "marker-end": "url(#head)" };
+    return {
+      element: { classList: classes(), getAttribute: (name) => attrs[name] ?? null, hasAttribute: (name) => name in attrs, setAttribute: (name, value) => (attrs[name] = value) },
+      ends,
+      markers: [["marker-end", "url(#head)"]],
+    };
+  };
+  const found = {
+    svg,
+    nodes: new Map([["a", node()], ["b", node()], ["c", node()], ["d", node(false)]]),
+    edges: [edge(["a", "b"]), edge(["b", "c"]), edge(["c", "d"])],
+    halos: new Map(),
+  };
+  const card = { classList: classes() };
+  return { found, card, created, children };
+}
+
+test("applyEmphasis marks the listed boxes and every edge touching one, and dims nothing", () => {
+  const { found, card } = emphasisFixture();
+  applyEmphasis(card, found, ["b"]);
+  const on = (entry) => (entry.element ?? entry).classList.contains("prd-on");
+  assert.deepEqual([...found.nodes.values()].map(on), [false, true, false, false]);
+  assert.deepEqual(found.edges.map(on), [true, true, false]);
+  for (const entry of [...found.nodes.values(), ...found.edges.map((edge) => edge.element), card]) assert.equal((entry.classList ?? entry).contains("prd-off"), false);
+  assert.equal(card.classList.contains("prd-none"), false);
+});
+
+test("applyEmphasis marks an edge with one active end", () => {
+  const { found, card } = emphasisFixture();
+  applyEmphasis(card, found, ["a", "c"]);
+  assert.deepEqual(found.edges.map((edge) => edge.element.classList.contains("prd-on")), [true, true, true]);
+});
+
+test("applyEmphasis clears everything for null and dims the whole diagram for an empty list", () => {
+  const { found, card } = emphasisFixture();
+  applyEmphasis(card, found, ["b"]);
+  applyEmphasis(card, found, []);
+  assert.equal(card.classList.contains("prd-none"), true);
+  assert.deepEqual([...found.nodes.values()].map((group) => group.classList.contains("prd-on")), [false, false, false, false]);
+  assert.deepEqual(found.edges.map((edge) => edge.element.classList.contains("prd-on")), [false, false, false]);
+  applyEmphasis(card, found, null);
+  assert.equal(card.classList.contains("prd-none"), false);
+});
+
+test("applyEmphasis ringes a focused rect box with a halo 6px outside it and removes it when focus moves", () => {
+  const { found, card, created, children } = emphasisFixture();
+  applyEmphasis(card, found, ["a"]);
+  assert.equal(created.length, 1);
+  assert.deepEqual(created[0].attrs, { class: "prd-halo", x: "94", y: "44", width: "92", height: "52", rx: "10" });
+  assert.equal(found.halos.get("a"), created[0]);
+  applyEmphasis(card, found, ["a"]);
+  assert.equal(created.length, 1);
+  applyEmphasis(card, found, ["b"]);
+  assert.equal(created[0].removed, true);
+  assert.equal(found.halos.has("a"), false);
+  assert.equal(found.halos.has("b"), true);
+  assert.equal(children.length, 1);
+  applyEmphasis(card, found, null);
+  assert.equal(found.halos.size, 0);
+  assert.equal(children.length, 0);
+});
+
+test("applyEmphasis draws no halo for a box without a rect", () => {
+  const { found, card, created } = emphasisFixture();
+  applyEmphasis(card, found, ["d"]);
+  assert.equal(created.length, 0);
+  assert.equal(found.nodes.get("d").classList.contains("prd-on"), true);
+});
+
+test("applyEmphasis points emphasized edges with an accent arrowhead and restores the original one", () => {
+  const { found, card } = emphasisFixture();
+  applyEmphasis(card, found, ["a"]);
+  assert.equal(found.edges[0].element.getAttribute("marker-end"), "url(#head-prd-on)");
+  assert.equal(found.edges[1].element.getAttribute("marker-end"), "url(#head)");
+  applyEmphasis(card, found, null);
+  assert.equal(found.edges[0].element.getAttribute("marker-end"), "url(#head)");
 });

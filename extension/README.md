@@ -131,9 +131,12 @@ that expands it.
 - A legend under the card lists only the styles the SVG uses (changed step, verify, read, skim,
   writes data, unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected
   chunk" (the emphasis outline) and, when the diagram has lanes, a note that columns are code layers.
-- Selecting a chunk (header click, box click or the jump button) highlights its `nodes` and the edges between two of them, and
-  dims the rest to 0.25 opacity. A chunk with no nodes dims the whole diagram slightly. "GitHub tree" mode or no
-  selection restores it.
+- Selecting a chunk (header click, box click or the jump button) highlights its `nodes` and dims nothing. Each highlighted
+  box keeps its 2px accent stroke and tint and gains a halo: a 5px ring in the accent colour at 30% opacity, 6px outside the
+  box (amber on save boxes). Every edge with an end on a highlighted box, incoming or outgoing and dashed return edges
+  included, is drawn 2px in the accent colour with an accent arrowhead. The halo is not part of the box's bounds, so
+  centring and following measure the box itself, and a click pulse plays over it. A chunk with no nodes dims the whole
+  diagram slightly. "GitHub tree" mode or no selection restores it.
 - Clicking a box selects its chunk and jumps to its start line (see "Boxes and files").
 - The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Any scroll wheel or trackpad
   scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
