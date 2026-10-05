@@ -1546,6 +1546,7 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .table-wrap table { display: table; margin: 0; }
  .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }
  .table-wrap td:last-child, .table-wrap th:last-child { width: 1%; }
+ .table-wrap td:nth-child(2), .table-wrap th:nth-child(2) { min-width: 9ch; }
 </style></head><body><article class="markdown-body" id="out"></article>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

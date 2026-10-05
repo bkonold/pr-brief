@@ -110,6 +110,7 @@
     .text .table-wrap th { font-size: 12px; font-weight: 600; color: var(--muted); }
     .text .table-wrap th:first-child, .text .table-wrap td:first-child, .text .table-wrap th:last-child, .text .table-wrap td:last-child { white-space: nowrap; overflow-wrap: normal; }
     .text .table-wrap td:last-child { padding-right: 0; }
+    .text .table-wrap th:nth-child(2), .text .table-wrap td:nth-child(2) { min-width: 9ch; }
     .text .table-wrap td .pill { font-size: 11px; line-height: 16px; padding: 0 7px; }
     ul.contract { margin: 0 0 12px; padding-left: 20px; }
     .text > ul.contract > li { margin-bottom: 4px; }
