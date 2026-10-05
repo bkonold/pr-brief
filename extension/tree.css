@@ -596,6 +596,8 @@
 
 .prf-callout {
   box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
   padding: 14px 18px;
   font-family: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 14px;
@@ -649,6 +651,7 @@
 
 .prf-callout-reason {
   margin-top: 2px;
+  contain: inline-size;
 }
 
 .prf-callout-nav {
@@ -656,6 +659,7 @@
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  justify-content: flex-end;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--borderColor-muted, #d1d9e0b3);

@@ -48,11 +48,12 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   a link to a chunk's start (the PR brief card's links) does the same.
 - Every chunk's start that has loaded gets a callout above its line (above the file's header for a file start), as soon as the review shows and as GitHub or Forgejo
   load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
-  (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text) with a route icon,
+  (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text, as wide as its header line
+  and never wider than the diff column or narrower than its button row) with a route icon,
   a breadcrumb header, `<n> · <box title>` in bold default text, a small muted chevron, then the chunk name in normal weight
   (the box title is the bold title line of the chunk's first diagram box, read from the rendered diagram; a chunk with no
   box, or a box with no title, shows just the bold `<n> · <name>` with no chevron), then on its own line a small muted "Why the LLM picked this" over the
-  reason, wrapping if it is long: the chunk's `start.why`, else the chunk's own `why`. Below a hairline, a last row starts
+  reason, wrapping within the header's width: the chunk's `start.why`, else the chunk's own `why`. Below a hairline, a last row, right-aligned in the card, starts
   with a "↑ Previous" button (its tooltip is the chunk's `<n> · <box title>`, else `<n> · <name>`) for the chunk numbered one lower when there is one, then "Next"
   followed by one small button per chunk to read next, `<n> · <box title> ↓` (else `<n> · <name> ↓`), or the quiet text "Last step" when there is none. A button does what a click on that
   chunk in the list does: it focuses, opens and jumps to its start line (a chunk with no start line scrolls to its
@@ -64,7 +65,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   directly above the file header, spans the entry's full width with the same card, and is hidden with the entry. The jump scrolls
   the entry's top just below the sticky chrome, so the callout shows with the header under it, and marks and pulses the callout
   alone. It is placed once, comes back if the host drops it, and goes with the callouts.
-- The start line itself is left exactly as the host draws it. Each callout card spans from the file pane's left edge, and
+- The start line itself is left exactly as the host draws it. Each callout card starts at the file pane's left edge, and
   the jumped-to chunk's card border is the full purple where the other callouts' is purple at 45%. The jump centres the callout and the line together.
   The file, line number and code are not repeated, since the diff row shows them. Only one card is marked as the target; the mark
   goes whenever the line target clears (another selection, a new jump or teardown) and comes back if the host re-renders the
