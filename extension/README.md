@@ -43,15 +43,14 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   order; a run without `next` goes to the chunk with the next higher number. A callout is placed once per chunk, so a
   re-render or a lazy load never doubles it. The callouts show only in "By review" mode, and a focused chunk shows only
   its own, since the other diffs are hidden.
-- The jumped-to start line keeps the host's own added, removed or context colours: it gets a 2px purple outline drawn
-  inside its cells and a 4px purple bar on its left edge, across the whole row in a split diff, and its callout card's border
-  is the full purple where the other callouts' is purple at 45%. The jump centres the callout and the line together.
-  The file, line number and code are not repeated, since the diff row shows them. Only one start line is highlighted; it
+- The start line itself is left exactly as the host draws it. Each callout card spans from the file pane's left edge, and
+  the jumped-to chunk's card border is the full purple where the other callouts' is purple at 45%. The jump centres the callout and the line together.
+  The file, line number and code are not repeated, since the diff row shows them. Only one card is marked as the target; the mark
   goes whenever the line target clears (another selection, a new jump or teardown) and comes back if the host re-renders the
-  row. When a jump lands, the start line and its callout pulse together, once: a purple ring that swells from its resting
-  width to 3px wider and back, three times over about two seconds (666ms each), started at the same moment on both. It fires on
+  row. When a jump lands, its callout pulses once: a purple ring that swells from its resting
+  width to 3px wider and back, three times over about two seconds (666ms each). It fires on
   every jump (a chunk or box click, "Start here", the callout's buttons, a link to a start line), only for the jumped-to chunk,
-  and not when the host re-renders the row. Under `prefers-reduced-motion` only the static highlight shows.
+  and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
 The mode and selected chunk are remembered per PR in `sessionStorage`.

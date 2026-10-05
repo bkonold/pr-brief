@@ -74,29 +74,8 @@ html[data-theme*="dark"] {
   }
 }
 
-/* The start line keeps the host's own colours: a 2px outline and a 4px bar on the left, drawn inside the cells. */
-.prf-line-target > td {
-  box-shadow:
-    inset 0 calc(2px + var(--prf-pulse)) 0 var(--prf-guide),
-    inset 0 calc(-2px - var(--prf-pulse)) 0 var(--prf-guide);
-}
-
-.prf-line-target > td:first-child {
-  box-shadow:
-    inset calc(4px + var(--prf-pulse)) 0 0 var(--prf-guide),
-    inset 0 calc(2px + var(--prf-pulse)) 0 var(--prf-guide),
-    inset 0 calc(-2px - var(--prf-pulse)) 0 var(--prf-guide);
-}
-
-.prf-line-target > td:last-child {
-  box-shadow:
-    inset calc(-2px - var(--prf-pulse)) 0 0 var(--prf-guide),
-    inset 0 calc(2px + var(--prf-pulse)) 0 var(--prf-guide),
-    inset 0 calc(-2px - var(--prf-pulse)) 0 var(--prf-guide);
-}
-
 .prf-callout-row > td {
-  padding: 8px 16px 8px 0;
+  padding: 8px 16px 8px 8px;
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
