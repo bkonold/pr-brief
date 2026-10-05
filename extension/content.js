@@ -251,7 +251,8 @@
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
   // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. `boxId` is the diagram
   // box the selection came from, which pulses once the jump has landed. Selecting the open chunk again jumps again.
-  // `jump` passes on to the line jump, e.g. `{ pulse: false }`.
+  // `jump` passes on to the line jump, e.g. `{ pulse: false }`. A selection from the list or the callout also pans the
+  // diagram to centre the chunk's boxes; a box click leaves the canvas where it is, since the box is already in view.
   async function selectChunk(session, chunk, boxId = null, jump = undefined) {
     const path = chunk.start?.path ?? chunk.files[0]?.path;
     await change(
@@ -267,6 +268,7 @@
       { scroll: false },
     );
     if (current !== session || !live()) return;
+    if (!boxId) diagram.centerOn(chunk.nodes ?? []);
     tree.revealGroup(chunk.n);
     if (chunk.start) await jumpToStart(session, chunk, jump);
     else if (path) await landOnFile(session, path);

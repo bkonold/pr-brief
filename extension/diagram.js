@@ -24,6 +24,7 @@
   const DRAG_THRESHOLD = 4;
   const WHEEL_ZOOM_RATE = 0.0025;
   const WHEEL_ZOOM_CAP = 100;
+  const GLIDE_MS = 200;
   const FALLBACK_SIZE = { w: 300, h: 200 };
   const LINE_PIXELS = 16;
   const PAGE_PIXELS = 400;
@@ -69,6 +70,19 @@
       x: clampAxis(view.x, content.w * view.scale, viewport.w),
       y: clampAxis(view.y, content.h * view.scale, viewport.h),
     };
+  }
+
+  // The view that centres `rect` (a box's bounds in diagram units) in the viewport. The zoom stays unless the rect
+  // is larger than the viewport inside the fit margin, in which case it drops to the largest zoom at which the rect
+  // fits. The result keeps clampView's limits.
+  function centerView(view, rect, content, viewport, margin = FIT_MARGIN) {
+    const fits = Math.min((viewport.w - 2 * margin) / rect.w, (viewport.h - 2 * margin) / rect.h);
+    const scale = clampScale(Math.min(view.scale, fits));
+    return clampView(
+      { scale, x: viewport.w / 2 - (rect.x + rect.w / 2) * scale, y: viewport.h / 2 - (rect.y + rect.h / 2) * scale },
+      content,
+      viewport,
+    );
   }
 
   function wheelUnit(event) {
@@ -325,6 +339,9 @@
   // transform. The view is a { scale, x, y } in viewport pixels; `fitted` keeps it matched to the viewport width
   // until the user zooms or pans. Any wheel event, pinch included, zooms around the pointer and never scrolls the
   // page, a drag anywhere pans, and a press that stays under DRAG_THRESHOLD is a click on the box under it.
+  // `centerOn` pans to a box list or a rect with a short glide, which any wheel or press interrupts; while the
+  // viewport is hidden (the panel is collapsed) it remembers the latest target and centres on it once the viewport
+  // has a size again.
   function createCanvas(viewport, svg, { onNode, onView }) {
     const content = contentSize(svg.getAttribute("viewBox"), svg.getAttribute("width"), svg.getAttribute("height"));
     svg.style.width = `${content.w}px`;
@@ -332,6 +349,8 @@
     let view = { scale: 1, x: 0, y: 0 };
     let fitted = true;
     let drag = null;
+    let glideFrame = null;
+    let pending = null;
 
     const size = () => ({ w: viewport.clientWidth, h: viewport.clientHeight });
 
@@ -355,6 +374,69 @@
       show(zoomAround(view, scale, px, py), false);
     }
 
+    function cancelGlide() {
+      if (glideFrame === null) return;
+      cancelAnimationFrame(glideFrame);
+      glideFrame = null;
+    }
+
+    function glide(target) {
+      cancelGlide();
+      if (!globalThis.requestAnimationFrame || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        show(target, false);
+        return;
+      }
+      const from = view;
+      let start = null;
+      const step = (now) => {
+        start ??= now;
+        const progress = Math.min(1, (now - start) / GLIDE_MS);
+        const eased = 1 - (1 - progress) ** 3;
+        const mix = (a, b) => a + (b - a) * eased;
+        show({ scale: mix(from.scale, target.scale), x: mix(from.x, target.x), y: mix(from.y, target.y) }, false);
+        glideFrame = progress < 1 ? requestAnimationFrame(step) : null;
+      };
+      glideFrame = requestAnimationFrame(step);
+    }
+
+    // The bounds of the listed boxes in diagram units, or null when none is drawn.
+    function boundsOf(ids) {
+      const wanted = new Set(ids);
+      const origin = svg.getBoundingClientRect();
+      let box = null;
+      for (const group of svg.querySelectorAll("g.node")) {
+        if (!wanted.has(nodeIdOf(group.id))) continue;
+        const r = group.getBoundingClientRect();
+        box = box
+          ? { left: Math.min(box.left, r.left), top: Math.min(box.top, r.top), right: Math.max(box.right, r.right), bottom: Math.max(box.bottom, r.bottom) }
+          : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      }
+      if (!box) return null;
+      return {
+        x: (box.left - origin.left) / view.scale,
+        y: (box.top - origin.top) / view.scale,
+        w: (box.right - box.left) / view.scale,
+        h: (box.bottom - box.top) / view.scale,
+      };
+    }
+
+    // `target` is a list of box ids or a { x, y, w, h } rect in diagram units. An empty list leaves the canvas as it
+    // is, and drops any target waiting for the viewport to be shown.
+    function centerOn(target) {
+      const ids = Array.isArray(target) ? target : null;
+      if (ids?.length === 0) {
+        pending = null;
+        return;
+      }
+      if (size().w <= 0) {
+        pending = target;
+        return;
+      }
+      pending = null;
+      const rect = ids ? boundsOf(ids) : target;
+      if (rect) glide(centerView(view, rect, content, size()));
+    }
+
     function pointInViewport(event) {
       const rect = viewport.getBoundingClientRect();
       return { x: event.clientX - rect.left - viewport.clientLeft, y: event.clientY - rect.top - viewport.clientTop };
@@ -362,6 +444,7 @@
 
     function onWheel(event) {
       event.preventDefault();
+      cancelGlide();
       const { x, y } = pointInViewport(event);
       zoomTo(view.scale * wheelZoomFactor(event), x, y);
     }
@@ -376,6 +459,7 @@
 
     function onPointerDown(event) {
       if (event.button !== 0) return;
+      cancelGlide();
       const group = event.target.closest?.("g.node");
       const nodeId = group && !group.classList.contains("context") ? nodeIdOf(group.id) : null;
       try {
@@ -401,8 +485,10 @@
     const resizeObserver = globalThis.ResizeObserver
       ? new ResizeObserver(() => {
           if (size().w <= 0) return;
+          cancelGlide();
           if (fitted) fit();
           else show(view, false);
+          if (pending) centerOn(pending);
         })
       : null;
     resizeObserver?.observe(viewport);
@@ -419,7 +505,9 @@
       actualSize: () => zoomTo(1),
       zoomIn: () => zoomTo(stepScale(view.scale, 1)),
       zoomOut: () => zoomTo(stepScale(view.scale, -1)),
+      centerOn,
       destroy() {
+        cancelGlide();
         resizeObserver?.disconnect();
       },
     };
@@ -538,6 +626,11 @@
     shape.after(copy);
   }
 
+  // Pans the canvas so the boxes are centred in the pane (see createCanvas). Does nothing without a diagram.
+  function centerOn(nodeIds) {
+    canvas?.centerOn(nodeIds);
+  }
+
   // The title of a box: the bold first line of its label, without the box number; "" for an unknown box or one the
   // diagram draws without a title.
   function titleOf(nodeId) {
@@ -559,7 +652,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { render, emphasize, setActive, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor, createCanvas };
+  ns.diagram = { render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

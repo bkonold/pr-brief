@@ -130,7 +130,11 @@ that expands it.
   scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
   Ctrl + wheel); the page does not scroll while the pointer is over the canvas. Pressing and dragging anywhere on
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
-  The header has −, the current zoom (click it for 100%), + and Fit. Panning stops when a diagram edge reaches the middle of the canvas. Each
+  The header has −, the current zoom (click it for 100%), + and Fit. Panning stops when a diagram edge reaches the middle of the canvas. Selecting
+  a chunk from the list or a callout's Previous/Next pans the canvas, over about 200ms (at once under reduced motion), so the
+  chunk's box, or the bounding box of its boxes, is centred in the pane at the current zoom; a box larger than the pane zooms out just
+  enough to fit with the fit margin. A box click and a chunk with no box leave the canvas where it is, and a collapsed panel centres
+  on the focused chunk when it is expanded again. Each
   new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
   position are not saved.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.

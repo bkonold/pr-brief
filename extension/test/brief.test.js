@@ -283,6 +283,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const callouts = [];
   const emphasized = [];
   const pulses = [];
+  const centered = [];
   const diagramHandlers = [];
   const prFocus = {
     page: {
@@ -342,6 +343,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       setActive() {},
       titleOf: (nodeId) => `title of ${nodeId}`,
       pulse: (nodeId) => pulses.push(nodeId),
+      centerOn: (nodeIds) => centered.push(nodeIds),
       remove() {},
       owns: () => false,
     },
@@ -357,7 +359,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, centered, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -922,4 +924,25 @@ test("opening the files page on a file start's diff anchor jumps to that file, a
   const elsewhere = loadContent({ run: null, view: "files", review: FILE_START_REVIEW, hash: "#diff-src/other.js" });
   await settle();
   assert.deepEqual([elsewhere.fileJumps, elsewhere.jumps], [[], []]);
+});
+
+test("a chunk click and a callout button centre the diagram on the chunk's boxes, and a box click does not", async () => {
+  const { renders, callouts, centered, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  diagramHandlers.at(-1).onNode("b");
+  await settle();
+  assert.deepEqual(centered, []);
+  await renders.at(-1).handlers.onSelectChunk(3);
+  assert.deepEqual(centered, [["c"]]);
+  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
+  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  assert.deepEqual(centered, [["c"], ["b"]]);
+});
+
+test("a chunk with no boxes is centred on an empty list", async () => {
+  const noNodes = { ...STEP_REVIEW, chunks: STEP_REVIEW.chunks.map(({ nodes, ...chunk }) => chunk) };
+  const { renders, centered } = loadContent({ run: null, view: "files", review: noNodes });
+  await settle();
+  await renders.at(-1).handlers.onSelectChunk(2);
+  assert.equal(JSON.stringify(centered), "[[]]");
 });

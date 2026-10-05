@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor, createCanvas } = require("../diagram.js");
+const { clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas } = require("../diagram.js");
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
 
@@ -136,4 +136,196 @@ test("wheel zoom keeps the point under the pointer fixed and stays within the sc
   assert.equal(views.at(-1).scale, 4);
   for (let i = 0; i < 80; i++) wheel({ deltaY: 100 });
   assert.equal(views.at(-1).scale, 0.25);
+});
+
+test("centerView puts the rect's centre at the viewport's centre and keeps the zoom", () => {
+  const view = centerView({ scale: 1, x: 8, y: 8 }, { x: 400, y: 300, w: 100, h: 60 }, { w: 1000, h: 800 }, { w: 400, h: 300 });
+  assert.deepEqual(view, { scale: 1, x: 200 - 450, y: 150 - 330 });
+  const zoomed = centerView({ scale: 2, x: 0, y: 0 }, { x: 400, y: 300, w: 50, h: 30 }, { w: 1000, h: 800 }, { w: 400, h: 300 });
+  assert.deepEqual(zoomed, { scale: 2, x: 200 - 850, y: 150 - 630 });
+});
+
+test("centerView zooms out just enough for a rect larger than the viewport", () => {
+  const content = { w: 1000, h: 800 };
+  const wide = centerView({ scale: 1, x: 0, y: 0 }, { x: 100, y: 100, w: 768, h: 100 }, content, { w: 400, h: 300 });
+  close(wide.scale, 0.5);
+  close(wide.x, 200 - (100 + 384) * 0.5);
+  const tall = centerView({ scale: 1, x: 0, y: 0 }, { x: 100, y: 100, w: 100, h: 568 }, content, { w: 400, h: 300 });
+  close(tall.scale, 0.5);
+  close(tall.y, 150 - (100 + 284) * 0.5);
+  assert.equal(centerView({ scale: 1, x: 0, y: 0 }, { x: 0, y: 0, w: 1e6, h: 1e6 }, content, { w: 400, h: 300 }).scale, 0.25);
+});
+
+test("centerView never zooms in, even for a small rect", () => {
+  const view = centerView({ scale: 0.5, x: 0, y: 0 }, { x: 100, y: 100, w: 10, h: 10 }, { w: 1000, h: 800 }, { w: 400, h: 300 });
+  assert.equal(view.scale, 0.5);
+});
+
+test("centerView keeps clampView's limits near the diagram's edges", () => {
+  const content = { w: 1000, h: 800 };
+  const viewport = { w: 400, h: 300 };
+  const view = centerView({ scale: 1, x: 0, y: 0 }, { x: -100, y: -100, w: 50, h: 50 }, content, viewport);
+  assert.deepEqual(view, { scale: 1, x: 200, y: 150 });
+  const far = centerView({ scale: 1, x: 0, y: 0 }, { x: 1100, y: 900, w: 50, h: 50 }, content, viewport);
+  assert.deepEqual(far, { scale: 1, x: 200 - 1000, y: 150 - 800 });
+});
+
+function boxCanvas({ viewportSize = { w: 400, h: 300 } } = {}) {
+  const listeners = {};
+  const viewport = {
+    clientWidth: viewportSize.w,
+    clientHeight: viewportSize.h,
+    clientLeft: 0,
+    clientTop: 0,
+    classList: { add() {}, remove() {} },
+    addEventListener: (type, handler) => (listeners[type] = handler),
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    setPointerCapture() {},
+  };
+  const attributes = { viewBox: "0 0 1000 800" };
+  const views = [];
+  const clicked = [];
+  const boxes = { a: { x: 500, y: 400, w: 100, h: 60 }, b: { x: 700, y: 500, w: 100, h: 60 }, huge: { x: 0, y: 0, w: 2000, h: 1600 } };
+  const state = {
+    get svgLeft() {
+      return views.at(-1).x;
+    },
+    get svgTop() {
+      return views.at(-1).y;
+    },
+    get scale() {
+      return views.at(-1).scale;
+    },
+  };
+  const group = (id) => ({
+    id: `diagram-flowchart-${id}-0`,
+    classList: { contains: () => false },
+    getBoundingClientRect: () => {
+      const b = boxes[id];
+      return {
+        left: state.svgLeft + b.x * state.scale,
+        top: state.svgTop + b.y * state.scale,
+        right: state.svgLeft + (b.x + b.w) * state.scale,
+        bottom: state.svgTop + (b.y + b.h) * state.scale,
+      };
+    },
+  });
+  const groups = Object.keys(boxes).map(group);
+  const svg = {
+    style: {},
+    getAttribute: (name) => attributes[name] ?? null,
+    querySelectorAll: () => groups,
+    getBoundingClientRect: () => ({ left: state.svgLeft, top: state.svgTop }),
+  };
+  const canvas = createCanvas(viewport, svg, { onNode: (id) => clicked.push(id), onView: (view) => views.push(view) });
+  const pointer = (type, init) => listeners[type]({ pointerId: 1, button: 0, clientX: 0, clientY: 0, preventDefault() {}, ...init });
+  const clickBox = (id) => {
+    pointer("pointerdown", { target: { closest: () => group(id) } });
+    pointer("pointerup", {});
+  };
+  return { canvas, views, clicked, clickBox, viewport };
+}
+
+test("centerOn centres a box in the pane at the current zoom", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.centerOn(["a"]);
+  const view = views.at(-1);
+  assert.equal(view.scale, 1);
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 550, y: 150 - 430 });
+});
+
+test("centerOn centres the bounds of several boxes", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.centerOn(["a", "b"]);
+  const view = views.at(-1);
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 650, y: 150 - 480 });
+});
+
+test("centerOn measures boxes against the current pan and zoom", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.centerOn(["a"]);
+  canvas.centerOn(["b"]);
+  const view = views.at(-1);
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 750, y: 150 - 530 });
+});
+
+test("centerOn zooms out to fit a box larger than the pane", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.centerOn(["huge"]);
+  assert.equal(views.at(-1).scale, 0.25);
+});
+
+test("centerOn accepts a rect in diagram units", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.centerOn({ x: 500, y: 400, w: 100, h: 60 });
+  const view = views.at(-1);
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 550, y: 150 - 430 });
+});
+
+test("centerOn leaves the canvas alone for an empty list or boxes that are not drawn", () => {
+  const { canvas, views } = boxCanvas();
+  const count = views.length;
+  canvas.centerOn([]);
+  canvas.centerOn(["missing"]);
+  assert.equal(views.length, count);
+});
+
+test("a click on a box selects it without moving the canvas", () => {
+  const { views, clicked, clickBox } = boxCanvas();
+  const count = views.length;
+  clickBox("a");
+  assert.deepEqual(clicked, ["a"]);
+  assert.equal(views.length, count);
+});
+
+test("a hidden viewport keeps the latest target and centres on it once it has a size", () => {
+  const original = globalThis.ResizeObserver;
+  let notify = null;
+  globalThis.ResizeObserver = class {
+    constructor(callback) {
+      notify = callback;
+    }
+    observe() {}
+    disconnect() {}
+  };
+  try {
+    const { canvas, views, viewport } = boxCanvas({ viewportSize: { w: 0, h: 0 } });
+    const count = views.length;
+    canvas.centerOn(["a"]);
+    canvas.centerOn(["b"]);
+    assert.equal(views.length, count);
+    viewport.clientWidth = 400;
+    viewport.clientHeight = 300;
+    notify();
+    const view = views.at(-1);
+    close(view.scale, 0.384);
+    close(view.x, 200 - 750 * 0.384);
+    close(view.y, 150 - 530 * 0.384);
+  } finally {
+    globalThis.ResizeObserver = original;
+  }
+});
+
+test("centerOn glides to the target over about 200ms and a wheel interrupts it", () => {
+  const frames = [];
+  const originalRaf = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = (callback) => frames.push(callback);
+  globalThis.cancelAnimationFrame = (id) => (frames[id - 1] = null);
+  try {
+    const { canvas, views } = boxCanvas();
+    const start = views.at(-1);
+    canvas.centerOn(["a"]);
+    assert.deepEqual(views.at(-1), start);
+    frames.shift()(1000);
+    frames.shift()(1100);
+    const middle = views.at(-1);
+    assert.ok(middle.x < start.x && middle.x > 200 - 550);
+    frames.shift()(1200);
+    assert.deepEqual({ x: views.at(-1).x, y: views.at(-1).y }, { x: 200 - 550, y: 150 - 430 });
+    assert.equal(frames.length, 0);
+  } finally {
+    globalThis.requestAnimationFrame = originalRaf;
+    globalThis.cancelAnimationFrame = originalCancel;
+  }
 });
