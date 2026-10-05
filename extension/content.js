@@ -1,5 +1,5 @@
 (() => {
-  const { page, source, variants, boxes, focus, tree, diagram, brief, alive } = globalThis.prFocus;
+  const { page, source, runControl, variants, boxes, focus, tree, diagram, brief, alive } = globalThis.prFocus;
   if (!page) return;
 
   const SETTLE_MS = 150;
@@ -15,9 +15,8 @@
   let briefState = null;
   let briefToken = 0;
 
-  // The PR brief card, on the conversation page: { key, card, stop }. `card` stays null while the run loads and when
-  // the PR has no run. There is one card per page; it is moved back above the description whenever the page drops or
-  // moves it, never built twice.
+  // The PR brief card, on the conversation page: { key, card, stop }. `card` stays null while the run loads. There is
+  // one card per page; it is moved back above the description whenever the page drops or moves it, never built twice.
   function placeBrief() {
     const host = briefState?.card ? page.descriptionHost() : null;
     if (host && (briefState.card.nextElementSibling !== host || !briefState.card.isConnected)) host.before(briefState.card);
@@ -30,6 +29,19 @@
     briefState = null;
   }
 
+  // What the run server is asked about a PR: which host, repository and run folder.
+  function runTarget(pr) {
+    return { host: page.hostId, owner: pr.owner, repo: pr.repo, pr: pr.pr, key: page.runKey(pr) };
+  }
+
+  // Whether a Generate button may be offered: false only when the server says it will not start runs for this
+  // repository. A server that cannot be asked (down, wrong token) still gets the button, so the failure can be shown.
+  function mayGenerate(status) {
+    return status.ok ? status.allowed !== false : true;
+  }
+
+  // The card is drawn for the PR's run when it has one, else as a bar offering to generate it. A run in progress
+  // on the server, left by an earlier visit, is followed from where it is.
   async function mountBrief(pr) {
     const key = `${pr.owner}/${pr.repo}#${pr.pr}`;
     if (briefState?.key === key) return;
@@ -37,11 +49,47 @@
     const token = briefToken;
     const state = { key, card: null, stop: null };
     briefState = state;
-    const run = await source.loadBrief(pr.owner, pr.repo, pr.pr, page.runKey(pr));
-    if (!live() || token !== briefToken || !run) return;
-    state.card = brief.buildBrief({ key: page.runKey(pr), variant: run.variant, bodyHtml: run.bodyHtml, diagramSvg: run.diagramSvg, filesUrl: page.filesUrl(pr) });
-    state.stop = page.onChange(placeBrief);
+    const target = runTarget(pr);
+    const [run, status, pageSha] = await Promise.all([
+      source.loadBrief(pr.owner, pr.repo, pr.pr, target.key),
+      source.runStatus(target),
+      page.currentHeadSha(pr),
+    ]);
+    if (!live() || token !== briefToken) return;
+    const canGenerate = mayGenerate(status);
+    if (!run && !canGenerate) return;
+
+    let current = run;
+    const baseView = () => (current ? { kind: "brief", ...current, runSha: current.headSha, pageSha, canGenerate } : { kind: "none", canGenerate });
+    const controller = runControl.create({
+      source,
+      run: target,
+      on: {
+        running: (view) => card.show({ kind: "running", ...view }),
+        error: (view) => card.show({ kind: "error", ...view }),
+        idle: () => card.show(baseView()),
+        done: async () => {
+          const fresh = await source.loadBrief(pr.owner, pr.repo, pr.pr, target.key);
+          if (!live() || token !== briefToken) return;
+          if (fresh) current = fresh;
+          card.show(fresh ? baseView() : { kind: "error", message: "The run finished, but its brief could not be loaded" });
+        },
+      },
+    });
+    const card = brief.buildCard({
+      key: target.key,
+      filesUrl: page.filesUrl(pr),
+      onAction: (action) => (action === "cancel" ? controller.cancel() : controller.generate()),
+    });
+    card.show(baseView());
+    state.card = card;
+    const stopChange = page.onChange(placeBrief);
+    state.stop = () => {
+      controller.stop();
+      stopChange();
+    };
     placeBrief();
+    if (status.ok && status.state === "running") controller.adopt(status);
   }
 
   function storageKey(pr) {
@@ -88,6 +136,10 @@
     const session = current;
     if (session?.offline && live()) {
       tree.renderServerNote(session.offline, { onRetry: () => retry(session) });
+      return;
+    }
+    if (session?.line && live()) {
+      tree.renderGenerateLine(session.line.view, { onGenerate: () => session.line.controller.generate(), onCancel: () => session.line.controller.cancel() });
       return;
     }
     if (!session?.review || !live()) return;
@@ -323,6 +375,41 @@
     }
   }
 
+  // A PR with no run: the list's place holds one line that generates the brief, then follows the run. When it is done
+  // the page's review is loaded again and the full list takes the line's place.
+  async function offerGenerate(pr, key, token) {
+    const target = runTarget(pr);
+    const status = await source.runStatus(target);
+    if (!live() || token !== loadToken) return;
+    if (!mayGenerate(status)) {
+      current = null;
+      return;
+    }
+    const session = { key, pr, startedAt: Date.now() };
+    const setView = (view) => {
+      if (current !== session || !live()) return;
+      session.line.view = view;
+      refresh({ scroll: false });
+    };
+    session.line = {
+      view: { kind: "none" },
+      controller: runControl.create({
+        source,
+        run: target,
+        on: {
+          running: (view) => setView({ kind: "running", ...view }),
+          error: (view) => setView({ kind: "error", ...view }),
+          idle: () => setView({ kind: "none" }),
+          done: () => retry(session),
+        },
+      }),
+    };
+    current = session;
+    stopObserving = page.onChange(onMutations);
+    refresh({ scroll: false });
+    if (status.ok && status.state === "running") session.line.controller.adopt(status);
+  }
+
   // Fetches the review again and mounts the full list when the server is back; otherwise the note returns.
   function retry(session) {
     if (current !== session || !live()) return;
@@ -352,6 +439,7 @@
     focus.clearBox();
     tree.remove();
     diagram.remove();
+    current?.line?.controller.stop();
     current = null;
   }
 
@@ -399,10 +487,11 @@
       refresh({ scroll: false });
       return;
     }
-    if (token !== loadToken || !review) {
-      if (token === loadToken) current = null;
+    if (token === loadToken && !review) {
+      await offerGenerate(pr, key, token);
       return;
     }
+    if (token !== loadToken || !review) return;
     const saved = readSaved(pr);
     const selectedN = saved.variant === review.variant && review.chunks.some((c) => c.n === saved.selectedN) ? saved.selectedN : null;
     current = {

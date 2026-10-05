@@ -392,3 +392,55 @@ test("loadReview sends the run key with the PR number, defaulting to the number"
   assert.equal(sent[1].key, "9");
   delete globalThis.chrome;
 });
+
+test("the run server calls go through the background script with the run's host, repository and key", async () => {
+  const sent = [];
+  globalThis.chrome = { runtime: { id: "abc", sendMessage: async (message) => (sent.push(message), { ok: true, state: "running" }) } };
+  const source = require("../source.js");
+  const run = { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" };
+  assert.deepEqual(await source.startRun(run), { ok: true, state: "running" });
+  await source.runStatus(run);
+  await source.cancelRun(run);
+  assert.deepEqual(sent.map((message) => message.type), ["startRun", "runStatus", "cancelRun"]);
+  assert.ok(sent.every((message) => message.host === "forgejo" && message.key === "fj-7" && message.pr === 7));
+  globalThis.chrome = { runtime: { id: "abc", sendMessage: async () => Promise.reject(new Error("gone")) } };
+  assert.equal((await source.startRun(run)).problem, "error");
+  delete globalThis.chrome;
+  assert.equal((await source.startRun(run)).problem, "error");
+});
+
+test("each adapter names its host for the run server", () => {
+  assert.deepEqual([githubPage.hostId, forgejoPage.hostId], ["github", "forgejo"]);
+});
+
+test("the head sha is read from the page on any view of the PR it was loaded for, and asked of the host when the page has none", async () => {
+  const { createPage } = require("../page_common.js");
+  const saved = globalThis.location;
+  const SHA = "a".repeat(40);
+  const FETCHED = "b".repeat(40);
+  const spec = (shown) => ({
+    origin: "https://forge.example",
+    changesPage: /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/files$/,
+    pullPage: /^\/([^/]+)\/([^/]+)\/pull\/(\d+)/,
+    conversationPage: /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/,
+    hostId: "forgejo",
+    readHeadSha: () => shown,
+    fetchHeadSha: async (pr) => (pr.pr === 3 ? FETCHED : null),
+  });
+  try {
+    globalThis.location = { pathname: "/o/r/pull/3" };
+    const shown = createPage(spec(SHA));
+    assert.equal(shown.headSha(), SHA);
+    assert.equal(await shown.currentHeadSha({ owner: "o", repo: "r", pr: 3 }), SHA);
+    globalThis.location = { pathname: "/o/r/pull/4" };
+    assert.equal(shown.headSha(), null);
+    globalThis.location = { pathname: "/o/r/pull/3" };
+    const silent = createPage(spec(null));
+    assert.equal(silent.headSha(), null);
+    assert.equal(await silent.currentHeadSha({ owner: "o", repo: "r", pr: 3 }), FETCHED);
+    assert.equal(await silent.currentHeadSha({ owner: "o", repo: "r", pr: 9 }), null);
+  } finally {
+    globalThis.location = saved;
+    if (saved === undefined) delete globalThis.location;
+  }
+});

@@ -88,6 +88,18 @@
     return document.querySelector(`${LINE_REL}[rel="${anchor}"]`)?.closest("tr") ?? null;
   }
 
+  // The conversation page names no head commit, so it is asked of the instance's read-only API, from the page's own
+  // origin and session.
+  async function fetchHeadSha(pr) {
+    try {
+      const response = await fetch(`/api/v1/repos/${pr.owner}/${pr.repo}/pulls/${pr.pr}`, { headers: { Accept: "application/json" } });
+      const sha = response.ok ? (await response.json())?.head?.sha : null;
+      return typeof sha === "string" && /^[0-9a-f]{40}$/i.test(sha) ? sha : null;
+    } catch {
+      return null;
+    }
+  }
+
   // The diagram panel is a flex item between the tree column and the diffs, sticking where the tree sticks.
   function diagramHost() {
     const content = document.querySelector(DIFF_CONTENT);
@@ -111,9 +123,11 @@
     pullPage: PULL_PAGE,
     conversationPage: CONVERSATION_PAGE,
     filesPath: (pr) => `/${pr.owner}/${pr.repo}/pulls/${pr.pr}/files`,
+    hostId: "forgejo",
     // Forgejo's PR numbers are its own, so its runs sit beside GitHub's under a prefix.
     runKey: (pr) => `fj-${pr.pr}`,
     readHeadSha,
+    fetchHeadSha,
     blockSelector: DIFF_BLOCK,
     pathOfBlock,
     entryOf: (block) => block,

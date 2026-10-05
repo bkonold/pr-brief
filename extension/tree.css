@@ -156,6 +156,24 @@
   overflow-wrap: anywhere;
 }
 
+.prf-generate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.prf-generate-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.prf-generate code {
+  padding: 0 4px;
+  background: var(--bgColor-neutral-muted, #818b981f);
+  border-radius: 4px;
+}
+
 .prf-retry {
   padding: 3px 10px;
   font: inherit;

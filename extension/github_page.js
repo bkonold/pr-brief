@@ -90,6 +90,7 @@
     pullPage: PULL_PAGE,
     conversationPage: CONVERSATION_PAGE,
     filesPath: (pr) => `/${pr.owner}/${pr.repo}/pull/${pr.pr}/files`,
+    hostId: "github",
     runKey: (pr) => String(pr.pr),
     readHeadSha,
     blockSelector: DIFF_BLOCK,

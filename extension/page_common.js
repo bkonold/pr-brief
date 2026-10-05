@@ -9,8 +9,11 @@
 //                                   PR, each capturing owner, repo and number
 //   conversationPage, filesPath(pr) the pattern of the conversation page (same captures), and the path of a PR's
 //                                   files view
+//   hostId                          "github" or "forgejo": the host name the run server knows it by
 //   runKey(pr)                      the runs/<key> folder of a parsed PR
 //   readHeadSha()                   the head commit sha the page shows, or null
+//   fetchHeadSha(pr)                optional, async: the PR's head sha read from the host when the page does not show
+//                                   it (null on failure)
 //   blockSelector, pathOfBlock(b)   the element holding one file's diff, and the path it shows
 //   entryOf(block)                  the element to hide so the spacing between diffs collapses with it
 //   diffId(path)                    the id of a file's diff block (async)
@@ -136,11 +139,18 @@
 
     function headSha() {
       const current = prFromUrl(location);
-      if (!initialPull || current?.view !== "files" || initialPull.owner !== current.owner || initialPull.repo !== current.repo || initialPull.pr !== current.pr) {
+      if (!initialPull || !current || initialPull.owner !== current.owner || initialPull.repo !== current.repo || initialPull.pr !== current.pr) {
         return null;
       }
       if (cachedHeadSha === undefined) cachedHeadSha = spec.readHeadSha() ?? null;
       return cachedHeadSha;
+    }
+
+    // The head sha of `pr`: the page's own when it shows one, else the host's answer.
+    async function currentHeadSha(pr) {
+      const shown = headSha();
+      if (shown || !spec.fetchHeadSha) return shown;
+      return (await spec.fetchHeadSha(pr)) ?? null;
     }
 
     function fileBlocks() {
@@ -387,8 +397,10 @@
       prFromUrl,
       filesUrl,
       pullFromUrl,
+      hostId: spec.hostId,
       runKey: spec.runKey,
       headSha,
+      currentHeadSha,
       fileBlocks,
       entryOf,
       diffEntries,

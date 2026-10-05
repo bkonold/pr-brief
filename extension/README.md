@@ -36,8 +36,9 @@ The mode and selected chunk are remembered per PR in `sessionStorage`.
 ## When the page server is down
 
 If fetching `review.json` fails outright (connection refused, a network error), the list's place above GitHub's tree shows a
-note with the base URL, the command to start the server and a Retry button; GitHub's tree stays visible. Retry fetches again
-and mounts the full list on success. A 404 or an unusable review stays silent.
+note with the base URL, the command to start the server (`pd serve`) and a Retry button; GitHub's tree stays visible. Retry
+fetches again and mounts the full list on success. A 404 or an unusable review shows the "Generate brief" line below,
+unless the run server says it will not run that repository.
 
 ## Variant switcher
 
@@ -99,12 +100,38 @@ overlay; Esc or a click outside closes it.
   `data-id="L_<from>_<to>_<n>"` (its label group has the same `data-id`). Node ids can contain underscores, so edge
   ends are matched against the known node ids.
 
+## Generating a brief on demand
+
+`serve.py` (see the top-level README) can start a run for the PR on the page. The extension never talks to it from a
+page script: `background.js` makes the calls (`startRun`, `runStatus`, `cancelRun` to `/api/run`, `/api/status`,
+`/api/cancel`) and adds the server token, which the options page keeps in `chrome.storage.local` ("Server token":
+paste the contents of `~/.config/pr-describe/token`). The server also requires an `Origin` of `chrome-extension://`,
+which only the background script sends.
+
+`run_control.js` owns one run's progress for a PR page: it starts the run, asks `/api/status` every 3 seconds, ticks
+a one-second clock between polls and reports to the page. The card and the files view's line both draw from it.
+
+- **Conversation page, no run:** the card is a bar with "PR brief", "local, not posted" and a "Generate brief" button.
+- **Running:** "Writing brief · m:ss", a pill per stage (Fetch PR, Gather context, Write, Render; done ones green, the
+  current one in the accent colour) and a Cancel link. Leaving the page does not stop the run; the next visit asks
+  the server and resumes from where it is. When the run is done the brief is loaded and drawn, closed.
+- **Stale:** when the run's `head_sha` differs from the head sha the page shows (`page.currentHeadSha`: GitHub's embedded
+  page data, or for Forgejo its read-only API), the badge reads "for <short>, PR is at <short>" and a "Regenerate" button
+  sits beside "Review in files view".
+- **Failure:** the error line and a Retry button. A failed call says why: "Start the server with `pd serve` to generate
+  briefs" (nothing listening), "Server token missing or wrong — set it in the extension options" (403) or "2 briefs
+  already running" (429).
+- **Files view, no run:** where the list would be, one line, "No brief for this PR yet" and a "Generate brief" button, which
+  runs the same flow and mounts the full list when the run is done.
+- Both are offered only where the server may run that repository: `/api/status` is asked with the host, owner and repo
+  and says `allowed`. When it cannot be asked (server down, wrong token) they are shown anyway, so the reason can be.
+
 ## The PR brief card
 
 On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR brief"
 card above the PR's description when the PR has a run (`prFromUrl` returns `view: "conversation"`; the files page is
 `view: "files"` and behaves as before). The card is local: its badge says "local, not posted", nothing is written to
-the page's data, and its header links to the files view.
+the page's data, and its header links to the files view. Without a run it is the "Generate brief" bar described above.
 
 - It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
   are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.
@@ -121,13 +148,14 @@ the page's data, and its header links to the files view.
   fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's `↳` button; any other
   fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the stored variant selects,
-  the way it fetches `review.json`. With no run (or the page server down) nothing is mounted and nothing is logged.
+  the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the
+  "Generate brief" bar, except where the server says it will not run the PR's repository: then nothing is mounted.
 - The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
   back above the description; `onNavigate` mounts it again after client-side navigation, and one card exists at a time.
 
 ## Load it
 
-1. From the `pr-describe` root, serve the runs: `python3 -m http.server 8765 --bind 127.0.0.1`.
+1. From the `pr-describe` root, serve the runs and the API: `python3 serve.py` (an overlay's wrapper: `pd serve`).
 2. Open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick this `extension/` folder.
 3. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
    `http://localhost:3300/<owner>/<repo>/pulls/<n>/files`.
@@ -147,7 +175,9 @@ Run the pure tests with `node --test test/*.test.js`.
 
 | File | Role |
 | --- | --- |
-| `background.js` | Fetches `review.json` for the content script; the page server sends no CORS headers |
+| `background.js` | Fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers |
+| `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
+| `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
 | `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the callout, change watching. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
@@ -162,7 +192,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
 | `source.js` | Content-script side of the fetch |
 | `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
-| `brief.js` | Builds the PR brief card in a shadow root |
+| `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |
 
 The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in the order listed in `manifest.json`.
 

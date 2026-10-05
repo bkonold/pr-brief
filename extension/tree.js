@@ -387,7 +387,7 @@
     }
   }
 
-  const SERVER_COMMAND = "python3 -m http.server 8765 --bind 127.0.0.1";
+  const SERVER_COMMAND = "pd serve";
 
   // The note shown instead of the list while the page server is down. GitHub's own tree stays visible. handlers: onRetry()
   function renderServerNote(baseUrl, handlers) {
@@ -397,11 +397,41 @@
     root.classList.remove("prf-review");
     host.classList.remove(HOST_HIDDEN);
     const note = make("div", "prf-banner prf-offline");
-    note.append(make("p", undefined, `pr-describe page server isn't running at ${baseUrl}`));
+    note.append(make("p", undefined, `pr-describe server isn't running at ${baseUrl}`));
     const command = make("p");
-    command.append("Run ", make("code", undefined, SERVER_COMMAND), " from ~/workspace/pr-describe");
+    command.append("Start it with ", make("code", undefined, SERVER_COMMAND));
     note.append(command, button("prf-retry", "Retry", handlers.onRetry));
     root.replaceChildren(note);
+  }
+
+  // `text` as nodes, with `code` spans in backticks drawn as <code>.
+  function messageNodes(text) {
+    return String(text)
+      .split(/`([^`]+)`/)
+      .map((part, index) => (index % 2 === 1 ? make("code", undefined, part) : part));
+  }
+
+  // The one line shown in the list's place when the PR has no brief yet, GitHub's own tree staying visible.
+  // view: { kind: "none" } | { kind: "running", stage, elapsed } | { kind: "error", message }
+  // handlers: onGenerate(), onCancel()
+  function renderGenerateLine(view, handlers) {
+    const mount = mountPoint();
+    if (!mount) return;
+    const { root, host } = mount;
+    root.classList.remove("prf-review");
+    host.classList.remove(HOST_HIDDEN);
+    const line = make("div", "prf-banner prf-offline prf-generate");
+    if (view.kind === "running") {
+      const stage = ns.runControl.STAGES.find((entry) => entry.id === view.stage)?.label ?? "";
+      line.append(make("span", "prf-generate-text", `Writing brief · ${ns.runControl.formatElapsed(view.elapsed)}${stage ? ` · ${stage}` : ""}`), button("prf-retry", "Cancel", handlers.onCancel));
+    } else if (view.kind === "error") {
+      const text = make("span", "prf-generate-text");
+      text.append(...messageNodes(view.message));
+      line.append(text, button("prf-retry", "Retry", handlers.onGenerate));
+    } else {
+      line.append(make("span", "prf-generate-text", "No brief for this PR yet"), button("prf-retry", "Generate brief", handlers.onGenerate));
+    }
+    root.replaceChildren(line);
   }
 
   const REVEAL_MARGIN = 8;
@@ -468,7 +498,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, flashBadges, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, groupByFolder, staleMessage, EXTRA_KEY };
+  ns.tree = { render, renderServerNote, renderGenerateLine, flashBadges, flashRows, revealGroup, revealTarget, startCard, readFirstReason, startCallout, remove, owns, orderChunks, groupByFolder, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

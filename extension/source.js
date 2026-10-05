@@ -22,8 +22,8 @@
     }
   }
 
-  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg }, or null when the PR has no run or the page
-  // server is down.
+  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg, headSha }, or null when the PR has no run or
+  // the page server is down.
   async function loadBrief(owner, repo, pr, key = String(pr)) {
     if (!alive()) return null;
     try {
@@ -33,6 +33,21 @@
       return null;
     }
   }
+
+  // A call to the run server through the background script: { ok, ... } or { problem, message? } (see serve_api.js).
+  // `run` is { host, owner, repo, pr, key }.
+  async function ask(message) {
+    if (!alive()) return { problem: "error", message: "The extension was reloaded; reload this page" };
+    try {
+      return (await chrome.runtime.sendMessage(message)) ?? { problem: "error", message: "The extension did not answer" };
+    } catch {
+      return { problem: "error", message: "The extension did not answer" };
+    }
+  }
+
+  const startRun = (run) => ask({ type: "startRun", ...run });
+  const runStatus = (run) => ask({ type: "runStatus", ...run });
+  const cancelRun = (run) => ask({ type: "cancelRun", ...run });
 
   async function saveVariant(variant) {
     if (!alive()) return;
@@ -44,7 +59,7 @@
   }
 
   ns.alive = alive;
-  ns.source = { loadReview, loadBrief, saveVariant };
+  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, saveVariant };
 })();
 
 if (typeof module !== "undefined") module.exports = { alive: globalThis.prFocus.alive, ...globalThis.prFocus.source };

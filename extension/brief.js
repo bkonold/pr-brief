@@ -1,6 +1,8 @@
 // The PR brief card: the run's description, review order and diagram, in a collapsed <details> that the content
-// script places above the PR's description on the conversation page. It lives in a shadow root, so neither
-// page's CSS reaches it. The colours are the site's own (GitHub's Primer names, which the Forgejo adapter points at
+// script places above the PR's description on the conversation page. Before there is a run it is a bar with a
+// "Generate brief" button, while one is being written a bar with the stage pills and a Cancel link, and when the run
+// is for an older head commit than the page's the badge says so and a Regenerate button appears. It lives in a
+// shadow root, so neither page's CSS reaches it. The colours are the site's own (GitHub's Primer names, which the Forgejo adapter points at
 // Forgejo's colours), with light and dark fallbacks for when the page defines none.
 (() => {
   const ns = (globalThis.prFocus ??= {});
@@ -18,6 +20,8 @@
       --header: var(--bgColor-muted, #f6f8fa);
       --border: var(--borderColor-default, #d1d9e0);
       --code: var(--bgColor-neutral-muted, #818b981f);
+      --success: var(--fgColor-success, #1a7f37);
+      --danger: var(--fgColor-danger, #d1242f);
       color: var(--fg);
       background: var(--surface);
       border: 1px solid var(--border);
@@ -33,6 +37,8 @@
         --header: var(--bgColor-muted, #151b23);
         --border: var(--borderColor-default, #3d444d);
         --code: var(--bgColor-neutral-muted, #656c7633);
+        --success: var(--fgColor-success, #3fb950);
+        --danger: var(--fgColor-danger, #f85149);
       }
     }
     .brief > summary {
@@ -53,6 +59,20 @@
     .brief[open] .chevron { transform: rotate(45deg); }
     .title { font-weight: 600; }
     .badge { padding: 0 7px; font-size: 12px; line-height: 18px; color: var(--muted); border: 1px solid var(--border); border-radius: 2em; }
+    .bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 16px; background: var(--header); border-radius: 5px; }
+    .bar .btn, .bar .link { margin-left: auto; }
+    .btn { padding: 1px 12px; font: inherit; font-size: 12px; line-height: 20px; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+    .btn:hover { background: var(--header); }
+    .link { padding: 0; font: inherit; font-size: 12px; color: var(--accent); background: none; border: 0; cursor: pointer; }
+    .link:hover { text-decoration: underline; }
+    summary .btn { margin-left: auto; }
+    summary .btn + .files-link { margin-left: 0; }
+    .progress { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .stages { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 12px 16px; list-style: none; }
+    .pill { padding: 0 10px; font-size: 12px; line-height: 20px; color: var(--muted); border: 1px solid var(--border); border-radius: 2em; }
+    .pill.done { color: var(--success); border-color: var(--success); }
+    .pill.current { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+    .error { margin: 0; padding: 12px 16px; color: var(--danger); }
     .files-link { margin-left: auto; color: var(--accent); font-size: 12px; text-decoration: none; }
     .files-link:hover { text-decoration: underline; }
     .content { padding: 16px; }
@@ -100,32 +120,101 @@
     return at === -1 ? { text: html, order: "" } : { text: html.slice(0, at), order: html.slice(at) };
   }
 
-  // Returns the card for a run, closed. `key` and `variant` name the run; `filesUrl` is the PR's files view on this
-  // host. The card holds no state: it is closed every time it is built.
-  function buildBrief({ key, variant, bodyHtml, diagramSvg, filesUrl }) {
-    const { html, legend } = ns.briefText.renderBody(bodyHtml, filesUrl);
-    const svg = /^\s*<svg[\s>]/.test(diagramSvg ?? "") ? ns.briefText.sanitize(diagramSvg, "svg") : "";
+  const SHORT_SHA = 7;
+
+  // `text` escaped, with `code` spans in backticks drawn as <code>.
+  function formatMessage(text) {
+    return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+
+  function short(sha) {
+    return String(sha).slice(0, SHORT_SHA);
+  }
+
+  // True when the run was made for another head commit than the one the page shows; unknown shas are never stale.
+  function isStale(runSha, pageSha) {
+    return Boolean(runSha && pageSha && String(runSha).toLowerCase() !== String(pageSha).toLowerCase());
+  }
+
+  function badge(key, variant, label) {
+    const where = variant ? `Run ${escapeHtml(key)}, variant ${escapeHtml(variant)}` : "No run yet";
+    return `<span class="badge" title="${where}">${escapeHtml(label)}</span>`;
+  }
+
+  const TITLE = '<span class="title">PR brief</span>';
+
+  function bar(inner) {
+    return `<div class="brief"><div class="bar">${TITLE}${inner}</div>`;
+  }
+
+  // The card as HTML for one view:
+  //   { kind: "none", canGenerate }                         no run yet
+  //   { kind: "running", stage, elapsed }                   a run is going
+  //   { kind: "error", message }                            the call or the run failed
+  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate }   a run, closed
+  // `key` and `filesUrl` name the run and the PR's files view on this host. Every button is a
+  // data-action: generate, cancel.
+  function cardHtml(view, { key, filesUrl }) {
+    if (view.kind === "none") {
+      return bar(`${badge(key, null, "local, not posted")}${view.canGenerate === false ? "" : '<button class="btn" type="button" data-action="generate">Generate brief</button>'}`) + "</div>";
+    }
+    if (view.kind === "running") {
+      const pills = ns.runControl.stagePills(view.stage).map((pill) => `<li class="pill ${pill.state}">${escapeHtml(pill.label)}</li>`).join("");
+      return (
+        bar(`${badge(key, null, "local, not posted")}<span class="progress">Writing brief · ${ns.runControl.formatElapsed(view.elapsed)}</span><button class="link" type="button" data-action="cancel">Cancel</button>`) +
+        `<ol class="stages" aria-label="Brief progress">${pills}</ol></div>`
+      );
+    }
+    if (view.kind === "error") {
+      return bar(`${badge(key, null, "local, not posted")}<button class="btn" type="button" data-action="generate">Retry</button>`) + `<p class="error" role="alert">${formatMessage(view.message)}</p></div>`;
+    }
+    const { html, legend } = ns.briefText.renderBody(view.bodyHtml, filesUrl);
+    const svg = /^\s*<svg[\s>]/.test(view.diagramSvg ?? "") ? ns.briefText.sanitize(view.diagramSvg, "svg") : "";
     const { text, order } = splitOrder(html);
     const diagram = svg
       ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${legend ? `<p class="legend">${legend}</p>` : ""}</figure></details>`
       : "";
+    const stale = isStale(view.runSha, view.pageSha);
+    const label = stale ? `for ${short(view.runSha)}, PR is at ${short(view.pageSha)}` : "local, not posted";
+    const regenerate = stale && view.canGenerate !== false ? '<button class="btn" type="button" data-action="generate">Regenerate</button>' : "";
+    return (
+      '<details class="brief">' +
+      `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label)}${regenerate}` +
+      `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
+      `<div class="content"><div class="text">${text}</div>${diagram}` +
+      `${order ? `<div class="order">${order}</div>` : ""}</div></details>`
+    );
+  }
 
+  // Builds the card host for a run folder `key`, empty until `show(view)` draws it (see cardHtml for the views).
+  // `onAction(name)` is called with "generate" or "cancel" when the matching button is clicked. The card holds no
+  // state of its own: a brief view is drawn closed every time.
+  function buildCard({ key, filesUrl, onAction }) {
     const host = document.createElement("div");
     host.id = HOST_ID;
     host.setAttribute("data-run", key);
-    host.setAttribute("data-variant", variant);
-    host.attachShadow({ mode: "open" }).innerHTML =
-      `<style>${STYLE}</style>` +
-      '<details class="brief">' +
-      '<summary><span class="chevron"></span><span class="title">PR brief</span>' +
-      `<span class="badge" title="Run ${escapeHtml(key)}, variant ${escapeHtml(variant)}">local, not posted</span>` +
-      `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
-      `<div class="content"><div class="text">${text}</div>${diagram}` +
-      `${order ? `<div class="order">${order}</div>` : ""}</div></details>`;
+    const shadow = host.attachShadow({ mode: "open" });
+    shadow.addEventListener?.("click", (event) => {
+      const action = event.target?.closest?.("[data-action]")?.getAttribute("data-action");
+      if (!action) return;
+      event.preventDefault();
+      onAction?.(action);
+    });
+    host.show = (view) => {
+      if (view.variant) host.setAttribute("data-variant", view.variant);
+      shadow.innerHTML = `<style>${STYLE}</style>${cardHtml(view, { key, filesUrl })}`;
+    };
     return host;
   }
 
-  ns.brief = { HOST_ID, buildBrief };
+  // The card for a run that exists, drawn closed.
+  function buildBrief({ key, variant, bodyHtml, diagramSvg, filesUrl, runSha, pageSha, onAction }) {
+    const host = buildCard({ key, filesUrl, onAction });
+    host.show({ kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha });
+    return host;
+  }
+
+  ns.brief = { HOST_ID, buildCard, buildBrief, cardHtml, isStale };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.brief;

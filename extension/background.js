@@ -1,12 +1,20 @@
 import { chooseVariant } from "./choose_variant.js";
 import { classifyFetch } from "./classify.js";
-import { DEFAULTS } from "./defaults.js";
+import { DEFAULTS, TOKEN_KEY } from "./defaults.js";
+import { TOKEN_HEADER, describeResponse } from "./serve_api.js";
 
 const SAFE_NAME = /^[\w.-]+$/;
 
 async function settings() {
   const stored = await chrome.storage.sync.get(DEFAULTS);
   return { variant: stored.variant || DEFAULTS.variant, baseUrl: (stored.baseUrl || DEFAULTS.baseUrl).replace(/\/+$/, "") };
+}
+
+// The server token lives in chrome.storage.local, which no other device or page script can read. Only this script
+// sends it, so the content scripts never see it.
+async function serverToken() {
+  const stored = await chrome.storage.local.get({ [TOKEN_KEY]: "" });
+  return String(stored[TOKEN_KEY] ?? "").trim();
 }
 
 function matchesPr(review, owner, repo, pr) {
@@ -89,10 +97,43 @@ async function loadBrief(request) {
     loadRunFile(baseUrl, variant, key, "body.html"),
     loadDiagram(baseUrl, variant, key, review.diagram),
   ]);
-  return bodyHtml === null ? null : { variant, bodyHtml, diagramSvg };
+  return bodyHtml === null ? null : { variant, bodyHtml, diagramSvg, headSha: review.head_sha ?? null };
 }
 
-const HANDLERS = { loadReview, loadBrief };
+// One call to serve.py's /api/ with the token; see describeResponse for the shapes that come back.
+async function callServer(path, { method = "GET", body } = {}) {
+  const { baseUrl } = await settings();
+  const headers = { [TOKEN_HEADER]: await serverToken() };
+  if (body) headers["Content-Type"] = "application/json";
+  let response;
+  let failure;
+  let data = null;
+  try {
+    response = await fetch(`${baseUrl}${path}`, { method, headers, body: body && JSON.stringify(body), cache: "no-store" });
+    data = await response.json().catch(() => null);
+  } catch (error) {
+    failure = error;
+  }
+  return describeResponse(response, failure, data);
+}
+
+// Starts a run for the PR on the page: { ok, key, state }.
+function startRun({ host, owner, repo, pr }) {
+  return callServer("/api/run", { method: "POST", body: { host, owner, repo, n: pr } });
+}
+
+// A run's progress: { ok, state, stage, elapsed, error? }. With host, owner and repo it also says whether the
+// server may start runs for that repository (`allowed`).
+function runStatus({ key, host, owner, repo }) {
+  const query = new URLSearchParams({ key, ...(host ? { host, owner, repo } : {}) });
+  return callServer(`/api/status?${query}`);
+}
+
+function cancelRun({ key }) {
+  return callServer("/api/cancel", { method: "POST", body: { key } });
+}
+
+const HANDLERS = { loadReview, loadBrief, startRun, runStatus, cancelRun };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!Object.hasOwn(HANDLERS, message?.type)) return false;

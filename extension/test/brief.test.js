@@ -7,7 +7,8 @@ const vm = require("node:vm");
 const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const briefText = require("../brief_text.js");
-const { buildBrief } = require("../brief.js");
+const runControl = require("../run_control.js");
+const { buildBrief, buildCard, cardHtml, isStale } = require("../brief.js");
 
 const FILES_URL = "http://forge.example/acme/widgets/pulls/7/files";
 
@@ -251,8 +252,8 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 });
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
-// is a recording element, and a source that answers with `run`.
-function loadContent({ run, hostPresent = true }) {
+// is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null }) {
   const log = [];
   const description = {
     name: "description",
@@ -263,44 +264,103 @@ function loadContent({ run, hostPresent = true }) {
   };
   const navigations = [];
   const built = [];
+  const calls = [];
+  const lines = [];
   const prFocus = {
     page: {
       name: "Fake",
-      prFromUrl: () => ({ owner: "acme", repo: "widgets", pr: 7, view: "conversation" }),
+      hostId: "forgejo",
+      prFromUrl: () => ({ owner: "acme", repo: "widgets", pr: 7, view }),
       runKey: (pr) => `fj-${pr.pr}`,
       filesUrl: () => FILES_URL,
+      currentHeadSha: async () => pageSha,
       descriptionHost: () => (hostPresent ? description : null),
       onNavigate: (callback) => (navigations.push(callback), () => {}),
       onChange: () => () => {},
+      cancelJump() {},
+      clearLineTarget() {},
     },
-    source: { loadBrief: async () => run },
+    source: {
+      loadBrief: async () => run,
+      loadReview: async () => review,
+      runStatus: async (target) => (calls.push(["status", target]), status),
+      startRun: async (target) => (calls.push(["start", target]), { ok: true, key: target.key, state: "running" }),
+      cancelRun: async (target) => (calls.push(["cancel", target]), { ok: true, key: target.key, state: "canceled" }),
+    },
+    runControl: { ...runControl, create: (options) => runControl.create({ ...options, timers: { setTimeout: context.setTimeout, clearTimeout, setInterval: context.setInterval, clearInterval } }) },
     brief: {
-      buildBrief: (options) => {
-        built.push(options);
-        return { isConnected: true, nextElementSibling: null, remove() {}, placed: 0 };
+      buildCard: (options) => {
+        const card = { isConnected: true, nextElementSibling: null, remove() {}, placed: 0, options, shown: [], show: (shown) => card.shown.push(shown) };
+        built.push(card);
+        return card;
       },
     },
-    tree: {},
+    tree: {
+      renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
+      remove() {},
+      owns: () => false,
+    },
+    focus: { apply: async () => ({}), clearBox() {} },
+    diagram: { remove() {}, owns: () => false },
     alive: () => true,
   };
   const output = [];
   const consoleSpy = { log: (...a) => output.push(a), warn: (...a) => output.push(a), error: (...a) => output.push(a), info: (...a) => output.push(a), debug: (...a) => output.push(a) };
-  const context = { prFocus, location: { href: "x" }, console: consoleSpy, setTimeout, clearTimeout, Date };
+  const unref = (start) => (...args) => {
+    const timer = start(...args);
+    timer.unref?.();
+    return timer;
+  };
+  const context = { prFocus, location: { href: "x" }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output };
+  return { log, built, navigations, output, calls, lines };
 }
 
+const plain = (value) => JSON.parse(JSON.stringify(value));
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+const RUN = { variant: "v1", bodyHtml: "<p>x</p>", diagramSvg: null, headSha: "a".repeat(40) };
 
-test("nothing is built, placed or logged when the PR has no run", async () => {
-  const { built, log, output } = loadContent({ run: null });
+test("nothing is built, placed or logged when the PR has no run and the server will not run its repository", async () => {
+  const { built, log, output } = loadContent({ run: null, status: { ok: true, state: "idle", allowed: false } });
   await settle();
   assert.deepEqual([built, log, output], [[], [], []]);
 });
 
+test("a PR with no run gets a card offering to generate, and the click starts a run", async () => {
+  const { built, log, calls } = loadContent({ run: null });
+  await settle();
+  assert.equal(built.length, 1);
+  assert.deepEqual(log, ["placed"]);
+  assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }]);
+  assert.deepEqual({ ...built[0].options, onAction: undefined }, { key: "fj-7", filesUrl: FILES_URL, onAction: undefined });
+  built[0].options.onAction("generate");
+  await settle();
+  assert.deepEqual(plain(calls.at(-1)), ["start", { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" }]);
+  assert.deepEqual(plain(built[0].shown[1]), { kind: "running", stage: "fetch", elapsed: 0 });
+  built[0].options.onAction("cancel");
+  await settle();
+  assert.equal(calls.at(-1)[0], "cancel");
+  assert.deepEqual(plain(built[0].shown.at(-1)), { kind: "none", canGenerate: true });
+});
+
+test("with the server down or the token wrong the card is still offered, so the click can say why", async () => {
+  for (const status of [{ problem: "server" }, { problem: "token" }]) {
+    const { built } = loadContent({ run: null, status });
+    await settle();
+    assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }]);
+    built[0].options.onAction("generate");
+  }
+});
+
+test("a run in progress on the server is followed when the page opens, and its failure is shown", async () => {
+  const { built } = loadContent({ run: null, status: { ok: true, state: "running", stage: "write", elapsed: 41, allowed: true } });
+  await settle();
+  assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }, { kind: "running", stage: "write", elapsed: 41 }]);
+});
+
 test("one card is built for a run, however many times the page announces a navigation", async () => {
-  const { built, log, navigations } = loadContent({ run: { variant: "v1", bodyHtml: "<p>x</p>", diagramSvg: null } });
+  const { built, log, navigations } = loadContent({ run: RUN });
   await settle();
   for (const navigate of navigations) {
     navigate();
@@ -308,13 +368,120 @@ test("one card is built for a run, however many times the page announces a navig
   }
   await settle();
   assert.equal(built.length, 1);
-  assert.deepEqual({ ...built[0] }, { key: "fj-7", variant: "v1", bodyHtml: "<p>x</p>", diagramSvg: null, filesUrl: FILES_URL });
+  assert.deepEqual({ ...built[0].options, onAction: undefined }, { key: "fj-7", filesUrl: FILES_URL, onAction: undefined });
+  assert.deepEqual(plain(built[0].shown), [{ kind: "brief", ...RUN, runSha: RUN.headSha, pageSha: null, canGenerate: true }]);
   assert.deepEqual(log, ["placed"]);
 });
 
+test("the card shows the run's head and the page's, so a moved head reads as stale", async () => {
+  const { built } = loadContent({ run: RUN, pageSha: "b".repeat(40) });
+  await settle();
+  const [shown] = built[0].shown;
+  assert.deepEqual([shown.runSha, shown.pageSha], ["a".repeat(40), "b".repeat(40)]);
+  assert.ok(isStale(shown.runSha, shown.pageSha));
+});
+
 test("the card waits for the description to exist before it is placed", async () => {
-  const { built, log } = loadContent({ run: { variant: "v1", bodyHtml: "<p>x</p>", diagramSvg: null }, hostPresent: false });
+  const { built, log } = loadContent({ run: RUN, hostPresent: false });
   await settle();
   assert.equal(built.length, 1);
   assert.deepEqual(log, []);
+});
+
+test("a files page with no run shows one generate line, and its click starts a run", async () => {
+  const { lines, calls } = loadContent({ run: null, view: "files" });
+  await settle();
+  assert.deepEqual(plain(lines.at(-1).shown), { kind: "none" });
+  lines.at(-1).handlers.onGenerate();
+  await settle();
+  assert.deepEqual(plain(calls.at(-1)), ["start", { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" }]);
+  assert.deepEqual(plain(lines.at(-1).shown), { kind: "running", stage: "fetch", elapsed: 0 });
+});
+
+test("a files page whose repository the server will not run shows no line", async () => {
+  const { lines } = loadContent({ run: null, view: "files", status: { ok: true, state: "idle", allowed: false } });
+  await settle();
+  assert.deepEqual(lines, []);
+});
+
+const RUN_SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f90abcdef01";
+const PAGE_SHA = "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432";
+const CARD = { key: "fj-7", filesUrl: FILES_URL };
+
+test("with no run the card is a bar with the badge and a Generate brief button", () => {
+  const html = cardHtml({ kind: "none", canGenerate: true }, CARD);
+  assert.match(html, /<span class="title">PR brief<\/span><span class="badge"[^>]*>local, not posted<\/span><button class="btn" type="button" data-action="generate">Generate brief<\/button>/);
+  assert.doesNotMatch(html, /<details|<ol/);
+  assert.doesNotMatch(cardHtml({ kind: "none", canGenerate: false }, CARD), /<button/);
+});
+
+test("while a run is going the card shows the elapsed time, the stage pills and a Cancel link", () => {
+  const html = cardHtml({ kind: "running", stage: "write", elapsed: 83 }, CARD);
+  assert.match(html, /<span class="progress">Writing brief · 1:23<\/span><button class="link" type="button" data-action="cancel">Cancel<\/button>/);
+  const pills = [...html.matchAll(/<li class="pill (\w+)">([^<]+)<\/li>/g)].map((match) => [match[2], match[1]]);
+  assert.deepEqual(pills, [["Fetch PR", "done"], ["Gather context", "done"], ["Write", "current"], ["Render", "pending"]]);
+});
+
+test("a failure shows its message, escaped, with a Retry button", () => {
+  const html = cardHtml({ kind: "error", message: "bad <b>line</b> with `pd serve`" }, CARD);
+  assert.match(html, /<p class="error" role="alert">bad &lt;b&gt;line&lt;\/b&gt; with <code>pd serve<\/code><\/p>/);
+  assert.match(html, /data-action="generate">Retry<\/button>/);
+});
+
+test("a run for the page's head shows no Regenerate button; a run for an older head says so and offers one", () => {
+  const brief = { kind: "brief", variant: "v1", bodyHtml: bodyHtml(), diagramSvg: null, runSha: RUN_SHA, pageSha: RUN_SHA.toUpperCase(), canGenerate: true };
+  const fresh = cardHtml(brief, CARD);
+  assert.match(fresh, /<span class="badge"[^>]*>local, not posted<\/span><a class="files-link"/);
+  assert.doesNotMatch(fresh, /Regenerate/);
+  const stale = cardHtml({ ...brief, pageSha: PAGE_SHA }, CARD);
+  assert.match(stale, /<span class="badge"[^>]*>for a1b2c3d, PR is at 9f8e7d6<\/span><button class="btn" type="button" data-action="generate">Regenerate<\/button><a class="files-link" href="[^"]+">Review in files view<\/a>/);
+  assert.doesNotMatch(cardHtml({ ...brief, pageSha: PAGE_SHA, canGenerate: false }, CARD), /Regenerate/);
+  assert.match(stale, /<details class="brief">/);
+  assert.doesNotMatch(stale, /<details[^>]*\bopen\b/);
+});
+
+test("a head that is unknown on either side is never stale", () => {
+  assert.equal(isStale(null, PAGE_SHA), false);
+  assert.equal(isStale(RUN_SHA, null), false);
+  assert.equal(isStale(RUN_SHA, RUN_SHA), false);
+  assert.equal(isStale(RUN_SHA, PAGE_SHA), true);
+});
+
+test("clicking a button in the card reports its action, and show redraws the card for each view", () => {
+  const listeners = [];
+  const document = {
+    createElement: () => ({
+      attributes: {},
+      setAttribute(name, value) {
+        this.attributes[name] = value;
+      },
+      attachShadow() {
+        this.shadow = { innerHTML: "", addEventListener: (type, listener) => listeners.push([type, listener]) };
+        return this.shadow;
+      },
+    }),
+  };
+  globalThis.document = document;
+  try {
+    const actions = [];
+    const host = buildCard({ ...CARD, onAction: (action) => actions.push(action) });
+    host.show({ kind: "none", canGenerate: true });
+    assert.match(host.shadow.innerHTML, /Generate brief/);
+    host.show({ kind: "running", stage: "fetch", elapsed: 0 });
+    assert.match(host.shadow.innerHTML, /Writing brief · 0:00/);
+    host.show({ kind: "brief", variant: "v1", bodyHtml: bodyHtml(), diagramSvg: null });
+    assert.equal(host.attributes["data-variant"], "v1");
+    assert.equal(listeners.length, 1);
+    const [type, listener] = listeners[0];
+    assert.equal(type, "click");
+    let prevented = 0;
+    const click = (action) => listener({ target: { closest: () => (action ? { getAttribute: () => action } : null) }, preventDefault: () => (prevented += 1) });
+    click("generate");
+    click("cancel");
+    click(null);
+    assert.deepEqual(actions, ["generate", "cancel"]);
+    assert.equal(prevented, 2);
+  } finally {
+    delete globalThis.document;
+  }
 });

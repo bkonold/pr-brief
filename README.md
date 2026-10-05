@@ -121,7 +121,7 @@ neither.
 Then open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick the `extension/`
 folder. Open a PR's Files changed page (`https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
 `<forgejo_url>/<owner>/<repo>/pulls/<n>/files`). The extension finds `runs/<key>/<variant>/review.json` on that
-server (`<key>` is `<n>` on GitHub and `fj-<n>` on Forgejo); it shows nothing when the run is missing.
+server (`<key>` is `<n>` on GitHub and `fj-<n>` on Forgejo); for a PR with no run it offers to generate one (see Serve the runs, and paste the server token into the extension's options).
 `extension/README.md` lists what it does and every GitHub selector it depends on. Run its tests with
 `node --test extension/test/*.test.js`.
 
