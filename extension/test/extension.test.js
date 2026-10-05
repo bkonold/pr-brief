@@ -507,7 +507,10 @@ function fakeDom() {
   class Element {
     constructor(tag) {
       Object.assign(this, { tag, className: "", textContent: "", children: [], listeners: {}, attributes: {} });
-      this.classList = { add: (name) => (this.className = `${this.className} ${name}`.trim()) };
+      this.classList = {
+        add: (name) => (this.className = `${this.className} ${name}`.trim()),
+        toggle: (name, on) => on && this.classList.add(name),
+      };
     }
     get firstChild() {
       return this.children[0];
@@ -902,6 +905,24 @@ test("a start callout for a file start reads the start's reason and keeps its ne
     assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Open this file first.");
     assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
     assert.equal(byClass(card, "prf-callout-prev")[0].title, "1 · Screen");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a file row ends with its added and removed line counts, a zero side left out, and none when there are no lines", () => {
+  globalThis.document = fakeDom();
+  try {
+    const { fileRow } = require("../tree.js");
+    const countsOf = (file) => {
+      const row = fileRow(file, () => {}).children[0];
+      return byClass(row, "prf-file-counts").map((counts) => [row.children.at(-1) === counts, counts.children.map((side) => [side.className, side.textContent])]);
+    };
+    assert.deepEqual(countsOf({ path: "a/x.js", additions: 12, deletions: 3 }), [[true, [["prf-add", "+12"], ["prf-del", "\u22123"]]]]);
+    assert.deepEqual(countsOf({ path: "a/x.js", additions: 12, deletions: 0 }), [[true, [["prf-add", "+12"]]]]);
+    assert.deepEqual(countsOf({ path: "a/x.js", additions: 0, deletions: 4 }), [[true, [["prf-del", "\u22124"]]]]);
+    assert.deepEqual(countsOf({ path: "a/x.js", additions: 0, deletions: 0 }), []);
+    assert.deepEqual(countsOf({ path: "a/x.js" }), []);
   } finally {
     delete globalThis.document;
   }

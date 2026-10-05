@@ -137,6 +137,18 @@
     return svg;
   }
 
+  // The file's `+<additions> −<deletions>`, a zero side left out; null when neither side has lines or the counts are unknown.
+  function lineCounts(file) {
+    const sides = [
+      ["prf-add", "+", file.additions],
+      ["prf-del", "\u2212", file.deletions],
+    ].filter(([, , count]) => count > 0);
+    if (!sides.length) return null;
+    const element = make("span", "prf-file-counts");
+    for (const [className, sign, count] of sides) element.append(make("span", className, `${sign}${count}`));
+    return element;
+  }
+
   // `options.start` marks the chunk's start file; `options.showFolder` adds the folder after a basename that another
   // file in the list shares.
   function fileRow(file, onClick, { active = false, start = false, showFolder = false } = {}) {
@@ -147,6 +159,8 @@
     row.title = file.path;
     row.append(make("span", "prf-file-name", baseNameOf(file.path)));
     if (showFolder) row.append(make("span", "prf-file-dir", folderOf(file.path)));
+    const counts = lineCounts(file);
+    if (counts) row.append(counts);
     item.append(row);
     return item;
   }
@@ -450,7 +464,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
+  ns.tree = { fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

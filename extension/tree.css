@@ -398,7 +398,7 @@
   width: 100%;
   min-height: 24px;
   margin: 0;
-  padding: 2px 8px;
+  padding: 2px 4px 2px 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   color: var(--fgColor-muted, #59636e);
@@ -439,6 +439,27 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0.75;
+}
+
+/* The right edge of the counts is the right edge of the chunk rows' level words: the row's 4px of padding plus the
+   list's 8px match the header's 4px plus 8px. */
+.prf-file-counts {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.prf-add {
+  color: var(--fgColor-success, #1a7f37);
+}
+
+.prf-del {
+  color: var(--fgColor-danger, #d1242f);
 }
 
 .prf-file.prf-row-flash {

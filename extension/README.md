@@ -19,7 +19,9 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   both. It is not remembered, so each load opens in flow order; a run with no steps opens by risk and has no switch. A "Not in review" group, in the same one-line style, lists loaded diffs no chunk names.
 - Files show only their basename, in small monospace; the chunk's start file is in the primary text colour and the rest are
   muted. A basename shared by two files of the list gets its folder as a dim suffix; the full path is the row's tooltip. The
-  file order is the chunk's own.
+  file order is the chunk's own. Each row ends with the file's `+<additions> −<deletions>` in 11px tabular numbers, green and
+  red from the host's success and danger colours, a zero side left out and none for a file with no lines; the counts are
+  right-aligned to the same edge as the chunk rows' level words, and the name truncates before them.
 - Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and does what its "Start here"
   button does (below); clicking the open chunk jumps again. A chunk with no start scrolls to its first file
   instead. "GitHub tree" mode shows every diff again.
