@@ -534,9 +534,9 @@ test("a start callout shows the chunk, the reason, its next buttons and the prev
     const gone = [];
     const card = startCallout(FLOW_CHUNKS[1], FLOW_CHUNKS, (chunk) => gone.push(chunk.n));
     assert.equal(byClass(card, "prf-callout-chunk")[0].textContent, "2 · Endpoint");
-    assert.equal(byClass(card, "prf-callout-label")[0].textContent, "why the model starts here");
+    assert.equal(byClass(card, "prf-callout-label")[0].textContent, "Why the LLM picked this");
     assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
-    assert.equal(byClass(card, "prf-callout-prev")[0].textContent, "↑ 1 · Screen");
+    assert.deepEqual([byClass(card, "prf-callout-prev")[0].textContent, byClass(card, "prf-callout-prev")[0].title], ["↑ Previous", "1 · Screen"]);
     for (const button of [...byClass(card, "prf-callout-go"), ...byClass(card, "prf-callout-prev")]) button.listeners.click();
     assert.deepEqual(gone, [3, 1]);
   } finally {
@@ -562,7 +562,7 @@ test("the last chunk's callout says Last step and offers no next button", () => 
     const card = startCallout(FLOW_CHUNKS[2], FLOW_CHUNKS, () => {});
     assert.equal(byClass(card, "prf-callout-nav-label")[0].textContent, "Last step");
     assert.deepEqual(byClass(card, "prf-callout-go"), []);
-    assert.equal(byClass(card, "prf-callout-prev")[0].textContent, "↑ 2 · Endpoint");
+    assert.deepEqual([byClass(card, "prf-callout-prev")[0].textContent, byClass(card, "prf-callout-prev")[0].title], ["↑ Previous", "2 · Endpoint"]);
   } finally {
     delete globalThis.document;
   }

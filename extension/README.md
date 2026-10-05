@@ -34,10 +34,10 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - Every chunk's start line that has loaded gets a callout above it, as soon as the review shows and as GitHub or Forgejo
   load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
   (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text) with a route icon,
-  the chunk as `<n> · <name>` in bold default text, "why the model starts here" in secondary text, and the reason, wrapping if it is
-  long: the chunk's `start.why`, else the chunk's own `why`. A last row starts with a `↑ <n> · <name>` button for the
-  chunk numbered one lower when there is one, then "Next" followed by one small button per chunk to read next,
-  `<n> · <name> ↓`, or the quiet text "Last step" when there is none. A button does what a click on that
+  the chunk as `<n> · <name>` in bold default text, then on its own line a small muted "Why the LLM picked this" over the
+  reason, wrapping if it is long: the chunk's `start.why`, else the chunk's own `why`. Below a hairline, a last row starts
+  with a "↑ Previous" button (its tooltip names the chunk) for the chunk numbered one lower when there is one, then "Next"
+  followed by one small button per chunk to read next, `<n> · <name> ↓`, or the quiet text "Last step" when there is none. A button does what a click on that
   chunk in the list does: it focuses, opens and jumps to its start line (a chunk with no start line scrolls to its
   first file). The chunks to read next are the `next` field of each chunk in `review.json`, the same in flow and risk
   order; a run without `next` goes to the chunk with the next higher number. A callout is placed once per chunk, so a
