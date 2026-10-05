@@ -1,11 +1,16 @@
-"""The "Contract" changes of a v22 brief: what a PR changes in the OpenAPI document, each with the side it reaches
-(request or response) and an impact level.
+"""The "Contract" lines of a v22 brief: what a PR changes in the OpenAPI document, one line per pattern, each with an
+impact level.
 
-`collect_changes` reads a run's contract.json and the spec's diff and yields one `Change` per atomic difference, with
-its impact level from `contract_impact`, plus the operations that were removed, added, deprecated or moved. Older
-variants build their rows with contract_block.py instead.
+`collect_changes` reads a run's contract.json and the spec's diff and yields one `Change` per atomic difference, each
+with the side it reaches (request or response) and its impact level from `contract_impact`. `pattern_lines` then
+collapses repeated changes: the same change to the same property across several schemas, a removed and an added
+operation that are one move, new operations under one base path, the same parameter change across several operations,
+and added enum values. `contract_lines` runs both and returns the lines, worst impact first.
+
+The lines are placed in chunks and drawn by layout.py. Older variants build their rows with contract_block.py instead.
 """
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -104,6 +109,11 @@ def contract_impact(kind: str, sides: frozenset[str] | set[str] = frozenset()) -
     reached: set[str] = set(sides) or {REQUEST, RESPONSE}
     levels: list[str] = [level for side, level in ((REQUEST, request_level), (RESPONSE, response_level)) if side in reached]
     return min(levels, key=CONTRACT_LEVELS.index)
+
+
+def side_word(sides: frozenset[str]) -> str:
+    """`request`, `response` or `request and response`; empty when the sides are not known."""
+    return "request and response" if len(sides) == 2 else next(iter(sides), "")
 
 
 def side_phrase(sides: frozenset[str]) -> str:
@@ -362,7 +372,7 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
                 locator.schema(found.group(1), "-"))
         elif found := ENUM_REMOVED.match(entry):
             schema, prop, value = found.group(1), found.group(2), found.group(3)
-            add("enum_removed", sides_of(schema), prop or schema, schema, schema_member(schema),
+            add("enum_removed", sides_of(schema), f"{schema}.{prop}" if prop else schema, schema, schema_member(schema),
                 locator.enum_entry(schema, value, removed=True), value)
     for item in contract.get("enums_added", []):
         schema = item["schema"]
@@ -376,3 +386,255 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
     for schema in added.get("schemas", []):
         add("schema_added", sides_of(schema), schema, schema, schema_member(schema), locator.schema(schema, "+"))
     return changes, extras
+
+
+# ---------------------------------------------------------------- collapsing into pattern lines
+
+# The same change to the same property, parameter or kind of endpoint on this many schemas or operations is one line.
+SWEEP_MINIMUM = 3
+LISTED_NAMES = 3
+PAGINATION_PARAMETERS: frozenset[str] = frozenset({"page", "size", "sort", "pageable", "limit", "offset", "cursor"})
+METHOD_ORDER: tuple[str, ...] = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE")
+@dataclass
+class Line:
+    impact: str | None
+    text: str
+    path: str
+    loc: tuple[str, int] | None
+    members: list[Member] = field(default_factory=list)
+    group: str = ""
+
+
+def rank_of(impact: str | None, levels: tuple[str, ...] = CONTRACT_LEVELS) -> int:
+    return levels.index(impact) if impact in levels else len(levels)
+
+
+def code(name: str) -> str:
+    return f"`{name}`"
+
+
+def names_text(names: list[str]) -> str:
+    """The first LISTED_NAMES names as code, then `+N` for the rest."""
+    shown: str = ", ".join(code(n) for n in names[:LISTED_NAMES])
+    return f"{shown} +{len(names) - LISTED_NAMES}" if len(names) > LISTED_NAMES else shown
+
+
+def plural(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+
+
+
+def literal_prefix(path: str) -> str:
+    """The path up to its first `{parameter}` segment."""
+    kept: list[str] = []
+    for part in path.split("/"):
+        if part.startswith("{"):
+            break
+        kept.append(part)
+    return "/".join(kept) or "/"
+
+
+def operation_families(operations: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    """The operations grouped by controller tag and, inside a tag, by the shortest literal path prefix that the others
+    in the tag start with: `(base path, operations)` in the order the first of each appears."""
+    families: list[tuple[str | None, list[str], list[dict[str, Any]]]] = []
+    for operation in sorted(operations, key=lambda o: len(literal_prefix(o["path"]).split("/"))):
+        segments: list[str] = literal_prefix(operation["path"]).split("/")
+        for tag, root, members in families:
+            if tag == operation.get("tag") and segments[:len(root)] == root and len(root) > 1:
+                members.append(operation)
+                break
+        else:
+            families.append((operation.get("tag"), segments, [operation]))
+    order: dict[int, int] = {id(o): i for i, o in enumerate(operations)}
+    ordered = sorted(families, key=lambda family: min(order[id(o)] for o in family[2]))
+    return [("/".join(root) or "/", sorted(members, key=lambda o: order[id(o)])) for _, root, members in ordered]
+
+
+def methods_text(operations: list[dict[str, Any]]) -> str:
+    found: set[str] = {o["method"] for o in operations}
+    return " ".join(m for m in METHOD_ORDER if m in found)
+
+
+def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], spec_path: str) -> list[Line]:
+    """The lines for removed, added, deprecated and moved operations: a family of two or more under one base path is one
+    line, as is a sweep of three or more moves that only change a path prefix."""
+    lines: list[Line] = []
+    schema_operations: dict[str, list[str]] = contract.get("schema_operations", {})
+
+    def member_of(operation: dict[str, Any]) -> Member:
+        return Member(operation=f"{operation['method']} {operation['path']}", tag=operation.get("tag"))
+
+    prefix_moves: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for move in extras["moves"]:
+        old, new = move["from"].split("/"), move["to"].split("/")
+        common: int = 0
+        while common < min(len(old), len(new)) - 1 and old[-1 - common] == new[-1 - common]:
+            common += 1
+        key = ("/".join(old[:len(old) - common]), "/".join(new[:len(new) - common]))
+        prefix_moves.setdefault(key, []).append(move)
+    for (old_prefix, new_prefix), moves in prefix_moves.items():
+        impact: str = contract_impact("operation_moved")
+        if len(moves) >= SWEEP_MINIMUM:
+            text: str = f"{code(old_prefix + '/*')} → {code(new_prefix + '/*')}, {len(moves)} endpoints"
+            lines.append(Line(impact, text, spec_path, moves[0]["loc"],
+                              [member_of({"method": m["method"], "path": m["to"], "tag": m["tag"]}) for m in moves]))
+        else:
+            for move in moves:
+                lines.append(Line(impact, f"{code(move['from'])} → {code(move['to'])}", spec_path, move["loc"],
+                                  [member_of({"method": move["method"], "path": move["to"], "tag": move["tag"]})]))
+
+    for key, verb, kind in (("removed", "removed", "operation_removed"), ("added", "new", "operation_added"),
+                            ("deprecated", "deprecated", "deprecated")):
+        impact = contract_impact(kind)
+        for base, members in operation_families(extras[key]):
+            first: dict[str, Any] = members[0]
+            if len(members) == 1:
+                label: str = code(f"{first['method']} {first['path']}")
+                text = f"new {label}" if verb == "new" else f"{label} {verb}"
+            else:
+                text = f"{verb} {code(base)} {methods_text(members)}"
+                if verb == "new":
+                    labels: set[str] = {f"{o['method']} {o['path']}" for o in members}
+                    schemas: int = sum(1 for schema in contract.get("added", {}).get("schemas", [])
+                                       if labels & set(schema_operations.get(schema, [])))
+                    text += f" · {plural(schemas, 'new schema')}" if schemas else ""
+            lines.append(Line(impact, text, spec_path, first["loc"], [member_of(o) for o in members]))
+    return lines
+
+
+PROPERTY_PHRASE: dict[str, str] = {
+    "property_added": "added", "property_added_required": "added and required", "property_required": "now required",
+    "property_no_longer_required": "no longer required", "property_removed": "removed",
+    "property_type_changed": "type changed", "property_constraint_changed": "constraint changed",
+    "deprecated": "deprecated", "schema_removed": "removed",
+}
+PARAMETER_PHRASE: dict[str, str] = {
+    "parameter_added": "added", "parameter_added_required": "added and required", "parameter_required": "now required",
+    "parameter_no_longer_required": "no longer required", "parameter_type_changed": "type changed",
+    "parameter_constraint_changed": "constraint changed",
+}
+
+
+def property_lines(changes: list[Change], spec_path: str) -> list[Line]:
+    """One line per property change, or one line per property and kind of change when three or more schemas get the same
+    change on the same sides. Removed schemas share a line when there are three or more."""
+    lines: list[Line] = []
+    groups: dict[tuple[str, str, frozenset[str]], list[Change]] = {}
+    for change in changes:
+        name: str = "" if change.kind == "schema_removed" else change.subject
+        groups.setdefault((change.kind, name, change.sides), []).append(change)
+    for (kind, name, sides), group in groups.items():
+        phrase: str = PROPERTY_PHRASE[kind]
+        side: str = side_phrase(sides)
+        if len(group) >= SWEEP_MINIMUM:
+            if kind == "schema_removed":
+                text: str = f"{len(group)} schemas removed · {names_text([c.subject for c in group])}"
+            else:
+                text = f"{code(name)} {phrase} on {len(group)} schemas" + (f", {side}" if side else "")
+                text += f" · {names_text([c.scope for c in group])}"
+            lines.append(Line(group[0].impact, text, spec_path, group[0].loc, [c.member for c in group]))
+            continue
+        for change in group:
+            if kind == "schema_removed":
+                lines.append(Line(change.impact, f"{code(change.subject)} schema removed", spec_path, change.loc, [change.member]))
+            else:
+                text = f"{code(name)} {phrase} on {code(change.scope)}"
+                lines.append(Line(change.impact, f"{side_word(sides)}: {text}" if sides else text, spec_path, change.loc, [change.member]))
+    return lines
+
+
+def schema_added_lines(changes: list[Change], covered: set[str], spec_path: str) -> list[Line]:
+    """One line for the new schemas that no new operation family already counted."""
+    fresh: list[Change] = [c for c in changes if c.kind == "schema_added" and c.scope not in covered]
+    if not fresh:
+        return []
+    names: list[str] = [c.scope for c in fresh]
+    text: str = f"{code(names[0])} schema added" if len(names) == 1 else f"{len(names)} schemas added · {names_text(names)}"
+    return [Line(fresh[0].impact, text, spec_path, fresh[0].loc, [c.member for c in fresh])]
+
+
+def parameter_lines(changes: list[Change], spec_path: str) -> list[Line]:
+    """One line per parameter change; a pagination parameter added to three or more operations is
+    `pagination added to N endpoints`, and any other parameter change on three or more operations is one line."""
+    lines: list[Line] = []
+    pagination: dict[str, list[Change]] = {}
+    for change in changes:
+        if change.kind in ("parameter_added", "parameter_added_required") and change.subject in PAGINATION_PARAMETERS:
+            pagination.setdefault(change.scope, []).append(change)
+    swept: set[int] = set()
+    if len(pagination) >= SWEEP_MINIMUM:
+        first: Change = next(iter(pagination.values()))[0]
+        every: list[Change] = [c for group in pagination.values() for c in group]
+        worst: str = min((c.impact for c in every), key=CONTRACT_LEVELS.index)
+        lines.append(Line(worst, f"pagination added to {len(pagination)} endpoints", spec_path, first.loc,
+                          [c.member for group in pagination.values() for c in group[:1]]))
+        swept.update(id(c) for c in every)
+    groups: dict[tuple[str, str], list[Change]] = {}
+    for change in changes:
+        if id(change) not in swept:
+            groups.setdefault((change.kind, change.subject), []).append(change)
+    for (kind, name), group in groups.items():
+        phrase: str = PARAMETER_PHRASE[kind]
+        if len(group) >= SWEEP_MINIMUM:
+            preposition: str = "to" if kind in ("parameter_added", "parameter_added_required") else "on"
+            lines.append(Line(group[0].impact, f"{code(name)} parameter {phrase} {preposition} {len(group)} endpoints", spec_path,
+                              group[0].loc, [c.member for c in group]))
+            continue
+        for change in group:
+            preposition = "to" if kind in ("parameter_added", "parameter_added_required") else "on"
+            lines.append(Line(change.impact, f"{code(name)} parameter {phrase} {preposition} {code(change.scope)}", spec_path,
+                              change.loc, [change.member]))
+    return lines
+
+
+def enum_lines(changes: list[Change], spec_path: str) -> list[Line]:
+    """`Enum` + `VALUE` for an added value (values of one enum share a line) and `Enum` value `VALUE` removed."""
+    lines: list[Line] = []
+    added: dict[str, list[Change]] = {}
+    for change in changes:
+        if change.kind == "enum_added":
+            added.setdefault(change.subject, []).append(change)
+        else:
+            lines.append(Line(change.impact, f"{code(change.subject)} value {code(change.detail)} removed", spec_path,
+                              change.loc, [change.member]))
+    for subject, group in added.items():
+        lines.append(Line(group[0].impact, f"{code(subject)} + {', '.join(code(c.detail) for c in group)}", spec_path,
+                          group[0].loc, [c.member for c in group]))
+    return lines
+
+
+def operation_change_lines(changes: list[Change], spec_path: str) -> list[Line]:
+    lines: list[Line] = []
+    for change in changes:
+        words: str = {"responses": "responses changed"}.get(change.detail, f"{change.detail} changed")
+        lines.append(Line(change.impact, f"{code(change.subject)} {words}", spec_path, change.loc, [change.member]))
+    return lines
+
+
+def pattern_lines(changes: list[Change], extras: dict[str, Any], contract: dict[str, Any], spec_path: str) -> list[Line]:
+    """The collapsed lines for `changes` and `extras` (from `collect_changes`), worst impact first and otherwise in the
+    order the document shows them: operations, parameters, schema properties, enums."""
+    def kinds(*names: str) -> list[Change]:
+        return [c for c in changes if c.kind in names]
+
+    operations: list[Line] = operation_pattern_lines(extras, contract, spec_path)
+    added_labels: set[str] = {f"{o['method']} {o['path']}" for o in extras["added"]}
+    counted: set[str] = {schema for schema in contract.get("added", {}).get("schemas", [])
+                         if added_labels & set(contract.get("schema_operations", {}).get(schema, []))}
+    lines: list[Line] = [
+        *operations,
+        *operation_change_lines(kinds("operation_changed", "responses_changed"), spec_path),
+        *parameter_lines(kinds(*PARAMETER_PHRASE), spec_path),
+        *property_lines(kinds(*(k for k in PROPERTY_PHRASE if k != "schema_removed")), spec_path),
+        *property_lines(kinds("schema_removed"), spec_path),
+        *schema_added_lines(changes, counted, spec_path),
+        *enum_lines(kinds("enum_added", "enum_removed"), spec_path),
+    ]
+    return sorted(lines, key=lambda line: rank_of(line.impact))
+
+
+def contract_lines(contract: dict[str, Any], lines: list[DiffLine], spec_path: str) -> list[Line]:
+    """The pattern lines of a run's contract.json (`lines` is the spec file's diff), worst impact first."""
+    changes, extras = collect_changes(contract, lines)
+    return pattern_lines(changes, extras, contract, spec_path)
