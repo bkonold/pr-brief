@@ -202,14 +202,14 @@ def matches(globs: list[str], path: str) -> bool:
     return any(glob_to_regex(g).match(path) for g in globs)
 
 
-def removal_counts(rule: dict[str, Any], path: str, deletions: int, contract: dict[str, Any] | None) -> bool:
+def breaking_change_counts(rule: dict[str, Any], path: str, deletions: int, contract: dict[str, Any] | None) -> bool:
     """Whether `level_if_deleted` applies to the file. By default any deleted line counts; a rule with
-    `deleted_from = "contract"` counts only a removal that the run's contract.json lists for the file, and falls
-    back to the deleted-line count for a run that saved no contract.json."""
+    `deleted_from = "contract"` counts only a breaking change (a removal or a newly required field) that the run's
+    contract.json lists for the file, and falls back to the deleted-line count for a run that saved no contract.json."""
     if "level_if_deleted" not in rule:
         return False
     if rule.get("deleted_from") == "contract" and contract is not None:
-        return contract.get("path") == path and bool(contract.get("removals"))
+        return contract.get("path") == path and bool(contract.get("removals") or contract.get("newly_required"))
     return deletions > 0
 
 
@@ -220,7 +220,7 @@ def file_floor(floor_cfg: dict[str, Any], path: str, deletions: int,
     for rule in floor_cfg.get("floor", []):
         if not matches(rule["globs"], path):
             continue
-        level: str = rule["level_if_deleted"] if removal_counts(rule, path, deletions, contract) else rule["level"]
+        level: str = rule["level_if_deleted"] if breaking_change_counts(rule, path, deletions, contract) else rule["level"]
         if best is None or LEVELS.index(level) > LEVELS.index(best[0]):
             best = (level, rule["name"])
     return best

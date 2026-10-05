@@ -111,7 +111,7 @@ field in the prompt's schema and example), and `[render]` with `diagram` (`as_is
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
 `boxes`), `start_line` and `chunk_box_fallback`. `review_floor.toml` sets the minimum review level per
 path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
-removal the run's `contract.json` lists (see `review_floor.example.toml`).
+breaking change (a removal or a newly required field) the run's `contract.json` lists (see `review_floor.example.toml`).
 
 | Variant | What it is |
 | --- | --- |

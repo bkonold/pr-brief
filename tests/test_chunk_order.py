@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from context_pack import contract_lines  # noqa: E402
+from context_pack import contract_breaks, contract_lines  # noqa: E402
 from render import build_chunks, file_floor  # noqa: E402
 
 FLOORS = {"floor": [{"name": "schema file", "level": "read carefully", "globs": ["**/schema.json"]}]}
@@ -71,6 +71,10 @@ class ContractFloor(unittest.TestCase):
         self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None), "read carefully")
         self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None, deletions=0), "read")
 
+    def test_a_newly_required_field_raises_the_spec(self) -> None:
+        contract = {"path": SPEC, "removals": [], "newly_required": ["Widget.size (now required)"]}
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read carefully")
+
     def test_a_removal_listed_for_another_file_does_not_raise_this_one(self) -> None:
         contract = {"path": "other/openapi.json", "removals": ["removed operation GET /widgets"]}
         self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read")
@@ -91,6 +95,49 @@ class ContractRemovals(unittest.TestCase):
                 "components": {"schemas": {"Widget": {"properties": {"size": {"enum": ["S"]}}, "required": ["id"]}}}}
         self.assertEqual(contract_lines(self.BASE, head, removals_only=True),
                          ["removed operation DELETE /widgets", "Widget.id (property removed)", "Widget.size (enum value L removed)"])
+
+
+def document(properties: dict, required: list, parameters: list | None = None, shared_parameters: dict | None = None) -> dict:
+    return {"paths": {"/widgets": {"get": {"parameters": parameters or []}}},
+            "components": {"schemas": {"Widget": {"properties": properties, "required": required}},
+                           "parameters": shared_parameters or {}}}
+
+
+class NewlyRequired(unittest.TestCase):
+    def test_an_optional_property_made_required(self) -> None:
+        base = document({"id": {}, "size": {}}, ["id"])
+        head = document({"id": {}, "size": {}}, ["id", "size"])
+        self.assertEqual(contract_breaks(base, head), {"removals": [], "newly_required": ["Widget.size (now required)"]})
+
+    def test_a_new_property_that_is_required_from_the_start(self) -> None:
+        base = document({"id": {}}, ["id"])
+        head = document({"id": {}, "color": {}}, ["id", "color"])
+        self.assertEqual(contract_breaks(base, head)["newly_required"], ["Widget.color (now required)"])
+
+    def test_a_new_optional_property_is_not_breaking(self) -> None:
+        self.assertEqual(contract_breaks(document({"id": {}}, ["id"]), document({"id": {}, "color": {}}, ["id"])),
+                         {"removals": [], "newly_required": []})
+
+    def test_a_parameter_made_required_and_a_new_required_parameter(self) -> None:
+        base = document({}, [], [{"name": "limit", "in": "query"}])
+        head = document({}, [], [{"name": "limit", "in": "query", "required": True},
+                                 {"$ref": "#/components/parameters/Tenant"}, {"name": "page", "in": "query"}],
+                        {"Tenant": {"name": "tenant", "in": "header", "required": True}})
+        self.assertEqual(contract_breaks(base, head)["newly_required"],
+                         ["GET /widgets parameter limit (query, now required)", "GET /widgets parameter tenant (header, now required)"])
+
+    def test_a_required_parameter_on_a_new_operation_is_not_breaking(self) -> None:
+        base = {"paths": {}, "components": {}}
+        head = document({}, [], [{"name": "limit", "in": "query", "required": True}])
+        self.assertEqual(contract_breaks(base, head), {"removals": [], "newly_required": []})
+
+    def test_an_edit_with_no_breaking_change_is_not_listed_and_does_not_raise(self) -> None:
+        base = document({"id": {}, "size": {"description": "a"}}, ["id"], [{"name": "limit", "in": "query", "required": True}])
+        head = document({"id": {}, "size": {"description": "b"}}, ["id"], [{"name": "limit", "in": "query", "required": True}])
+        breaks = contract_breaks(base, head)
+        self.assertEqual(breaks, {"removals": [], "newly_required": []})
+        floor = file_floor({"floor": [{**RULE, "deleted_from": "contract"}]}, SPEC, 9, {"path": SPEC, **breaks})
+        self.assertEqual(floor[0], "read")
 
 
 if __name__ == "__main__":

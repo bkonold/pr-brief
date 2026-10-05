@@ -561,9 +561,44 @@ def enum_values(node: Any) -> list[Any]:
     return [*node.get("enum", []), *enum_values(node.get("items"))]
 
 
-def contract_lines(base: dict[str, Any], head: dict[str, Any], removals_only: bool = False) -> list[str]:
+def resolved_parameters(document: dict[str, Any], path: str, method: str) -> dict[tuple[str, str], dict[str, Any]]:
+    """The operation's parameters by (location, name): the path item's own, overridden by the operation's."""
+    item: dict[str, Any] = document.get("paths", {}).get(path, {})
+    shared: dict[str, Any] = document.get("components", {}).get("parameters", {})
+    found: dict[tuple[str, str], dict[str, Any]] = {}
+    for raw in [*item.get("parameters", []), *item.get(method, {}).get("parameters", [])]:
+        parameter: dict[str, Any] = shared.get(raw["$ref"].rsplit("/", 1)[-1], {}) if "$ref" in raw else raw
+        if "name" in parameter:
+            found[(parameter.get("in", ""), parameter["name"])] = parameter
+    return found
+
+
+def required_parameter_lines(base: dict[str, Any], head: dict[str, Any]) -> list[str]:
+    """Parameters of operations that exist in both documents and are required in the head but were optional or absent
+    in the base."""
+    lines: list[str] = []
+    for path, item in head.get("paths", {}).items():
+        for method in item:
+            if method not in HTTP_METHODS or method not in base.get("paths", {}).get(path, {}):
+                continue
+            old: dict[tuple[str, str], dict[str, Any]] = resolved_parameters(base, path, method)
+            for key, parameter in resolved_parameters(head, path, method).items():
+                if parameter.get("required") and not old.get(key, {}).get("required"):
+                    lines.append(f"{method.upper()} {path} parameter {key[1]} ({key[0]}, now required)")
+    return lines
+
+
+def contract_breaks(base: dict[str, Any], head: dict[str, Any]) -> dict[str, list[str]]:
+    """The breaking contract changes, by kind: `removals` (operations, schemas, properties, enum values) and
+    `newly_required` (properties and parameters that callers must now supply)."""
+    return {"removals": contract_lines(base, head, removals_only=True),
+            "newly_required": [*contract_lines(base, head, required_only=True), *required_parameter_lines(base, head)]}
+
+
+def contract_lines(base: dict[str, Any], head: dict[str, Any], removals_only: bool = False,
+                   required_only: bool = False) -> list[str]:
     """The contract differences, in the order the pack lists them. `removals_only` leaves out the properties that
-    became required, which add a demand on callers but take nothing away."""
+    became required, which add a demand on callers but take nothing away; `required_only` keeps only those."""
     operations: list[str] = []
     removed_props: list[str] = []
     required: list[str] = []
@@ -594,6 +629,8 @@ def contract_lines(base: dict[str, Any], head: dict[str, Any], removals_only: bo
             if p in new_props:
                 gone: list[Any] = [v for v in enum_values(prop) if v not in enum_values(new_props[p])]
                 enums.extend(f"{name}.{p} (enum value {v} removed)" for v in gone)
+    if required_only:
+        return required
     return [*operations, *removed_props, *enums] if removals_only else [*operations, *removed_props, *required, *enums]
 
 
@@ -883,7 +920,7 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
         new: dict[str, Any] | None = read_json_at(head, OPENAPI_PATH)
         if old is not None and new is not None:
             lines: list[str] = contract_lines(old, new)
-            contract = {"path": OPENAPI_PATH, "removals": contract_lines(old, new, removals_only=True)}
+            contract = {"path": OPENAPI_PATH, **contract_breaks(old, new)}
             items["contract"] = [f"- {line}" for line in lines[:MAX_CONTRACT_LINES]]
             if len(lines) > MAX_CONTRACT_LINES:
                 items["contract"].append(f"- ({len(lines) - MAX_CONTRACT_LINES} more contract lines not listed)")
