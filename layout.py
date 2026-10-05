@@ -9,12 +9,11 @@
    breaking-change placement (a schema's name as a word, an operation's last literal path segment).
 3. A line about several subjects goes where most of them do. A chunk that holds only generated files never owns a line.
 
-A line that no chunk owns is "not in any chunk". `section` draws one section (Contract or Data): a glance line with
-the count at each impact level, then one group per chunk, then the group of lines that no chunk owns. A group is a closed
-`<details>` headed by the chunk, the worst impact and the number of changes, holding a table with a row per line; a group
-of one line is that line as a plain row. The markup is HTML and GitHub-flavoured markdown tables, so it survives both
-GitHub and the extension's brief pane; GitHub drops the `class` attributes, which leaves the top level bold and the others
-plain.
+A line that no chunk owns is "not in any chunk"; the review.json keeps those apart from each chunk's own. `section`
+draws one section (Contract or Data) of the brief without them: a closed `<details>` whose summary holds the section's
+name and the count at each impact level, and whose body is one table with a row per line, wherever the line was placed.
+The markup is HTML and GitHub-flavoured markdown tables, so it survives both GitHub and the extension's brief pane;
+GitHub drops the `class` attributes, which leaves the top level bold and the others plain.
 """
 import html
 import re
@@ -23,15 +22,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from contract_lines import Line, Member, plural, rank_of
+from contract_lines import Line, Member, rank_of
 
 DEFAULT_TAG_TEMPLATES: list[str] = ["{pascal}"]
-LOOSE_NAME = "Not in any chunk"
 CONTRACT_COLUMNS: tuple[str, ...] = ("Impact", "Side", "Change", "On", "↗")
 DATA_COLUMNS: tuple[str, ...] = ("Impact", "Change", "Table", "↗")
 # A schema, table or controller name longer than this is cut in its middle on screen, with the whole name as the
 # element's title. An endpoint (`GET /path`) is never cut: it wraps in its cell.
 NAME_LIMIT = 40
+SIDE_ORDER: tuple[str, ...] = ("request", "response", "both")
 GLANCE_WORDS: dict[str, tuple[str, str]] = {
     "callers must change": ("caller must change", "callers must change"),
     "consumers may break": ("consumer may break", "consumers may break"),
@@ -188,8 +187,12 @@ def glance(lines: list[Line], levels: tuple[str, ...]) -> str:
     return " ".join(parts)
 
 
-def sorted_lines(lines: list[Line], levels: tuple[str, ...]) -> list[Line]:
-    return sorted(lines, key=lambda line: rank_of(line.impact, levels))
+def sort_key(kind: str, line: Line, levels: tuple[str, ...]) -> tuple[int, int, str]:
+    """Worst level first; for the contract then request before response, then where it is; for data then the table."""
+    where: str = line.on.replace("`", "").casefold()
+    if kind == "contract":
+        return rank_of(line.impact, levels), SIDE_ORDER.index(line.side) if line.side in SIDE_ORDER else len(SIDE_ORDER), where
+    return rank_of(line.impact, levels), 0, where
 
 
 def row_cells(kind: str, line: Line, levels: tuple[str, ...], link_of: Callable[[Line], str]) -> list[str]:
@@ -202,58 +205,17 @@ def row_cells(kind: str, line: Line, levels: tuple[str, ...], link_of: Callable[
     return [chip, cell(line.change or line.text), cell(line.on), link]
 
 
-def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str],
-          key_of: Callable[[Line], str] | None = None) -> str:
-    """A table of `lines`, in the order given. With `key_of`, a row under each key's name precedes that key's lines; it
-    has the name in its first cell and nothing after it, which the brief card draws across the whole row."""
+def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str]) -> str:
+    """A table of `lines`, in the order given."""
     columns: tuple[str, ...] = CONTRACT_COLUMNS if kind == "contract" else DATA_COLUMNS
-    rows: list[str] = []
-    if key_of is None:
-        rows = [row_cells(kind, line, levels, link_of) for line in lines]
-    else:
-        keyed: dict[str, list[Line]] = {}
-        for line in lines:
-            keyed.setdefault(key_of(line), []).append(line)
-        for key, group in keyed.items():
-            rows.append([f"<strong>{cell('`' + key + '`')}</strong>", *[""] * (len(columns) - 1)])
-            rows.extend(row_cells(kind, line, levels, link_of) for line in group)
+    rows: list[list[str]] = [row_cells(kind, line, levels, link_of) for line in lines]
     return "\n".join([f"| {' | '.join(columns)} |", f"| {' | '.join('---' for _ in columns)} |",
                       *(f"| {' | '.join(cells)} |" for cells in rows)])
 
 
-def plain_row(kind: str, head: str, line: Line, levels: tuple[str, ...], link_of: Callable[[Line], str]) -> str:
-    """A group of one line: the head, the line's chip, its change and where, and its link, in one paragraph."""
-    chip: str = pill(line.impact, levels)
-    side: str = f' <span class="muted">{html.escape(line.side)}</span>' if kind == "contract" and line.side else ""
-    return (f'<p class="group-row">{head}{" " + chip if chip else ""} {inline(line.change or line.text)} · {inline(line.on)}{side} '
-            f'<a href="{html.escape(link_of(line))}">↗</a></p>')
-
-
-def group_html(kind: str, head: str, lines: list[Line], levels: tuple[str, ...], link_of: Callable[[Line], str],
-               key_of: Callable[[Line], str] | None = None) -> str:
-    """One group of lines (worst first): a single row for one line, otherwise a closed `<details>` headed by `head`, the
-    worst level's chip and the number of changes, holding the table, split under a row per `key_of` when it is given."""
-    if len(lines) == 1:
-        return plain_row(kind, head, lines[0], levels, link_of)
-    chip: str = pill(lines[0].impact, levels)
-    return (f'<details>\n<summary>{head}{" " + chip if chip else ""} <span class="muted">{plural(len(lines), "change")}</span>'
-            f'</summary>\n\n<div class="table-wrap">\n\n{table(kind, levels, lines, link_of, key_of)}\n\n</div>\n\n</details>')
-
-
-def section(kind: str, levels: tuple[str, ...], owned: list[tuple[int, str, list[Line]]], loose: list[Line],
-            link_of: Callable[[Line], str], key_of: Callable[[Line], str]) -> str:
-    """The section's markdown: the glance line, a group per chunk that owns lines (`owned` holds each chunk's number,
-    name and lines; `kind` is `contract` or `data`) sorted by worst level then chunk number, then the group of `loose`
-    lines under a row per `key_of`."""
-    every: list[Line] = [line for _, _, lines in owned for line in lines] + loose
-    ranked: list[tuple[int, int, str, list[Line]]] = []
-    for number, name, lines in owned:
-        if lines:
-            ordered: list[Line] = sorted_lines(lines, levels)
-            ranked.append((rank_of(ordered[0].impact, levels), number, name, ordered))
-    out: list[str] = [glance(every, levels)]
-    for _, number, name, ordered in sorted(ranked, key=lambda entry: entry[:2]):
-        out.append(group_html(kind, f"{number} · {inline(name)}", ordered, levels, link_of))
-    if loose:
-        out.append(group_html(kind, LOOSE_NAME, sorted_lines(loose, levels), levels, link_of, key_of))
-    return "\n\n".join(out)
+def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str]) -> str:
+    """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` with `heading` and the glance chips
+    in its summary and one table of every line in it, sorted by `sort_key` (lines of equal key keep their order)."""
+    ordered: list[Line] = sorted(lines, key=lambda line: sort_key(kind, line, levels))
+    return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong> {glance(lines, levels)}</summary>\n\n'
+            f'<div class="table-wrap">\n\n{table(kind, levels, ordered, link_of)}\n\n</div>\n\n</details>')

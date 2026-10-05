@@ -59,32 +59,41 @@ class ChunkedSections(unittest.TestCase):
         patch.start()
         self.addCleanup(patch.stop)
 
-    def test_two_sections_follow_the_description_in_place_of_the_old_block(self) -> None:
-        (text, _, _, _, _), _ = render_body()
-        self.assertRegex(text, r"(?s)### \*\*Description\*\*\n.*___\n\n### \*\*Contract\*\*\n<span class=\"pill .*___\n\n### \*\*Data\*\*\n<span class=\"pill ")
-        self.assertNotIn("Contract and data", text)
+    def section_of(self, text: str, name: str) -> str:
+        return re.search(rf'(?s)<details class="section">\n<summary><strong>{name}</strong>.*?</details>', text).group()
 
-    def test_the_contract_glance_line_and_groups(self) -> None:
-        (text, _, chunks, _, lineset), _ = render_body()
-        contract = text.split("### **Contract**\n")[1].split("___")[0]
-        glance_line = contract.splitlines()[0]
-        self.assertEqual(re.sub(r"<[^>]+>", "", glance_line), "2 callers must change 1 consumer may break")
-        self.assertNotIn("Contract:", contract)
-        rows = [re.sub(r"<[^>]+>", "", row) for row in re.findall(r'<p class="group-row">(.*?) <a href', contract)]
-        self.assertEqual(rows, ["1 · Item endpoints callers must change + owner required · ItemRequest request",
-                                "2 · Widget model consumers may break − b · Widget",
-                                "Not in any chunk callers must change removed · GET /gone"])
-        self.assertNotIn("<details", contract)
+    def test_two_closed_sections_follow_the_description_in_place_of_the_old_block(self) -> None:
+        (text, _, _, _, _), _ = render_body()
+        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>Contract</strong> '
+                               r'.*___\n\n<details class="section">\n<summary><strong>Data</strong> ')
+        self.assertNotIn("Contract and data", text)
+        self.assertNotIn("### **Contract**", text)
+        self.assertEqual(text.count('<details class="section">'), 2)
+
+    def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
+        (text, _, _, _, lineset), _ = render_body()
+        contract = self.section_of(text, "Contract")
+        summary = re.search(r"<summary>(.*?)</summary>", contract).group(1)
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract 2 callers must change 1 consumer may break")
+        rows = [re.sub(r"<[^>]+>", "", row) for row in contract.splitlines() if row.startswith("| <span")]
+        self.assertEqual([re.sub(r" \| \[↗\].*", "", row) for row in rows],
+                         ["| callers must change | request | + owner required | ItemRequest",
+                          "| callers must change |  | removed | GET /gone",
+                          "| consumers may break |  | − b | Widget"])
+        self.assertEqual(len(lineset.contract), 3)
+        for gone in ("chunk", "Not in any", "group-row", "<strong><code>"):
+            self.assertNotIn(gone, contract)
         self.assertEqual([l.text for l in lineset.loose_contract], ["`GET /gone` removed"])
 
-    def test_data_lines_are_grouped_by_their_migration_chunk(self) -> None:
-        (text, _, chunks, _, _), _ = render_body()
-        data = text.split("### **Data**")[1]
-        self.assertEqual(re.sub(r"<[^>]+>", "", data.splitlines()[1]), "1 destructive 1 additive")
-        self.assertRegex(data, r"<summary>\d · Items table <span class=\"pill p0\"><strong>destructive</strong></span> "
-                               r"<span class=\"muted\">2 changes</span></summary>")
+    def test_the_data_section_lists_every_line_in_one_table(self) -> None:
+        (text, _, _, _, _), _ = render_body()
+        data = self.section_of(text, "Data")
+        summary = re.search(r"<summary>(.*?)</summary>", data).group(1)
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Data 1 destructive 1 additive")
+        self.assertEqual(data.count("<details"), 1)
         self.assertIn("| Impact | Change | Table | ↗ |", data)
         self.assertIn("| <code>− old</code> | <code>legacy</code> |", data)
+        self.assertNotIn("Items table", data)
 
     def test_labels_come_from_the_lines_a_chunk_owns(self) -> None:
         (_, _, chunks, _, _), _ = render_body()
@@ -149,7 +158,8 @@ class ChunkedSections(unittest.TestCase):
     def test_without_the_review_order_the_body_ends_after_the_diagram(self) -> None:
         (text, _, _, _, _), _ = render_body({"review_order": False})
         headings = re.findall(r"^### (?:\*\*)?(.*?)(?:\*\*)?$", text, re.M)
-        self.assertEqual(headings, ["PR Type", "Description", "Contract", "Data"])
+        self.assertEqual(headings, ["PR Type", "Description"])
+        self.assertEqual(text.count("<summary><strong>"), 2)
         self.assertTrue(text.rstrip().endswith("___"))
 
     def test_the_option_does_not_touch_review_json(self) -> None:

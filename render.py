@@ -1154,19 +1154,8 @@ def build_lineset(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, A
     return layout.LineSet(api, data, contract["path"] if contract else "", TAG_FILE_TEMPLATES)
 
 
-def contract_key(line: Line) -> str:
-    """The controller tag a contract line is about, for the lines no chunk owns."""
-    tags: list[str] = [member.tag for member in line.members if member.tag]
-    return max(dict.fromkeys(tags), key=tags.count) if tags else "untagged"
-
-
-def data_key(line: Line) -> str:
-    return next((member.table for member in line.members if member.table), Path(line.path).name)
-
-
-def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, chunks: list[Chunk],
-                     unchecked: list[str]) -> tuple[str, str]:
-    """The Contract and Data sections of a v22 body, each a glance line and a group per owning chunk. A section with
+def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, unchecked: list[str]) -> tuple[str, str]:
+    """The Contract and Data sections of a v22 body, each one closed block with a table of all its lines. A section with
     no lines says so, and says when its side could not be checked."""
     repo: str = run["repo"]
     number: str = str(run["pr"])
@@ -1176,14 +1165,13 @@ def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, chunks: list[
             return line_link(repo, number, {"path": line.path, "side": line.loc[0], "line": line.loc[1]})
         return diff_link(repo, number, line.path)
 
-    def draw(side: str, none: str, levels: tuple[str, ...], kind: str, loose: list[Line], key_of: Callable[[Line], str]) -> str:
-        owned: list[tuple[int, str, list[Line]]] = [(c.number, c.name, getattr(c, kind)) for c in chunks]
-        if not loose and not any(lines for _, _, lines in owned):
+    def draw(side: str, none: str, levels: tuple[str, ...], kind: str, lines: list[Line]) -> str:
+        if not lines:
             return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
-        return layout.section(kind, levels, owned, loose, link_of, key_of)
+        return layout.section(kind, kind.capitalize(), levels, lines, link_of)
 
-    return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", lineset.loose_contract, contract_key),
-            draw("database", "No database changes", DATA_LEVELS, "data", lineset.loose_data, data_key))
+    return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", lineset.contract),
+            draw("database", "No database changes", DATA_LEVELS, "data", lineset.data))
 
 
 # ---------------------------------------------------------------- body
@@ -1229,7 +1217,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, flow_order,
                               bool(cfg.get("file_start")), bool(cfg.get("review_labels")), migration_added, lineset)
         if lineset is not None:
-            ordered["contract"], ordered["data"] = chunked_sections(run, lineset, chunks, unchecked_sides(run, contract))
+            ordered["contract"], ordered["data"] = chunked_sections(run, lineset, unchecked_sides(run, contract))
     diagram: str = render_diagram(data.get("changes_diagram"), cfg)
     numbering: str = cfg.get("numbering", "chunks")
     if numbering not in ("chunks", "boxes", "flow"):
@@ -1281,6 +1269,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
                 labels = file_label_dict(value, include_summary)
                 walkthrough = ("<details> <summary><h3> File Walkthrough</h3></summary>\n\n"
                                f"{labels_walkthrough(labels, counts, run['repo'], pr_number)}\n\n</details>\n\n")
+        elif lineset is not None and key in ("contract", "data") and value.startswith("<details"):
+            body += f"{value}\n"
         else:
             body += f"### **{'PR Type' if key == 'type' else key.replace('_', ' ').capitalize()}**\n"
             if isinstance(value, list):
@@ -1552,13 +1542,10 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
  .pill.p1 { border-color: #1f2328; font-weight: 600; }
  details > summary .pill { margin: 0 4px; }
- .muted { color: #59636e; font-size: 12px; }
- .group-row { margin: 0 0 6px; }
  .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
  .table-wrap table { display: table; margin: 0; }
  .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }
  .table-wrap td:last-child, .table-wrap th:last-child { width: 1%; }
- .table-wrap tr.sub td { background: #f6f8fa; }
 </style></head><body><article class="markdown-body" id="out"></article>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -1567,12 +1554,6 @@ __DIAGRAM_STYLE__
  const md = __MD__;
  document.getElementById('out').innerHTML = marked.parse(md, { gfm: true });
  restyleLegend(document.getElementById('out'));
- document.querySelectorAll('.table-wrap tbody tr').forEach(row => {
-   const cells = [...row.children];
-   if (cells.length > 1 && cells[0].textContent.trim() && cells.slice(1).every(c => !c.textContent.trim())) {
-     cells[0].colSpan = cells.length; cells.slice(1).forEach(c => c.remove()); row.className = 'sub';
-   }
- });
  document.querySelectorAll('code.language-mermaid').forEach(c => {
    const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = styleDiagramText(c.textContent);
    c.parentElement.replaceWith(pre);

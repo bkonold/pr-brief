@@ -194,14 +194,13 @@ sha256 of the variant file that produced each run.
   `schema_operations` and `added_required` (the newly required properties that the base schema did not declare, including
   in an inline `allOf` member; v22 words them `added (required)`, and the others `now required`).
 - `contract_layout = "by_chunk"` (v22; needs `contract_block` and `files = "chunks"`) replaces the single block with two
-  sections, **Contract** and **Data**. Each starts with a glance line, the section's name being the heading above it:
-  the count at each level as chips, worst first, zeros left out (`2 callers must change` `1 consumer may break`
-  `2 additive`). Then one group per chunk that owns lines, and a last group, "Not in any chunk", for the lines no chunk
-  owns. A group of two or more lines is a closed `<details>` headed `<chunk number> · <chunk name>`, a chip for its worst
-  level and `K changes` in muted text, holding a GitHub markdown table with a row per line, worst level first and
-  otherwise in the document's order; a group of one line is that line as a plain row. Groups are sorted by worst level,
-  then chunk number. With no lines a section says "No API changes" or "No database changes", or that its side was not
-  checked.
+  sections, **Contract** and **Data**. Each is one closed `<details>` (class `section`) whose summary holds the section's
+  name in bold and the count at each level as chips, worst first, zeros left out (`2 callers must change`
+  `1 consumer may break` `2 additive`), so the counts show while it is collapsed. Opened, it holds one GitHub markdown
+  table with a row per line, wherever the line was placed. The brief does not mention chunks. Contract rows are sorted
+  by worst level, then request before response before both (then no side), then On alphabetically; Data rows by worst
+  level, then table, then the document's order; rows with equal keys keep the document's order. With no lines a section
+  is a heading and "No API changes" or "No database changes", or that its side was not checked.
 
   The Contract table has the columns Impact, Side, Change, On and ↗. The Data table has Impact, Change, Table and ↗.
   Impact is the chip; Side is `request`, `response` or `both` (empty for an operation or a schema no operation reaches);
@@ -209,8 +208,7 @@ sha256 of the variant file that produced each run.
   `+ note` optional, `− archived`, `price` number → string, `moved`, `new GET POST PATCH, +3 schemas`, `+ col` nullable,
   `position` default 0, constraint `uq_x` dropped, `backfill (UPDATE)`); On is the endpoint, schema or family, or for a
   sweep `9 schemas: A, B, C +6`; Table is the table, or for a statement with none the migration file. ↗ is the row's
-  only link, to its diff line or its file's diff; names are code, never links. In the "Not in any chunk" group a row
-  naming the controller tag (Data: the table) precedes that tag's lines. A schema, table or controller name longer than 40
+  only link, to its diff line or its file's diff; names are code, never links. A schema or table name longer than 40
   characters is cut in its middle with the whole name as the element's `title` (an endpoint wraps instead), and each table sits in an `overflow-x: auto` container. The chips
   are `<span class="pill p0|p1|p2">`: the top level is a filled inverted chip, the second a bold outlined chip and the
   rest plain outlined chips. In `body.md`, where GitHub drops `class`, the top level is bold and the others plain.
@@ -258,8 +256,7 @@ sha256 of the variant file that produced each run.
   on the part before the first dot, ignoring case; test files and files of a chunk that holds only generated files never
   match. A subject with no such file goes to the chunk whose hand-written code names it (the probes of the breaking-change
   placement below). A line about several subjects goes where most of them do, so a sweep over schemas that sit in several
-  chunks is shown in one. A line that nothing places goes under "Not in any chunk", under a row per controller tag (data:
-  by table).
+  chunks is shown in one. A line that nothing places is kept in `review.json`'s `unchunked`; the brief shows it like any other.
 
   With this layout `breaking` is set on a chunk that owns a "callers must change" or "consumers may break" line and
   `destructive` on a chunk that owns a destructive data line, instead of the rule below; both still raise the chunk to
