@@ -1556,7 +1556,7 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .group-row { margin: 0 0 6px; }
  .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
  .table-wrap table { display: table; margin: 0; }
- .table-wrap td, .table-wrap th { white-space: nowrap; }
+ .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }
  .table-wrap td:last-child, .table-wrap th:last-child { width: 1%; }
  .table-wrap tr.sub td { background: #f6f8fa; }
 </style></head><body><article class="markdown-body" id="out"></article>
