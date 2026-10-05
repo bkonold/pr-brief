@@ -115,7 +115,8 @@ the page's data, and its header links to the files view.
   description's bullets and above the review order, with the legend under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - The review order shows with its `<details>` closed, and each chunk's file list is a closed `<details>` headed by the
-  file count. Links into the PR's files view are rewritten to this host's files view, fragment kept.
+  file count. A chunk's start (the file:line link and the quoted line) sits in a closed "Start here" `<details>` under
+  the chunk name. Links into the PR's files view are rewritten to this host's files view, fragment kept.
 - A chunk's start link opens the files view with that line's anchor in the fragment. When the files page loads with a
   fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's `↳` button; any other
   fragment is left to the page.

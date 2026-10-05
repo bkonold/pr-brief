@@ -249,6 +249,18 @@
     );
   }
 
+  // In the review-order table, a chunk cell's start (the file:line link and the quoted line under the chunk name)
+  // goes into a closed <details> headed "Start here"; a chunk with no start is left as it is.
+  function foldStarts(html) {
+    const start = html.indexOf('class="review-order"');
+    if (start === -1) return html;
+    const chunkStart = /<br><sub>start (<a\b[^>]*>(?:(?!<\/a>)[\s\S])*<\/a>)<\/sub>(<br><code>(?:(?!<\/code>)[\s\S])*<\/code>)?/g;
+    return (
+      html.slice(0, start) +
+      html.slice(start).replace(chunkStart, (_, link, quote = "") => `<details class="start"><summary>Start here</summary><sub>${link}</sub>${quote}</details>`)
+    );
+  }
+
   // Links into the PR's files view (either host's path, any origin) are pointed at this host's files view,
   // keeping the fragment that names the diff or the line.
   function rewriteLinks(html, filesUrl) {
@@ -276,11 +288,11 @@
   function renderBody(bodyHtml, filesUrl) {
     const md = extractMarkdown(bodyHtml);
     const rendered = md === null ? { html: bodyOf(bodyHtml), legend: "" } : renderMarkdown(md);
-    const finish = (html) => rewriteLinks(collapseFileLists(sanitize(html)), filesUrl);
+    const finish = (html) => rewriteLinks(foldStarts(collapseFileLists(sanitize(html))), filesUrl);
     return { html: finish(rendered.html), legend: finish(rendered.legend) };
   }
 
-  ns.briefText = { extractMarkdown, renderMarkdown, sanitize, collapseFileLists, rewriteLinks, renderBody };
+  ns.briefText = { extractMarkdown, renderMarkdown, sanitize, collapseFileLists, foldStarts, rewriteLinks, renderBody };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.briefText;

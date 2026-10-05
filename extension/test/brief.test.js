@@ -135,6 +135,31 @@ test("each chunk's file list is a closed details headed by its file count", () =
   assert.equal(html.match(/<table>/g).length, 2);
 });
 
+test("each chunk's start is a closed Start here details that keeps the rewritten link and the quote", () => {
+  const withQuote = MARKDOWN.replace(row("First chunk", ["alpha", "beta"]), row("First chunk", ["alpha", "beta"], "<br><code>int total = 0;</code>"));
+  const { html } = briefText.renderBody(bodyHtml(withQuote), FILES_URL);
+  const starts = html.match(/<details class="start">.*?<\/details>/gs);
+  assert.equal(starts.length, 2);
+  assert.equal(
+    starts[0],
+    '<details class="start"><summary>Start here</summary><sub><a href="http://forge.example/acme/widgets/pulls/7/files#diff-alphaR12" title="src/alpha.js">alpha.js:12</a></sub><br><code>int total = 0;</code></details>',
+  );
+  assert.equal(
+    starts[1],
+    '<details class="start"><summary>Start here</summary><sub><a href="http://forge.example/acme/widgets/pulls/7/files#diff-gammaR12" title="src/gamma.js">gamma.js:12</a></sub></details>',
+  );
+  assert.match(html, /<strong>First chunk<\/strong><details class="start">/);
+  assert.doesNotMatch(html, /<sub>start /);
+  assert.doesNotMatch(html, /<details class="start"[^>]*\bopen\b/);
+});
+
+test("a chunk with no start is left alone", () => {
+  const cell = '<td>1</td><td><strong>No start</strong></td><td>read</td>';
+  const table = `<table class="review-order"><tbody><tr>${cell}</tr></tbody></table>`;
+  assert.equal(briefText.foldStarts(table), table);
+  assert.equal(briefText.foldStarts("<p>no table</p>"), "<p>no table</p>");
+});
+
 test("the review order's own details is not open either", () => {
   const { html } = briefText.renderBody(bodyHtml(), FILES_URL);
   assert.match(html, /<details> <summary><h3> Review order<\/h3><\/summary>/);

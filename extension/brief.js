@@ -83,6 +83,9 @@
     table.review-order table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 4px; }
     table.review-order table td { padding: 2px 0; border: 0; }
     details.files { margin: 0; }
+    details.start { margin: 0; }
+    details.start > summary { font-size: 12px; line-height: 18px; color: var(--accent); }
+    details.start[open] > summary { margin-bottom: 2px; }
     details.files > summary { color: var(--accent); }
   `;
 
