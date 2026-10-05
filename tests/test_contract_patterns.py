@@ -57,7 +57,7 @@ class Sweeps(unittest.TestCase):
         base = document(paths, {f"S{i}": props("id") for i in range(4)})
         head = document(paths, {f"S{i}": props("id", "owner", required=("owner",)) for i in range(4)})
         self.assertEqual(texts(lines_for(base, head)),
-                         [(ADDITIVE, "`owner` added and required on 4 schemas, response only · `S0`, `S1`, `S2` +1")])
+                         [(ADDITIVE, "`owner` added (required) on 4 schemas, response only · `S0`, `S1`, `S2` +1")])
 
     def test_removed_response_properties_may_break_consumers(self) -> None:
         paths = response_paths(3)
@@ -74,6 +74,51 @@ class Sweeps(unittest.TestCase):
         self.assertEqual(found[0].path, SPEC)
         self.assertIsNotNone(found[0].loc)
         self.assertEqual([m.schema for m in found[0].members], ["S0", "S1", "S2"])
+
+
+def inline_schema(*names: str, required: tuple[str, ...] = ()) -> dict:
+    """A schema whose properties sit in an inline `allOf` member beside a `$ref` to a base, as a generated spec writes them."""
+    return {"allOf": [ref("Base"), {"type": "object", "properties": {name: {"type": "string"} for name in names}}],
+            "required": list(required)}
+
+
+class RequiredWording(unittest.TestCase):
+    def test_a_new_required_property_reads_added_required_never_now_required(self) -> None:
+        paths = {"/i": {"post": operation("m", request="In")}}
+        base = document(paths, {"In": props("a")})
+        head = document(paths, {"In": props("a", "owner", required=("owner",))})
+        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "request: `owner` added (required) on `In`")])
+
+    def test_an_existing_optional_property_made_required_is_now_required(self) -> None:
+        paths = {"/i": {"post": operation("m", request="In")}}
+        base = document(paths, {"In": props("a", "owner")})
+        head = document(paths, {"In": props("a", "owner", required=("owner",))})
+        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "request: `owner` now required on `In`")])
+
+    def test_a_property_declared_in_an_inline_all_of_member_is_new_when_the_base_lacked_it(self) -> None:
+        paths = response_paths(4)
+        names = {f"S{i}": inline_schema("id") for i in range(4)}
+        base = document(paths, {"Base": props("kind"), **names})
+        head = document(paths, {"Base": props("kind"), **{f"S{i}": inline_schema("id", "visibility", required=("visibility",)) for i in range(4)}})
+        self.assertEqual(texts(lines_for(base, head)),
+                         [(ADDITIVE, "`visibility` added (required) on 4 schemas, response only · `S0`, `S1`, `S2` +1")])
+
+    def test_a_property_the_base_declared_in_an_inline_all_of_member_is_now_required(self) -> None:
+        paths = response_paths(1)
+        base = document(paths, {"Base": props("kind"), "S0": inline_schema("id", "visibility")})
+        head = document(paths, {"Base": props("kind"), "S0": inline_schema("id", "visibility", required=("visibility",))})
+        self.assertEqual(texts(lines_for(base, head)), [(ADDITIVE, "response: `visibility` now required on `S0`")])
+
+    def test_contract_changes_lists_the_required_properties_the_base_did_not_declare(self) -> None:
+        base = document({}, {"Base": props("kind"), "S": inline_schema("id", "old"), "T": props("a")})
+        head = document({}, {"Base": props("kind"), "S": inline_schema("id", "old", "fresh", required=("old", "fresh")),
+                             "T": props("a", "b", required=("b",))})
+        self.assertEqual(contract_of(base, head)["added_required"], ["S.fresh", "T.b"])
+
+    def test_a_required_parameter_added_reads_added_required(self) -> None:
+        base = document({"/r": {"get": operation("g")}}, {})
+        head = document({"/r": {"get": operation("g", parameters=[{"name": "kind", "in": "query", "required": True}])}}, {})
+        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`kind` parameter added (required) to `GET /r`")])
 
 
 class Moves(unittest.TestCase):
@@ -156,7 +201,7 @@ class ParameterSweeps(unittest.TestCase):
     def test_a_required_parameter_added_to_one_operation_makes_callers_change(self) -> None:
         base = document({"/r": {"get": operation("g")}}, {})
         head = document({"/r": {"get": operation("g", parameters=[{"name": "kind", "in": "query", "required": True}])}}, {})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`kind` parameter added and required to `GET /r`")])
+        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`kind` parameter added (required) to `GET /r`")])
 
     def test_a_parameter_made_required_and_a_changed_type(self) -> None:
         optional = {"name": "kind", "in": "query", "schema": {"type": "string"}}

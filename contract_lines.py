@@ -326,6 +326,7 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
         loc = locator.parameter(operation_ids.get(operation), name, "+- ", group_ops.index(operation), len(group_ops))
         add("parameter_required", frozenset({REQUEST}), name, operation, Member(operation=operation, tag=tags.get(operation)), loc)
 
+    introduced: set[str] = set(contract.get("added_required", []))
     required_fields: list[tuple[str, str]] = []
     for entry in contract.get("newly_required", []):
         if found := FIELD_REQUIRED.match(entry):
@@ -343,7 +344,7 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
             continue
         group = required_names[name]
         loc = locator.required_entry(schema, name, group.index(schema), len(group))
-        is_new: bool = schema in added_properties.get(name, [])
+        is_new: bool = schema in added_properties.get(name, []) or f"{schema}.{name}" in introduced
         add("property_added_required" if is_new else "property_required", sides_of(schema), name, schema, schema_member(schema), loc)
     for item in added.get("properties", []):
         if (item["schema"], item["name"]) in required_fields:
@@ -504,13 +505,13 @@ def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], sp
 
 
 PROPERTY_PHRASE: dict[str, str] = {
-    "property_added": "added", "property_added_required": "added and required", "property_required": "now required",
+    "property_added": "added", "property_added_required": "added (required)", "property_required": "now required",
     "property_no_longer_required": "no longer required", "property_removed": "removed",
     "property_type_changed": "type changed", "property_constraint_changed": "constraint changed",
     "deprecated": "deprecated", "schema_removed": "removed",
 }
 PARAMETER_PHRASE: dict[str, str] = {
-    "parameter_added": "added", "parameter_added_required": "added and required", "parameter_required": "now required",
+    "parameter_added": "added", "parameter_added_required": "added (required)", "parameter_required": "now required",
     "parameter_no_longer_required": "no longer required", "parameter_type_changed": "type changed",
     "parameter_constraint_changed": "constraint changed",
 }

@@ -190,8 +190,9 @@ sha256 of the variant file that produced each run.
   on the operations that use it. With no changes the section says "No API or database changes"; a side that could
   not be checked (no `openapi_path` or mirror, no `migration_globs`) is named. It needs `contract.json` for the API
   side and `migration_globs` in `local.toml` for the database side. `contract.json` lists `removals` and
-  `newly_required` (the only entries that raise a review floor) and, for this block, `added`, `changed` and
-  `schema_operations`.
+  `newly_required` (the only entries that raise a review floor) and, for this block, `added`, `changed`,
+  `schema_operations` and `added_required` (the newly required properties that the base schema did not declare, including
+  in an inline `allOf` member; v22 words them `added (required)`, and the others `now required`).
 - `contract_layout = "by_chunk"` (v22; needs `contract_block` and `files = "chunks"`) replaces the single block with two
   sections, **Contract** and **Data**, each a glance line, one closed `<details>` group per chunk that owns lines, and a
   last group, "Not in any chunk", for the lines no chunk owns. The glance line counts the lines at each level, worst

@@ -736,18 +736,29 @@ def operation_tags(base: dict[str, Any], head: dict[str, Any], breaks: dict[str,
     return tags
 
 
+def declared_properties(schema: Any) -> dict[str, Any]:
+    """The properties a schema declares: its own, and those of the inline objects in its `allOf` (a member that is a
+    `$ref` is another schema and is left out)."""
+    if not isinstance(schema, dict):
+        return {}
+    members: list[Any] = [schema, *(member for member in schema.get("allOf", []) if isinstance(member, dict) and "$ref" not in member)]
+    return {name: definition for member in members for name, definition in (member.get("properties") or {}).items()}
+
+
 def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[str, list[str]]) -> dict[str, Any]:
     """What was added or changed in the contract, beside the breaking changes in `breaks`: `added` and `changed`, each
     with operations, properties and parameters (`added` also lists new schemas), and `schema_operations`, the operations
     that reach each schema named in either (or in `breaks`), `schema_sides`, the sides (`request`, `response`) through which
-    each of those operations reaches it, `operation_tags`, `deprecated` (operations and properties newly deprecated) and
-    `enums_added` and `removed_operations` (with their operationIds, for matching moves)."""
+    each of those operations reaches it, `operation_tags`, `deprecated` (operations and properties newly deprecated),
+    `enums_added`, `removed_operations` (with their operationIds, for matching moves) and `added_required`, the
+    `Schema.property` entries of `breaks["newly_required"]` whose property the base schema did not declare at all."""
     old_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(base)
     new_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(head)
     added: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": [], "schemas": []}
     changed: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": []}
     deprecated: dict[str, list[Any]] = {"operations": [], "properties": []}
     enums_added: list[dict[str, Any]] = []
+    added_required: list[str] = []
 
     for (method, path), operation in new_operations.items():
         operation_id: str | None = operation.get("operationId")
@@ -794,6 +805,9 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
         for prop in old_schema.get("required", []):
             if prop in new_props and prop not in schema.get("required", []):
                 changed["properties"].append({"schema": name, "name": prop, "what": ["no longer required"]})
+        old_declared: dict[str, Any] = declared_properties(old_schema)
+        added_required.extend(f"{name}.{prop}" for prop in schema.get("required", [])
+                              if prop not in old_schema.get("required", []) and prop not in old_declared)
 
     names: set[str] = {*(item["schema"] for item in [*added["properties"], *changed["properties"]]), *added["schemas"],
                        *touched_schemas([*breaks["removals"], *breaks["newly_required"]])}
@@ -809,7 +823,7 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
                                                 for (method, path), operation in old_operations.items()
                                                 if (method, path) not in new_operations]
     return {"added": added, "changed": changed, "deprecated": deprecated, "enums_added": enums_added,
-            "removed_operations": removed_operations,
+            "removed_operations": removed_operations, "added_required": added_required,
             "schema_operations": {name: sorted(operations) for name, operations in sorted(used.items())},
             "schema_sides": {name: {operation: sorted(found) for operation, found in sorted(by_operation.items())}
                              for name, by_operation in sorted(sides.items())},

@@ -69,7 +69,7 @@ class ChunkedSections(unittest.TestCase):
         glance_line = re.search(r"^Contract: .*$", text, re.M).group()
         self.assertEqual(glance_line, "Contract: 2 callers must change · 1 consumer may break")
         heads = [re.sub(r"<[^>]+>", "", h) for h in re.findall(r"<summary>(.*?)</summary>", text)]
-        self.assertEqual(heads[:3], ["1 · Item endpoints callers must change request: owner added and required on ItemRequest",
+        self.assertEqual(heads[:3], ["1 · Item endpoints callers must change request: owner added (required) on ItemRequest",
                                      "2 · Widget model consumers may break b removed on Widget",
                                      "Not in any chunk callers must change 1 change in 1 controller"])
         self.assertEqual([l.text for l in lineset.loose_contract], ["`GET /gone` removed"])
