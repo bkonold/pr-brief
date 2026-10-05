@@ -70,6 +70,10 @@ class Forgejo:
                        "changeType": f["status"].upper()} for f in files],
         }
 
+    def head_sha(self, owner: str, repo: str, n: int | str) -> str:
+        """The PR's current head commit, from the pull request alone (no commits or files)."""
+        return json.loads(self._get(f"/repos/{owner}/{repo}/pulls/{n}"))["head"]["sha"]
+
     def diff(self, owner: str, repo: str, n: int | str) -> str:
         return self._get(f"/repos/{owner}/{repo}/pulls/{n}.diff").decode("utf-8")
 

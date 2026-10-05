@@ -454,16 +454,62 @@ test("a failure shows its message, escaped, with a Retry button", () => {
   assert.match(html, /data-action="generate">Retry<\/button>/);
 });
 
-test("a run for the page's head shows no Regenerate button; a run for an older head says so and offers one", () => {
-  const brief = { kind: "brief", variant: "v1", bodyHtml: bodyHtml(), diagramSvg: null, runSha: RUN_SHA, pageSha: RUN_SHA.toUpperCase(), canGenerate: true };
-  const fresh = cardHtml(brief, CARD);
-  assert.match(fresh, /<span class="badge"[^>]*>local, not posted<\/span><a class="files-link"/);
-  assert.doesNotMatch(fresh, /Regenerate/);
-  const stale = cardHtml({ ...brief, pageSha: PAGE_SHA }, CARD);
+const BRIEF = { kind: "brief", variant: "v1", bodyHtml: bodyHtml(), diagramSvg: null, runSha: RUN_SHA, pageSha: RUN_SHA.toUpperCase(), canGenerate: true };
+const GENERATE = (label, kind) => `<button class="${kind}" type="button" data-action="generate">${label}</button>`;
+const summaryOf = (html) => /<summary>[^]*?<\/summary>/.exec(html)[0];
+
+test("a run for an older head says so and offers a Regenerate button beside the badge", () => {
+  const stale = cardHtml({ ...BRIEF, pageSha: PAGE_SHA }, CARD);
   assert.match(stale, /<span class="badge"[^>]*>for a1b2c3d, PR is at 9f8e7d6<\/span><button class="btn" type="button" data-action="generate">Regenerate<\/button><a class="files-link" href="[^"]+">Review in files view<\/a>/);
-  assert.doesNotMatch(cardHtml({ ...brief, pageSha: PAGE_SHA, canGenerate: false }, CARD), /Regenerate/);
+  assert.equal(summaryOf(stale).match(/Regenerate/g).length, 1);
   assert.match(stale, /<details class="brief">/);
   assert.doesNotMatch(stale, /<details[^>]*\bopen\b/);
+});
+
+test("a run for the page's head, or a page whose head is unknown, offers a quiet Regenerate link in the header", () => {
+  for (const pageSha of [RUN_SHA.toUpperCase(), null, undefined]) {
+    const html = cardHtml({ ...BRIEF, pageSha }, CARD);
+    assert.match(html, /<span class="badge"[^>]*>local, not posted<\/span><button class="link quiet" type="button" data-action="generate">Regenerate<\/button><a class="files-link"/);
+    assert.ok(summaryOf(html).includes(GENERATE("Regenerate", "link quiet")));
+    assert.doesNotMatch(html, /class="btn"/);
+  }
+  assert.ok(summaryOf(cardHtml({ ...BRIEF, canGenerate: undefined }, CARD)).includes(GENERATE("Regenerate", "link quiet")));
+});
+
+test("when generating is not allowed the card shows no Regenerate, stale or not", () => {
+  for (const pageSha of [PAGE_SHA, RUN_SHA, null]) {
+    const html = cardHtml({ ...BRIEF, pageSha, canGenerate: false }, CARD);
+    assert.doesNotMatch(html, /Regenerate|data-action="generate"/);
+  }
+});
+
+test("clicking Regenerate in the header runs the action and does not toggle the card", () => {
+  const listeners = [];
+  globalThis.document = {
+    createElement: () => ({
+      attributes: {},
+      setAttribute() {},
+      attachShadow() {
+        this.shadow = { innerHTML: "", addEventListener: (type, listener) => listeners.push([type, listener]) };
+        return this.shadow;
+      },
+    }),
+  };
+  try {
+    const actions = [];
+    const host = buildCard({ ...CARD, onAction: (action) => actions.push(action) });
+    for (const pageSha of [RUN_SHA, PAGE_SHA, null]) {
+      host.show({ ...BRIEF, pageSha });
+      assert.match(summaryOf(host.shadow.innerHTML), /data-action="generate">Regenerate<\/button>/);
+    }
+    const [[, listener]] = listeners;
+    let prevented = 0;
+    listener({ target: { closest: (selector) => (selector === "[data-action]" ? { getAttribute: () => "generate" } : null) }, preventDefault: () => (prevented += 1) });
+    assert.deepEqual(actions, ["generate"]);
+    assert.equal(prevented, 1);
+  } finally {
+    delete globalThis.document;
+  }
 });
 
 test("a head that is unknown on either side is never stale", () => {

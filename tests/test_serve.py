@@ -401,6 +401,124 @@ class TokenFileTest(unittest.TestCase):
                 serve.load_token(path)
 
 
+class HeadTest(unittest.TestCase):
+    """GET /api/head, with a fake host in place of gh and the Forgejo API."""
+    SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f90abcdef01"
+    NEWER = "0123456789abcdef0123456789abcdef01234567"
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name)
+        self.calls: list[tuple[str, str, str, int]] = []
+        self.answers: dict[str, Any] = {"github": self.SHA, "forgejo": self.NEWER}
+        self.now = 1000.0
+        allowed = serve.parse_serve_repos({"github": ["acme/widgets"], "forgejo": ["me/widgets"]})
+        runner = serve.Runner(self.home, allowed, lambda *_: [], max_running=1)
+        heads = serve.Heads(allowed, self.lookup, ttl=30, clock=lambda: self.now)
+        self.server = serve.make_server(self.home, runner, TOKEN, 0, heads=heads)
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+        self.addCleanup(self.stop)
+        self.client = Client(self.server.server_address[1])
+
+    def stop(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+    def lookup(self, host: str, owner: str, repo: str, n: int) -> str:
+        self.calls.append((host, owner, repo, n))
+        answer: Any = self.answers[host]
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    def head(self, host: str = "github", owner: str = "acme", repo: str = "widgets", n: Any = 5, **options: Any) -> tuple[int, Any]:
+        return self.client.call("GET", f"/api/head?host={host}&owner={owner}&repo={repo}&n={n}", **options)
+
+    def test_it_answers_each_hosts_head_sha(self) -> None:
+        self.assertEqual(self.head(), (200, {"sha": self.SHA}))
+        self.assertEqual(self.head("forgejo", "me"), (200, {"sha": self.NEWER}))
+        self.assertEqual(self.calls, [("github", "acme", "widgets", 5), ("forgejo", "me", "widgets", 5)])
+
+    def test_it_needs_the_token_and_an_extension_origin(self) -> None:
+        for token, origin in [(None, ORIGIN), ("wrong", ORIGIN), (TOKEN, "https://github.com")]:
+            with self.subTest(token=token, origin=origin):
+                self.assertEqual(self.head(token=token, origin=origin)[0], 403)
+        self.assertEqual(self.head(origin=None), (200, {"sha": self.SHA}))
+        self.assertEqual(self.calls, [("github", "acme", "widgets", 5)])
+
+    def test_it_is_read_only(self) -> None:
+        self.assertEqual(self.client.call("POST", "/api/head", {})[0], 405)
+
+    def test_only_allow_listed_repos_are_read(self) -> None:
+        self.assertEqual(self.head(repo="other")[0], 403)
+        self.assertEqual(self.head("forgejo", "acme")[0], 403)
+        self.assertEqual(self.head(owner="ACME", repo="Widgets"), (200, {"sha": self.SHA}))
+        self.assertEqual(len(self.calls), 1)
+
+    def test_input_is_validated_before_anything_is_read(self) -> None:
+        for path in ["/api/head", "/api/head?host=gitlab&owner=acme&repo=widgets&n=5", "/api/head?host=github&owner=a%2Fb&repo=widgets&n=5",
+                     "/api/head?host=github&owner=acme&repo=..&n=5", "/api/head?host=github&owner=acme&repo=widgets",
+                     "/api/head?host=github&owner=acme&repo=widgets&n=0", "/api/head?host=github&owner=acme&repo=widgets&n=-3",
+                     "/api/head?host=github&owner=acme&repo=widgets&n=x", "/api/head?host=github&owner=acme&repo=widgets&n=1000000000"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.call("GET", path)[0], 400)
+        self.assertEqual(self.calls, [])
+
+    def test_a_failed_lookup_answers_null_and_logs_one_line(self) -> None:
+        self.answers["github"] = SystemExit("Forgejo answered 404 for GET /repos/acme/widgets/pulls/5")
+        with mock.patch.object(sys, "stderr") as stderr:
+            self.assertEqual(self.head(), (200, {"sha": None}))
+        written: str = "".join(call.args[0] for call in stderr.write.call_args_list)
+        self.assertEqual(written.count("head lookup failed"), 1)
+        logged: list[str] = [line for line in written.splitlines() if "head lookup failed" in line]
+        self.assertEqual(logged, ["head lookup failed for github acme/widgets#5: Forgejo answered 404 for GET /repos/acme/widgets/pulls/5"])
+        self.assertNotIn(TOKEN, written)
+
+    def test_an_answer_that_is_not_a_sha_is_a_failure(self) -> None:
+        self.answers["github"] = "not-a-sha"
+        with mock.patch.object(sys, "stderr"):
+            self.assertEqual(self.head(), (200, {"sha": None}))
+
+    def test_a_failure_is_not_kept(self) -> None:
+        self.answers["github"] = OSError("gh is not installed")
+        with mock.patch.object(sys, "stderr"):
+            self.assertEqual(self.head(), (200, {"sha": None}))
+        self.answers["github"] = self.SHA
+        self.assertEqual(self.head(), (200, {"sha": self.SHA}))
+        self.assertEqual(len(self.calls), 2)
+
+    def test_an_answer_is_kept_for_thirty_seconds_per_pull_request(self) -> None:
+        self.assertEqual(self.head()[1], {"sha": self.SHA})
+        self.answers["github"] = self.NEWER
+        self.now += 29
+        self.assertEqual(self.head()[1], {"sha": self.SHA})
+        self.assertEqual(self.head(n=6)[1], {"sha": self.NEWER})
+        self.assertEqual(len(self.calls), 2)
+        self.now += 2
+        self.assertEqual(self.head()[1], {"sha": self.NEWER})
+        self.assertEqual(len(self.calls), 3)
+
+
+class HostHeadTest(unittest.TestCase):
+    def test_github_reads_the_head_oid_through_an_argument_list(self) -> None:
+        from hosts.github import GitHub
+        sha = "a1b2c3d4e5f60718293a4b5c6d7e8f90abcdef01"
+        done = mock.Mock(stdout=json.dumps({"headRefOid": sha}))
+        with mock.patch("hosts.github.subprocess.run", return_value=done) as runner:
+            self.assertEqual(GitHub().head_sha("acme", "widgets", 5), sha)
+        self.assertEqual(runner.call_args.args[0], ["gh", "pr", "view", "5", "--repo", "acme/widgets", "--json", "headRefOid"])
+        self.assertIsNot(runner.call_args.kwargs.get("shell"), True)
+
+    def test_forgejo_reads_the_head_sha_of_the_pull_request(self) -> None:
+        from hosts.forgejo import Forgejo
+        sha = "0123456789abcdef0123456789abcdef01234567"
+        forgejo = Forgejo("http://forge.example", None)
+        with mock.patch.object(Forgejo, "_get", return_value=json.dumps({"head": {"sha": sha}}).encode()) as get:
+            self.assertEqual(forgejo.head_sha("me", "widgets", 5), sha)
+        get.assert_called_once_with("/repos/me/widgets/pulls/5")
+
+
 class ServeReposTest(unittest.TestCase):
     def test_serve_repos_shape(self) -> None:
         self.assertEqual(serve.parse_serve_repos(None), {})

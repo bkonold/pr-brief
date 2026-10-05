@@ -1,9 +1,10 @@
 """Where a pull request is read from. One class per host, each with the same two methods:
 
-    pr(owner, repo, n)    title, body, head branch, base and head SHA, commits and files, in the
-                          shape `gh pr view --json` gives (the shape pr.json, render.py and
-                          context_pack.py read)
-    diff(owner, repo, n)  the unified diff
+    pr(owner, repo, n)        title, body, head branch, base and head SHA, commits and files, in the
+                              shape `gh pr view --json` gives (the shape pr.json, render.py and
+                              context_pack.py read)
+    diff(owner, repo, n)      the unified diff
+    head_sha(owner, repo, n)  the PR's current head commit, and nothing else
 
 A host also names its runs (`runs/<run_key>/`), builds the links render.py puts in the body, and says
 where a commit missing from the local mirror is fetched from. Both hosts only read.

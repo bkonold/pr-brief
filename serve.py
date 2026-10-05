@@ -10,6 +10,10 @@ extension finds runs/<key>/<variant>/..., and adds an API under /api/ that start
     GET  /api/status  ?key=fj-7[&host=&owner=&repo=]  ->  {state, stage, elapsed, error?, allowed?}
     POST /api/cancel  {key}                   ->  {state}        kill the run's process group
     GET  /api/config                          ->  {default_variant, variants}   the variant a brief shows, and the active ones
+    GET  /api/head    ?host=&owner=&repo=&n=  ->  {sha}            the PR's current head commit, or null when the host cannot say
+
+`/api/head` only reads: it asks the host for the pull request's head commit (`gh` for GitHub, the REST API for
+Forgejo), for an allow-listed repository only, and remembers each answer for 30 seconds.
 
 `state` is idle, running, done, failed or canceled; `status` reads runs/<key>/status.json, which run.py
 writes at each stage (see run_status.py). `allowed` is only present when host, owner and repo are given.
@@ -45,7 +49,7 @@ from urllib.parse import parse_qs, urlparse
 
 import run_status
 from config import HOME, ROOT, load_local, variant_file
-from hosts import host_names, parse_run_key, run_key
+from hosts import get_host, host_names, parse_run_key, run_key
 
 ADDRESS = "127.0.0.1"
 PORT = 8765
@@ -55,9 +59,12 @@ TOKEN_HEADER = "X-PR-Describe-Token"
 EXTENSION_ORIGIN = "chrome-extension://"
 MAX_BODY_BYTES = 4096
 KILL_GRACE_SECONDS = 5
+HEAD_CACHE_SECONDS = 30
+SHA = re.compile(r"^[0-9a-f]{40}$")
 NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$")
 
 ArgvFor = Callable[[str, str, str, int], list[str]]
+HeadLookup = Callable[[str, str, str, int], str]
 
 
 class ApiError(Exception):
@@ -136,6 +143,60 @@ def repo_parts(host: Any, owner: Any, repo: Any, allowed: dict[str, frozenset[st
     return host, owner, repo, f"{owner}/{repo}".lower() in allowed.get(host, frozenset())
 
 
+def pr_number(value: Any) -> int:
+    """`value` as a pull request number; raises ApiError unless it is a positive integer."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value < 10**9:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "bad_request", "n must be a positive integer")
+    return value
+
+
+def default_head_lookup(settings: dict[str, Any]) -> HeadLookup:
+    """Reads a head commit through the host modules, which only read; `settings` is local.toml's contents."""
+    def lookup(host: str, owner: str, repo: str, n: int) -> str:
+        return get_host(host, settings).head_sha(owner, repo, n)
+    return lookup
+
+
+class Heads:
+    """Answers GET /api/head: a PR's current head commit, for allow-listed repositories only. `lookup(host,
+    owner, repo, n)` reads it from the host (a test substitutes a fake); an answer is kept for `ttl` seconds
+    per host, repository and number. A lookup that fails, or returns anything but a 40-character sha, answers
+    null, is logged as one line, and is not kept, so the next request asks the host again."""
+
+    def __init__(self, allowed: dict[str, frozenset[str]], lookup: HeadLookup, ttl: float = HEAD_CACHE_SECONDS,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.allowed: dict[str, frozenset[str]] = allowed
+        self.lookup: HeadLookup = lookup
+        self.ttl: float = ttl
+        self.clock: Callable[[], float] = clock
+        self.lock: threading.Lock = threading.Lock()
+        self.kept: dict[tuple[str, str, str, int], tuple[float, str]] = {}
+
+    def head(self, query: dict[str, list[str]]) -> dict[str, Any]:
+        values: dict[str, Any] = {name: query.get(name, [None])[0] for name in ("host", "owner", "repo", "n")}
+        host, owner, repo, permitted = repo_parts(values["host"], values["owner"], values["repo"], self.allowed)
+        raw: Any = values["n"]
+        number: int = pr_number(int(raw) if isinstance(raw, str) and raw.isascii() and raw.isdigit() else None)
+        if not permitted:
+            raise ApiError(HTTPStatus.FORBIDDEN, "repo_not_allowed", f"{owner}/{repo} is not in serve_repos for {host}")
+        key: tuple[str, str, str, int] = (host, owner.lower(), repo.lower(), number)
+        with self.lock:
+            hit: tuple[float, str] | None = self.kept.get(key)
+            if hit and self.clock() - hit[0] < self.ttl:
+                return {"sha": hit[1]}
+        try:
+            sha: Any = self.lookup(host, owner, repo, number)
+            if not isinstance(sha, str) or not SHA.match(sha):
+                raise ValueError("no 40-character head sha in the answer")
+        except (Exception, SystemExit) as error:
+            reason: str = str(error).strip().splitlines()[0][:200] if str(error).strip() else type(error).__name__
+            print(f"head lookup failed for {host} {owner}/{repo}#{number}: {reason}", file=sys.stderr, flush=True)
+            return {"sha": None}
+        with self.lock:
+            self.kept[key] = (self.clock(), sha)
+        return {"sha": sha}
+
+
 class Runner:
     """Starts, watches and cancels runs. `argv_for(host, owner, repo, n)` builds the command of one run, so
     a test can substitute a fake. All of a run's state is in runs/<key>/status.json; the job table only
@@ -165,9 +226,7 @@ class Runner:
         if not isinstance(body, dict):
             raise ApiError(HTTPStatus.BAD_REQUEST, "bad_request", "expected a JSON object")
         host, owner, repo, permitted = repo_parts(body.get("host"), body.get("owner"), body.get("repo"), self.allowed)
-        number: Any = body.get("n")
-        if isinstance(number, bool) or not isinstance(number, int) or not 0 < number < 10**9:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "bad_request", "n must be a positive integer")
+        number: int = pr_number(body.get("n"))
         if not permitted:
             raise ApiError(HTTPStatus.FORBIDDEN, "repo_not_allowed", f"{owner}/{repo} is not in serve_repos for {host}")
         key: str = run_key(host, number)
@@ -261,6 +320,7 @@ class Handler(SimpleHTTPRequestHandler):
     """Static files from the home folder, plus the authenticated /api/ routes."""
 
     runner: Runner
+    heads: Heads
     token: bytes
     config: dict[str, Any]
 
@@ -308,6 +368,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, self.runner.cancel(self._body()))
             elif (method, url.path) == ("GET", "/api/config"):
                 self._send_json(HTTPStatus.OK, self.config)
+            elif (method, url.path) == ("GET", "/api/head"):
+                self._send_json(HTTPStatus.OK, self.heads.head(parse_qs(url.query)))
             elif (method, url.path) == ("GET", "/api/status"):
                 query: dict[str, list[str]] = parse_qs(url.query)
                 key: str = query.get("key", [""])[0]
@@ -316,7 +378,7 @@ class Handler(SimpleHTTPRequestHandler):
                     repo = tuple(query.get(name, [None])[0] for name in ("host", "owner", "repo"))  # type: ignore[assignment]
                 self._send_json(HTTPStatus.OK, self.runner.status(key, repo))
             else:
-                known: bool = url.path in ("/api/run", "/api/cancel", "/api/status", "/api/config")
+                known: bool = url.path in ("/api/run", "/api/cancel", "/api/status", "/api/config", "/api/head")
                 self._send_json(HTTPStatus.METHOD_NOT_ALLOWED if known else HTTPStatus.NOT_FOUND, {"error": "not_found", "message": "no such endpoint"})
         except ApiError as error:
             self._send_json(error.status, {"error": error.code, "message": error.message})
@@ -340,9 +402,12 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed", "message": "POST is only for /api/"})
 
 
-def make_server(home: Path, runner: Runner, token: str, port: int = PORT, config: dict[str, Any] | None = None) -> ThreadingHTTPServer:
-    """`config` is what GET /api/config answers: {default_variant, variants}."""
-    handler = type("BoundHandler", (Handler,), {"runner": runner, "token": token.encode(),
+def make_server(home: Path, runner: Runner, token: str, port: int = PORT, config: dict[str, Any] | None = None,
+                heads: Heads | None = None) -> ThreadingHTTPServer:
+    """`config` is what GET /api/config answers: {default_variant, variants}. `heads` answers GET /api/head; by
+    default it reads the real hosts for the runner's allow-list."""
+    heads = heads or Heads(runner.allowed, default_head_lookup({}))
+    handler = type("BoundHandler", (Handler,), {"runner": runner, "heads": heads, "token": token.encode(),
                                                 "config": config or {"default_variant": None, "variants": []}})
     server = ThreadingHTTPServer((ADDRESS, port), partial(handler, directory=str(home)))
     server.daemon_threads = True
@@ -367,7 +432,8 @@ def main() -> int:
     for key in runner.recover():
         print(f"run {key} was left running by a server that died; marked failed", file=sys.stderr)
     active: list[str] = load_active_variants(HOME, variant)
-    server = make_server(HOME, runner, token, args.port, {"default_variant": variant, "variants": active})
+    heads = Heads(allowed, default_head_lookup(local))
+    server = make_server(HOME, runner, token, args.port, {"default_variant": variant, "variants": active}, heads)
     print(f"serving {HOME} on http://{ADDRESS}:{args.port} (token in {TOKEN_FILE}; variant {variant}; active {', '.join(active)})", flush=True)
     try:
         server.serve_forever()

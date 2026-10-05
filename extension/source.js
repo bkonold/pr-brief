@@ -52,12 +52,21 @@
     }
   }
 
+  const SHA = /^[0-9a-f]{40}$/i;
+
+  // The PR's current head commit as the run server reads it from the host, or null when it cannot say (server down,
+  // token wrong, repository not allowed, host unreachable). `run` is { host, owner, repo, pr, key }.
+  async function headSha(run) {
+    const answer = await ask({ type: "headSha", ...run });
+    return answer.ok && typeof answer.sha === "string" && SHA.test(answer.sha) ? answer.sha : null;
+  }
+
   const startRun = (run) => ask({ type: "startRun", ...run });
   const runStatus = (run) => ask({ type: "runStatus", ...run });
   const cancelRun = (run) => ask({ type: "cancelRun", ...run });
 
   ns.alive = alive;
-  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, pickVariant };
+  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha, pickVariant };
 })();
 
 if (typeof module !== "undefined") module.exports = { alive: globalThis.prFocus.alive, ...globalThis.prFocus.source };

@@ -522,6 +522,29 @@ test("the head sha is read from the page on any view of the PR it was loaded for
   }
 });
 
+test("GitHub's conversation page, which embeds no head sha, asks the run server for it", async () => {
+  const SHA = "c".repeat(40);
+  const asked = [];
+  const saved = globalThis.prFocus.source;
+  const savedLocation = globalThis.location;
+  const pr = { owner: "acme", repo: "widgets", pr: 7 };
+  try {
+    globalThis.location = { pathname: "/acme/widgets/pull/7" };
+    globalThis.prFocus.source = { headSha: async (run) => (asked.push(run), SHA) };
+    assert.equal(githubPage.headSha(), null);
+    assert.equal(await githubPage.currentHeadSha(pr), SHA);
+    assert.deepEqual(asked, [{ host: "github", owner: "acme", repo: "widgets", pr: 7, key: "7" }]);
+    globalThis.prFocus.source = { headSha: async () => null };
+    assert.equal(await githubPage.currentHeadSha(pr), null);
+    delete globalThis.prFocus.source;
+    assert.equal(await githubPage.currentHeadSha(pr), null);
+  } finally {
+    globalThis.prFocus.source = saved;
+    globalThis.location = savedLocation;
+    if (savedLocation === undefined) delete globalThis.location;
+  }
+});
+
 const { hasSteps, defaultOrder } = require("../tree.js");
 
 test("orderChunks in flow order keeps review.json's order and puts Unchunked last", () => {

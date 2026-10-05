@@ -123,9 +123,12 @@ a one-second clock between polls and reports to the page. The card and the files
 - **Running:** "Writing brief · m:ss", a pill per stage (Fetch PR, Gather context, Write, Render; done ones green, the
   current one in the accent colour) and a Cancel link. Leaving the page does not stop the run; the next visit asks
   the server and resumes from where it is. When the run is done the brief is loaded and drawn, closed.
-- **Stale:** when the run's `head_sha` differs from the head sha the page shows (`page.currentHeadSha`: GitHub's embedded
-  page data, or for Forgejo its read-only API), the badge reads "for <short>, PR is at <short>" and a "Regenerate" button
-  sits beside "Review in files view".
+- **Stale:** when the run's `head_sha` differs from the PR's current head (`page.currentHeadSha`: the page's own value
+  when it shows one, which on GitHub is only the files view's embedded page data, else the host's answer: Forgejo's
+  read-only API, or for GitHub the server's `GET /api/head`, asked through `background.js`), the badge reads "for
+  <short>, PR is at <short>" and a "Regenerate" button sits beside "Review in files view".
+- **Current or unknown head:** a quiet "Regenerate" link in the card header does the same. Whenever generating is
+  allowed, regeneration is offered; with it not allowed, neither the button nor the link is shown.
 - **Failure:** the error line and a Retry button. A failed call says why: "Start the server with `pd serve` to generate
   briefs" (nothing listening), "Server token missing or wrong — set it in the extension options" (403) or "2 briefs
   already running" (429).

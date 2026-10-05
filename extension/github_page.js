@@ -52,6 +52,12 @@
     return HEAD_SHA.exec(text)?.[1] ?? null;
   }
 
+  // Only the files view's embedded JSON names the head commit, so the conversation page asks the run server, which
+  // reads it from GitHub. `source` is loaded after this adapter, so it is looked up when the call is made.
+  async function fetchHeadSha(pr) {
+    return (await ns.source?.headSha({ host: "github", owner: pr.owner, repo: pr.repo, pr: pr.pr, key: String(pr.pr) })) ?? null;
+  }
+
   function findRow(anchor) {
     return document.querySelector(`${LINE_CELL}[data-line-anchor="${anchor}"]`)?.closest("tr") ?? null;
   }
@@ -93,6 +99,7 @@
     hostId: "github",
     runKey: (pr) => String(pr.pr),
     readHeadSha,
+    fetchHeadSha,
     blockSelector: DIFF_BLOCK,
     pathOfBlock,
     // The element to hide so the spacing between diffs collapses with it.

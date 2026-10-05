@@ -1,7 +1,8 @@
 // The PR brief card: the run's description, review order and diagram, in a collapsed <details> that the content
 // script places above the PR's description on the conversation page. Before there is a run it is a bar with a
 // "Generate brief" button, while one is being written a bar with the stage pills and a Cancel link, and when the run
-// is for an older head commit than the page's the badge says so and a Regenerate button appears. It lives in a
+// is for an older head commit than the page's the badge says so and a Regenerate button appears; otherwise a quiet
+// Regenerate link sits in the header. It lives in a
 // shadow root, so neither page's CSS reaches it. The colours are the site's own (GitHub's Primer names, which the Forgejo adapter points at
 // Forgejo's colours), with light and dark fallbacks for when the page defines none.
 (() => {
@@ -65,8 +66,10 @@
     .btn:hover { background: var(--header); }
     .link { padding: 0; font: inherit; font-size: 12px; color: var(--accent); background: none; border: 0; cursor: pointer; }
     .link:hover { text-decoration: underline; }
-    summary .btn { margin-left: auto; }
-    summary .btn + .files-link { margin-left: 0; }
+    summary .btn, summary .link { margin-left: auto; }
+    summary .btn + .files-link, summary .link + .files-link { margin-left: 0; }
+    .link.quiet { color: var(--muted); }
+    .link.quiet:hover { color: var(--accent); }
     .progress { color: var(--muted); font-variant-numeric: tabular-nums; }
     .stages { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 12px 16px; list-style: none; }
     .pill { padding: 0 10px; font-size: 12px; line-height: 20px; color: var(--muted); border: 1px solid var(--border); border-radius: 2em; }
@@ -201,7 +204,12 @@
       : "";
     const stale = isStale(view.runSha, view.pageSha);
     const label = stale ? `for ${short(view.runSha)}, PR is at ${short(view.pageSha)}` : "local, not posted";
-    const regenerate = stale && view.canGenerate !== false ? '<button class="btn" type="button" data-action="generate">Regenerate</button>' : "";
+    const regenerate =
+      view.canGenerate === false
+        ? ""
+        : stale
+          ? '<button class="btn" type="button" data-action="generate">Regenerate</button>'
+          : '<button class="link quiet" type="button" data-action="generate">Regenerate</button>';
     return (
       '<details class="brief">' +
       `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label)}${regenerate}` +

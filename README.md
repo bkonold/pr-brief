@@ -107,6 +107,7 @@ python3 serve.py        # from the repository root; an overlay's own wrapper doe
 | `GET /api/status?key=` | `key` (`7` or `fj-7`); optionally `host`, `owner`, `repo` | `{state, stage, elapsed, error?, allowed?}` from `runs/<key>/status.json` |
 | `POST /api/cancel` | `{key}` | `{state}`; kills the run's process group |
 | `GET /api/config` | none | `{default_variant, variants}`: the variant a brief shows, and the active variants, which are `compare.toml`'s `variants` read at startup (`[default_variant]` without that file) |
+| `GET /api/head?host=&owner=&repo=&n=` | the PR | `{sha}`: the PR's current head commit, read through the host module (`gh` for GitHub, the REST API for Forgejo), or `{sha: null}` with 200 when the host cannot say (logged as one line). Read only, allow-listed repositories only, answers kept 30 seconds |
 
 `state` is `idle`, `running`, `done`, `failed` or `canceled`; `stage` is `fetch`, `context`, `write` or `render`.
 `run.py` writes `status.json` at each stage and, on failure, the last line of the error. One run per key (a second

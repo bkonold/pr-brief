@@ -143,11 +143,18 @@ function runStatus({ key, host, owner, repo }) {
   return callServer(`/api/status?${query}`);
 }
 
+// The PR's current head commit as the server reads it from the host: { ok, sha } with `sha` null when the host
+// could not say. The server answers only for repositories it may run.
+function headSha({ host, owner, repo, pr }) {
+  const query = new URLSearchParams({ host, owner, repo, n: String(pr) });
+  return callServer(`/api/head?${query}`);
+}
+
 function cancelRun({ key }) {
   return callServer("/api/cancel", { method: "POST", body: { key } });
 }
 
-const HANDLERS = { loadReview, loadBrief, startRun, runStatus, cancelRun };
+const HANDLERS = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!Object.hasOwn(HANDLERS, message?.type)) return false;
