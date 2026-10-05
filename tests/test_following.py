@@ -61,6 +61,14 @@ class Following(unittest.TestCase):
         text = diagram('a["A"] --> shared["S"]')
         self.assertEqual(following(text, ["a"], ["shared"], ["shared"]), [[2, 3], [3], []])
 
+    def test_a_box_shared_with_an_earlier_chunk_never_leads_backward(self) -> None:
+        text = diagram('s["S"]', 'b["B"] --> s')
+        self.assertEqual(following(text, ["s"], ["b"], ["s"])[1], [3])
+
+    def test_a_chunk_that_reaches_only_earlier_chunks_falls_back_to_the_next_number(self) -> None:
+        text = diagram('s["S"]', 'b["B"] --> s', 'c["C"]')
+        self.assertEqual(following(text, ["s"], ["b"], ["c"])[1], [3])
+
     def test_a_return_arrow_is_not_a_step_forward(self) -> None:
         text = diagram('a["A"] --> b["B"]', 'b -.->|redirect back| a')
         self.assertEqual(following(text, ["a"], ["b"]), [[2], []])

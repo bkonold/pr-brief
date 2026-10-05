@@ -668,7 +668,8 @@ def assign_following(diagram: str, chunks: list[Chunk]) -> None:
     From the boxes the chunk owns the diagram's arrows are walked breadth-first. A box owned by the chunk itself or
     by no chunk (context) is walked through; a box owned by other chunks ends that branch and gives each of them.
     The chunks are ordered by where the box that reached them is first declared in the diagram, then by number.
-    A chunk with no boxes, or whose walk reaches no other chunk, is followed by the next higher number, if any."""
+    A chunk with a lower number than this one is never offered, since a shared box can lead back to an earlier chunk.
+    A chunk with no boxes, or whose walk reaches no later chunk, is followed by the next higher number, if any."""
     successors: dict[str, list[str]] = diagram_successors(diagram)
     position: dict[str, int] = declaration_positions(diagram.split("\n"))
     owners: dict[str, list[Chunk]] = {}
@@ -690,7 +691,8 @@ def assign_following(diagram: str, chunks: list[Chunk]) -> None:
                         reached[other.number] = min(reached.get(other.number, position[target]), position[target])
                 else:
                     queue.append(target)
-        chunk.following = sorted(reached, key=lambda number: (reached[number], number))[:MAX_FOLLOWING]
+        later: list[int] = [number for number in reached if number > chunk.number]
+        chunk.following = sorted(later, key=lambda number: (reached[number], number))[:MAX_FOLLOWING]
         if not chunk.following:
             chunk.following = [other.number for other in by_number if other.number > chunk.number][:1]
 
