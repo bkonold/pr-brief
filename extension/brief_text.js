@@ -55,16 +55,11 @@
       .map((cell) => cell.replace(/\\\|/g, "|").trim());
   }
 
-  // A pipe table as HTML. A body row with text in its first cell and nothing after it is a sub-header, which spans the
-  // whole row.
+  // A pipe table as HTML.
   function renderTable(rows) {
     const [head, , ...body] = rows.map(tableCells);
     const header = `<thead><tr>${head.map((cell) => `<th>${inline(cell)}</th>`).join("")}</tr></thead>`;
-    const lines = body.map((cells) => {
-      const sub = cells.length > 1 && cells[0] !== "" && cells.slice(1).every((cell) => cell === "");
-      if (sub) return `<tr class="sub"><td colspan="${cells.length}">${inline(cells[0])}</td></tr>`;
-      return `<tr>${cells.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`;
-    });
+    const lines = body.map((cells) => `<tr>${cells.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`);
     return `<table>${header}<tbody>${lines.join("")}</tbody></table>`;
   }
 

@@ -722,11 +722,8 @@ test("a body with no review-order table has no order block, and the Contract gro
 const V22_MARKDOWN = [
   "# T",
   "",
-  "### **Contract**",
-  '<span class="pill p0"><strong>1 callers must change</strong></span> <span class="pill p2">2 additive</span>',
-  "",
-  "<details>",
-  '<summary>3 · Endpoint <span class="pill p0"><strong>callers must change</strong></span> <span class="muted">3 changes</span></summary>',
+  '<details class="section">',
+  '<summary><strong>Contract</strong> <span class="pill p0"><strong>1 caller must change</strong></span> <span class="pill p2">2 additive</span></summary>',
   "",
   '<div class="table-wrap">',
   "",
@@ -734,26 +731,11 @@ const V22_MARKDOWN = [
   "| --- | --- | --- | --- | --- |",
   '| <span class="pill p0"><strong>callers must change</strong></span> | request | <code>+ kind</code> required param | <code>GET /rows</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR4) |',
   '| <span class="pill p2">additive</span> | response | <code>+ note</code> optional | 9 schemas: <code>A</code>, <code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters</code> +6 | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR9) |',
+  '| <span class="pill p2">additive</span> |  | <code>+ a</code> nullable &#124; x | <code>widgets</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-defR3) |',
   "",
   "</div>",
   "",
   "</details>",
-  "",
-  "<details>",
-  '<summary>Not in any chunk <span class="pill p2">additive</span> <span class="muted">2 changes</span></summary>',
-  "",
-  '<div class="table-wrap">',
-  "",
-  "| Impact | Change | Table | ↗ |",
-  "| --- | --- | --- | --- |",
-  "| <strong><code>widgets</code></strong> |  |  |  |",
-  '| <span class="pill p2">additive</span> | <code>+ a</code> nullable &#124; x | <code>widgets</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-defR3) |',
-  "",
-  "</div>",
-  "",
-  "</details>",
-  "",
-  '<p class="group-row">1 · Model <span class="pill p1">consumers may break</span> <code>− b</code> · <code>Widget</code> <a href="https://github.com/acme/widgets/pull/7/changes#diff-abcL7">↗</a></p>',
   "",
   "___",
   "",
@@ -768,29 +750,35 @@ const V22_MARKDOWN = [
   "",
 ].join("\n");
 
-test("a v22 brief draws each group's markdown table as a table, with the link rewritten and a sub-header row across the table", () => {
+test("a v22 section is one closed details with its name and chips in the summary and one table", () => {
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
-  assert.equal((html.match(/<table>/g) ?? []).length, 2);
+  assert.equal((html.match(/<details class="section">/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /<details class="section" open/);
+  assert.match(html, /<summary><strong>Contract<\/strong> <span class="pill p0"><strong>1 caller must change<\/strong><\/span> <span class="pill p2">2 additive<\/span><\/summary>/);
+  assert.equal((html.match(/<table>/g) ?? []).length, 1);
   assert.match(html, /<thead><tr><th>Impact<\/th><th>Side<\/th><th>Change<\/th><th>On<\/th><th>↗<\/th><\/tr><\/thead>/);
   assert.match(html, /<td><span class="pill p0"><strong>callers must change<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
   assert.match(html, /<td><a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abcR4">↗<\/a><\/td>/);
   assert.match(html, /<code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters<\/code>/);
-  assert.match(html, /<tr class="sub"><td colspan="4"><strong><code>widgets<\/code><\/strong><\/td><\/tr>/);
   assert.match(html, /<code>\+ a<\/code> nullable &#124; x/);
   assert.match(html, /<div class="table-wrap">\s*<table>/);
-  assert.doesNotMatch(html, /\|/);
+  assert.doesNotMatch(html, /\||class="sub"|group-row|chunk/);
 });
 
-test("a v22 brief keeps a one-line group as a plain row and the diagram after the Data section, with no order block", () => {
+test("a v22 brief keeps the diagram after the Data section, with no order block", () => {
   const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
-  assert.match(html, /<p class="group-row">1 · Model <span class="pill p1">consumers may break<\/span> <code>− b<\/code> · <code>Widget<\/code> <a href="http:\/\/forge\.example[^"]*#diff-abcL7">↗<\/a><\/p>/);
   assert.doesNotMatch(html, /class="order"|order-switch/);
   const contract = html.indexOf("<strong>Contract</strong>");
-  const data = html.indexOf("<strong>Data</strong>");
+  const data = html.indexOf("<h3><strong>Data</strong></h3>");
   const diagram = html.indexOf('class="diagram-box"');
   assert.ok(contract !== -1 && data > contract && diagram > data, [contract, data, diagram].join());
   assert.equal(html.slice(contract, data).includes("diagram-box"), false);
+});
+
+test("a section's details is not mistaken for the file walkthrough when the body is split", () => {
+  const html = '<p>x</p><details class="section"><summary><strong>Data</strong></summary></details><p>y</p>';
+  assert.deepEqual(require("../brief.js").splitOrder(html), { text: html, order: "" });
 });
 
 test("renderMarkdown reads a pipe table with an escaped pipe and leaves a lone pipe line as text", () => {
