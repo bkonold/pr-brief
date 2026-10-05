@@ -381,6 +381,15 @@
   list-style: none;
 }
 
+.prf-file-item {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
 .prf-file {
   box-sizing: border-box;
   display: flex;
@@ -388,14 +397,17 @@
   align-items: baseline;
   width: 100%;
   min-height: 24px;
+  margin: 0;
   padding: 2px 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   color: var(--fgColor-muted, #59636e);
   text-align: left;
+  appearance: none;
   background: none;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
+  box-shadow: none;
 }
 
 .prf-file-start {
@@ -406,12 +418,9 @@
   background: var(--bgColor-neutral-muted, #818b981f);
 }
 
-.prf-file-active,
-.prf-file-active:hover {
-  background: var(--bgColor-default, #ffffff);
-  box-shadow:
-    inset 2px 0 0 var(--fgColor-default, #1f2328),
-    0 1px 2px var(--borderColor-default, #d0d7de);
+.prf-file-active {
+  font-weight: 600;
+  color: var(--fgColor-default, #1f2328);
 }
 
 .prf-file-name {
