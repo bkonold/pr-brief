@@ -325,16 +325,55 @@
 .prf-num {
   flex: none;
   min-width: 1.4ch;
-  color: var(--fgColor-muted, #59636e);
+  color: var(--fgColor-default, #1f2328);
   font-variant-numeric: tabular-nums;
+  font-weight: 700;
   text-align: right;
 }
 
-.prf-name {
+.prf-num::after {
+  margin-left: 0.5ch;
+  font-weight: 400;
+  color: var(--fgColor-muted, #59636e);
+  content: "\00b7";
+}
+
+.prf-title {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.prf-name {
   min-width: 0;
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.prf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.prf-chip {
+  box-sizing: border-box;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--fgColor-muted, #59636e);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 9px;
+}
+
+.prf-chip-filled {
+  font-weight: 600;
+  color: var(--bgColor-default, #ffffff);
+  background: var(--fgColor-default, #1f2328);
+  border-color: var(--fgColor-default, #1f2328);
 }
 
 .prf-level {
@@ -344,8 +383,9 @@
   color: var(--fgColor-muted, #59636e);
 }
 
-.prf-level-read-carefully {
-  color: var(--fgColor-attention, #9a6700);
+.prf-level-verify {
+  font-weight: 600;
+  color: var(--fgColor-default, #1f2328);
 }
 
 .prf-start-here {

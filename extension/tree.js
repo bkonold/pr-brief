@@ -13,16 +13,32 @@
   const JUMP_ICON = "M2.5 3v10M5.5 8h8M10 4.5L13.5 8 10 11.5";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
-  const LEVEL_ORDER = ["read carefully", "read", "skim"];
+  const LEVEL_ORDER = ["verify", "read", "skim"];
+  const LEGACY_LEVELS = { "read carefully": "verify" };
+  const CHECK_ORDER = ["logic", "contract", "breaking", "data", "destructive", "access", "generated"];
+  const FILLED_CHECKS = new Set(["breaking", "destructive"]);
+
+  // The effort level a review.json word names: verify, read or skim; the older "read carefully" is verify and an
+  // unknown word is read.
+  function normalizeLevel(review) {
+    const word = String(review ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+    const level = LEGACY_LEVELS[word] ?? word;
+    return LEVEL_ORDER.includes(level) ? level : "read";
+  }
 
   function groupRank(chunk) {
     if (chunk.name === UNCHUNKED) return LEVEL_ORDER.length;
-    const rank = LEVEL_ORDER.indexOf(chunk.review);
-    return rank === -1 ? LEVEL_ORDER.indexOf("read") : rank;
+    return LEVEL_ORDER.indexOf(normalizeLevel(chunk.review));
   }
 
   function isMuted(chunk) {
-    return chunk.review === LOWEST_LEVEL || chunk.name === UNCHUNKED;
+    return normalizeLevel(chunk.review) === LOWEST_LEVEL || chunk.name === UNCHUNKED;
+  }
+
+  // The chunk's check labels in display order; empty for a review.json that has none.
+  function chunkLabels(chunk) {
+    const given = new Set(Array.isArray(chunk.labels) ? chunk.labels : []);
+    return CHECK_ORDER.filter((label) => given.has(label));
   }
 
   // True when the run's chunks carry a `step`, which is what makes review.json's order a flow order worth offering
@@ -36,7 +52,7 @@
     return hasSteps(review.chunks) ? "flow" : "risk";
   }
 
-  // "risk" (the default): "read carefully" first, then "read", then "skim", then Unchunked; ties keep review.json's
+  // "risk" (the default): "verify" first, then "read", then "skim", then Unchunked; ties keep review.json's
   // order. "flow": review.json's order, Unchunked last.
   function orderChunks(chunks, order = "risk") {
     const rank = order === "flow" ? (chunk) => (chunk.name === UNCHUNKED ? 1 : 0) : groupRank;
@@ -89,11 +105,17 @@
     return repeated;
   }
 
-  const LEVEL_LABELS = { "read carefully": "careful" };
-
-  // The short word a chunk row shows for its review level.
+  // The word a chunk row shows for its effort level.
   function levelLabel(review) {
-    return LEVEL_LABELS[review] ?? review;
+    return normalizeLevel(review);
+  }
+
+  // The row of check chips under a title; the breaking and destructive chips are filled. null when there are none.
+  function chipRow(labels, className) {
+    if (!labels.length) return null;
+    const row = make("span", className);
+    for (const label of labels) row.append(make("span", `prf-chip prf-chip-${label}${FILLED_CHECKS.has(label) ? " prf-chip-filled" : ""}`, label));
+    return row;
   }
 
   function staleMessage(review, pageSha) {
@@ -251,11 +273,12 @@
     const expanded = state.expanded.has(chunk.n);
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.n));
     main.setAttribute("aria-pressed", String(chunk.n === state.selectedN));
-    main.append(
-      make("span", "prf-num", String(chunk.n)),
-      make("span", "prf-name", chunk.name),
-      make("span", `prf-level prf-level-${chunk.review.replace(/\s+/g, "-")}`, levelLabel(chunk.review)),
-    );
+    const title = make("span", "prf-title");
+    title.append(make("span", "prf-name", chunk.name));
+    const chips = chipRow(chunkLabels(chunk), "prf-chips");
+    if (chips) title.append(chips);
+    const level = levelLabel(chunk.review);
+    main.append(make("span", "prf-num", String(chunk.n)), title, make("span", `prf-level prf-level-${level}`, level));
 
     const header = make("div", "prf-head");
     header.append(main);
@@ -464,7 +487,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
+  ns.tree = { fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

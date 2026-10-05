@@ -7,7 +7,7 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, ambiguousNames, levelLabel, orderChunks, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
+const { staleMessage, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, orderChunks, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
@@ -48,10 +48,23 @@ test("ambiguousNames lists the basenames that more than one file shares", () => 
   assert.equal(ambiguousNames([]).size, 0);
 });
 
-test("levelLabel shortens read carefully and leaves the other levels as they are", () => {
-  assert.equal(levelLabel("read carefully"), "careful");
+test("levelLabel names the effort level and reads the older read carefully as verify", () => {
+  assert.equal(levelLabel("verify"), "verify");
   assert.equal(levelLabel("read"), "read");
   assert.equal(levelLabel("skim"), "skim");
+  assert.equal(levelLabel("read carefully"), "verify");
+});
+
+test("normalizeLevel falls back to read for a missing or unknown word", () => {
+  assert.equal(normalizeLevel("Read  Carefully"), "verify");
+  assert.equal(normalizeLevel(undefined), "read");
+  assert.equal(normalizeLevel("careful"), "read");
+});
+
+test("chunkLabels lists the known labels in display order and none for a review without labels", () => {
+  assert.deepEqual(chunkLabels({ labels: ["generated", "logic", "breaking", "bogus", "data"] }), ["logic", "breaking", "data", "generated"]);
+  assert.deepEqual(chunkLabels({ labels: [] }), []);
+  assert.deepEqual(chunkLabels({}), []);
 });
 
 test("orderChunks sorts by review level, keeps ties in order and puts Unchunked after skim", () => {
@@ -59,7 +72,7 @@ test("orderChunks sorts by review level, keeps ties in order and puts Unchunked 
   const ordered = orderChunks([
     chunk(1, "A", "read"),
     chunk(2, "B", "skim"),
-    chunk(3, "C", "read carefully"),
+    chunk(3, "C", "verify"),
     chunk(4, "Unchunked", "read"),
     chunk(5, "D", "skim"),
     chunk(6, "E", "read carefully"),
@@ -205,7 +218,7 @@ test("the switcher lists only variants that are active and present, in the PR's 
 
 const NODE_CHUNKS = [
   { n: 1, name: "Screen", step: "UI", review: "skim", nodes: ["ui", "shared"] },
-  { n: 2, name: "Endpoint", step: "API", review: "read carefully", nodes: ["api", "shared"] },
+  { n: 2, name: "Endpoint", step: "API", review: "verify", nodes: ["api", "shared"] },
   { n: 3, name: "Notes", review: "read" },
 ];
 
@@ -220,7 +233,8 @@ test("legendKinds lists only the styles a diagram uses, then the selection state
   assert.deepEqual(legendKinds({ plain: 3, save: 0, context: 0, clusters: 0 }), ["changed", "selected"]);
   assert.deepEqual(legendKinds({ plain: 3, save: 1, context: 2, clusters: 0 }), ["changed", "save", "context", "selected"]);
   assert.deepEqual(legendKinds({ plain: 0, save: 2, context: 1, clusters: 3 }), ["save", "context", "selected", "layers"]);
-  assert.deepEqual(legendKinds({ plain: 2, save: 0, context: 1, skim: 2, clusters: 0 }), ["changed", "context", "skim", "selected"]);
+  assert.deepEqual(legendKinds({ plain: 2, save: 0, context: 1, skim: 2, clusters: 0 }), ["changed", "skim", "context", "selected"]);
+  assert.deepEqual(legendKinds({ plain: 0, save: 1, context: 0, verify: 1, read: 2, skim: 1, clusters: 0 }), ["verify", "read", "skim", "save", "selected"]);
 });
 
 test("classifyFetch tells a down server from a missing review", async () => {
@@ -461,7 +475,7 @@ const { hasSteps, defaultOrder } = require("../tree.js");
 test("orderChunks in flow order keeps review.json's order and puts Unchunked last", () => {
   const chunks = [
     { n: 1, name: "Screen", review: "skim", step: "UI" },
-    { n: 2, name: "Table", review: "read carefully", step: "Database" },
+    { n: 2, name: "Table", review: "verify", step: "Database" },
     { n: 3, name: "Unchunked", review: "read" },
     { n: 4, name: "Config", review: "read" },
   ];

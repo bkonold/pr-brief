@@ -222,26 +222,31 @@
     return handle;
   }
 
-  const PLAIN = "g.node:not(.save):not(.context):not(.skim)";
+  const LEVEL_CLASSES = ":not(.lv-verify):not(.lv-read):not(.lv-skim)";
+  const PLAIN = `g.node:not(.save):not(.context):not(.skim)${LEVEL_CLASSES}`;
   const LANES = 'g.cluster:not([id$="-also"])';
   const SHAPES = "rect, polygon, path, circle, ellipse";
   const LEGEND_LABELS = {
     changed: "Changed step",
+    verify: "Verify",
+    read: "Read",
+    skim: "Skim",
     save: "Writes data",
     context: "Unchanged context",
-    skim: "Skim, off the path",
     selected: "Selected chunk",
     layers: "Columns are code layers",
   };
 
   // The legend entries a diagram needs, given how many boxes of each style it has: only the styles it uses, plus
   // the extension's own "selected chunk" state, and a note when the boxes are grouped in lanes.
-  function legendKinds({ plain, save, context, skim = 0, clusters }) {
+  function legendKinds({ plain, save, context, verify = 0, read = 0, skim = 0, clusters }) {
     return [
       ...(plain > 0 ? ["changed"] : []),
+      ...(verify > 0 ? ["verify"] : []),
+      ...(read > 0 ? ["read"] : []),
+      ...(skim > 0 ? ["skim"] : []),
       ...(save > 0 ? ["save"] : []),
       ...(context > 0 ? ["context"] : []),
-      ...(skim > 0 ? ["skim"] : []),
       "selected",
       ...(clusters > 0 ? ["layers"] : []),
     ];
@@ -259,14 +264,23 @@
       const shape = copy.querySelector(`${selector} > :is(${SHAPES})`);
       if (!shape) return null;
       const style = getComputedStyle(shape);
-      return { fill: style.fill, stroke: style.stroke, dashed: style.strokeDasharray !== "none" };
+      return { fill: style.fill, stroke: style.stroke, width: parseFloat(style.strokeWidth), dashed: style.strokeDasharray !== "none" };
     };
-    const swatches = { changed: look(PLAIN), save: look("g.node.save"), context: look("g.node.context"), skim: look("g.node.skim") };
+    const swatches = {
+      changed: look(PLAIN),
+      verify: look("g.node.lv-verify"),
+      read: look("g.node.lv-read"),
+      skim: look("g.node.lv-skim") ?? look("g.node.skim"),
+      save: look("g.node.save"),
+      context: look("g.node.context"),
+    };
     const counts = {
       plain: copy.querySelectorAll(PLAIN).length,
+      verify: copy.querySelectorAll("g.node.lv-verify").length,
+      read: copy.querySelectorAll("g.node.lv-read").length,
+      skim: copy.querySelectorAll("g.node.lv-skim, g.node.skim").length,
       save: copy.querySelectorAll("g.node.save").length,
       context: copy.querySelectorAll("g.node.context").length,
-      skim: copy.querySelectorAll("g.node.skim").length,
       clusters: copy.querySelectorAll(LANES).length,
     };
     measure.remove();
@@ -283,6 +297,7 @@
           swatch.style.background = look.fill;
           swatch.style.borderColor = look.stroke;
           swatch.style.borderStyle = look.dashed ? "dashed" : "solid";
+          if (look.width > 0) swatch.style.borderWidth = `${look.width}px`;
         }
         item.prepend(swatch);
       }

@@ -734,7 +734,7 @@ const STEP_REVIEW = {
   chunks: [
     { n: 1, name: "Screen", step: "UI", review: "skim", why: "w", nodes: ["a"], files: [{ path: "src/ui.js" }], start: { path: "src/ui.js", side: "R", line: 4, text: "x" } },
     { n: 2, name: "Endpoint", step: "API", review: "read", why: "w", nodes: ["b"], files: [{ path: "src/api.js" }], start: { path: "src/api.js", side: "R", line: 9, text: "y" } },
-    { n: 3, name: "Table", step: "Database", review: "read carefully", why: "w", nodes: ["c"], files: [{ path: "db/V1.sql" }], start: { path: "db/V1.sql", side: "R", line: 2, text: "z" } },
+    { n: 3, name: "Table", step: "Database", review: "verify", why: "w", nodes: ["c"], files: [{ path: "db/V1.sql" }], start: { path: "db/V1.sql", side: "R", line: 2, text: "z" } },
   ],
 };
 
