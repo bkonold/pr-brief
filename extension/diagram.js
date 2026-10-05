@@ -6,6 +6,7 @@
   const OFF = "prd-off";
   const NODE_ID = /flowchart-(.+)-\d+$/;
   const EDGE_ID = /^L_(.+)_\d+$/;
+  const DASHED_EDGE = /\bedge-pattern-(?:dotted|dashed)\b/;
   const WIDTH_KEY = "diagramWidth";
   const DEFAULT_WIDTH = 280;
   const MIN_WIDTH = 220;
@@ -83,6 +84,23 @@
       content,
       viewport,
     );
+  }
+
+  // The view that follows `rect` (a box's bounds in diagram units): `rect` is centred horizontally, and the view moves
+  // vertically only as far as it takes to bring `band` (the bounds of the box and the boxes next to it) inside the
+  // viewport margin, staying put when the band is already inside. A band taller than the viewport inside the margin
+  // centres `rect` vertically instead. The zoom is centerView's, and the result keeps clampView's limits.
+  function followView(view, rect, band, content, viewport, margin = FIT_MARGIN) {
+    const fits = Math.min((viewport.w - 2 * margin) / rect.w, (viewport.h - 2 * margin) / rect.h);
+    const scale = clampScale(Math.min(view.scale, fits));
+    const base = scale === view.scale ? view : zoomAround(view, scale, viewport.w / 2, viewport.h / 2);
+    const top = band.y * scale + base.y;
+    const bottom = (band.y + band.h) * scale + base.y;
+    let y = base.y;
+    if (band.h * scale > viewport.h - 2 * margin) y = viewport.h / 2 - (rect.y + rect.h / 2) * scale;
+    else if (top < margin) y += margin - top;
+    else if (bottom > viewport.h - margin) y -= bottom - (viewport.h - margin);
+    return clampView({ scale, x: viewport.w / 2 - (rect.x + rect.w / 2) * scale, y }, content, viewport);
   }
 
   function wheelUnit(event) {
@@ -339,9 +357,10 @@
   // transform. The view is a { scale, x, y } in viewport pixels; `fitted` keeps it matched to the viewport width
   // until the user zooms or pans. Any wheel event, pinch included, zooms around the pointer and never scrolls the
   // page, a drag anywhere pans, and a press that stays under DRAG_THRESHOLD is a click on the box under it.
-  // `centerOn` pans to a box list or a rect with a short glide, which any wheel or press interrupts; while the
-  // viewport is hidden (the panel is collapsed) it remembers the latest target and centres on it once the viewport
-  // has a size again.
+  // `centerOn` moves to a box list or a rect with a short glide, which any wheel or press interrupts. A rect is
+  // centred; a box list is centred horizontally and followed vertically, so the boxes one solid edge before and after
+  // it stay in view (followView). While the viewport is hidden (the panel is collapsed) it remembers the latest target
+  // and moves to it once the viewport has a size again.
   function createCanvas(viewport, svg, { onNode, onView }) {
     const content = contentSize(svg.getAttribute("viewBox"), svg.getAttribute("width"), svg.getAttribute("height"));
     svg.style.width = `${content.w}px`;
@@ -420,6 +439,23 @@
       };
     }
 
+    // The ids of the boxes joined to any of `ids` by a solid edge, in either direction, apart from `ids` themselves. A
+    // dotted or dashed edge marks a return to an earlier box and joins nothing.
+    function neighboursOf(ids) {
+      const wanted = new Set(ids);
+      const known = new Set([...svg.querySelectorAll("g.node")].map((group) => nodeIdOf(group.id)));
+      const found = new Set();
+      for (const path of svg.querySelectorAll("path[data-id]")) {
+        if (DASHED_EDGE.test(path.getAttribute("class") ?? "")) continue;
+        const ends = edgeEnds(path.getAttribute("data-id"), known);
+        if (!ends) continue;
+        const [from, to] = ends;
+        if (wanted.has(from) && !wanted.has(to)) found.add(to);
+        if (wanted.has(to) && !wanted.has(from)) found.add(from);
+      }
+      return [...found];
+    }
+
     // `target` is a list of box ids or a { x, y, w, h } rect in diagram units. An empty list leaves the canvas as it
     // is, and drops any target waiting for the viewport to be shown.
     function centerOn(target) {
@@ -433,8 +469,12 @@
         return;
       }
       pending = null;
-      const rect = ids ? boundsOf(ids) : target;
-      if (rect) glide(centerView(view, rect, content, size()));
+      if (!ids) {
+        glide(centerView(view, target, content, size()));
+        return;
+      }
+      const rect = boundsOf(ids);
+      if (rect) glide(followView(view, rect, boundsOf([...ids, ...neighboursOf(ids)]), content, size()));
     }
 
     function pointInViewport(event) {
@@ -636,7 +676,8 @@
     shape.after(copy);
   }
 
-  // Pans the canvas so the boxes are centred in the pane (see createCanvas). Does nothing without a diagram.
+  // Moves the canvas to follow the boxes: centred horizontally, with their neighbours kept in view (see createCanvas).
+  // Does nothing without a diagram.
   function centerOn(nodeIds) {
     canvas?.centerOn(nodeIds);
   }
@@ -662,7 +703,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { resetAction, zoomControls, render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas };
+  ns.diagram = { resetAction, zoomControls, render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

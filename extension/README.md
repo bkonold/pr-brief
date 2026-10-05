@@ -140,10 +140,13 @@ that expands it.
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
   The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no chunk selected, every chunk row collapsed, every file shown, no line, box or start-line callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The review's start callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
   a chunk, whether from the list, a file or contract line in its row, its Start here button, a callout's Previous/Next or a click on
-  its box, pans the canvas, over about 200ms (at once under reduced motion), so the
-  chunk's box, or the bounding box of its boxes, is centred in the pane at the current zoom; a box larger than the pane zooms out just
-  enough to fit with the fit margin. A chunk with no box leaves the canvas where it is, and a collapsed panel centres
-  on the focused chunk when it is expanded again. Each
+  its box, moves the canvas, over about 200ms (at once under reduced motion). The chunk's box, or the bounding box of its
+  boxes, is centred horizontally at the current zoom. Vertically the canvas moves only as far as it takes to keep the boxes
+  one solid arrow before and after the chunk's boxes in view (inside the fit margin), and not at all when they already are;
+  a dotted arrow, which returns to an earlier box, joins nothing, and a box with no arrows (the "Also in this PR" boxes) has
+  no neighbours. When the boxes and their neighbours are taller than the pane, the chunk's boxes are centred vertically
+  instead. A box larger than the pane zooms out just enough to fit with the fit margin. A chunk with no box leaves the canvas
+  where it is, and a collapsed panel moves to the focused chunk when it is expanded again. Each
   new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
   position are not saved.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.

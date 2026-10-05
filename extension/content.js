@@ -256,7 +256,7 @@
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
   // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. `boxId` is the diagram
   // box the selection came from, which pulses once the jump has landed. Selecting the open chunk again jumps again.
-  // `jump` passes on to the line jump, e.g. `{ pulse: false }`. Every selection pans the diagram to centre the chunk's boxes.
+  // `jump` passes on to the line jump, e.g. `{ pulse: false }`. Every selection moves the diagram to follow the chunk's boxes.
   async function selectChunk(session, chunk, boxId = null, jump = undefined) {
     const path = chunk.start?.path ?? chunk.files[0]?.path;
     await change(
@@ -296,7 +296,8 @@
     );
   }
 
-  // Pans the diagram so the boxes of the chunk that was just focused are centred; a chunk with no boxes leaves it be.
+  // Moves the diagram to follow the boxes of the chunk that was just focused (see createCanvas in diagram.js); a chunk
+  // with no boxes leaves it be.
   function centerDiagram(chunk) {
     diagram.centerOn(chunk.nodes ?? []);
   }

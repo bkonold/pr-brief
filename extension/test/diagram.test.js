@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resetAction, zoomControls, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas } = require("../diagram.js");
+const { resetAction, zoomControls, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas } = require("../diagram.js");
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
 
@@ -170,7 +170,11 @@ test("centerView keeps clampView's limits near the diagram's edges", () => {
   assert.deepEqual(far, { scale: 1, x: 200 - 1000, y: 150 - 800 });
 });
 
-function boxCanvas({ viewportSize = { w: 400, h: 300 } } = {}) {
+const SOLID = "edge-thickness-normal edge-pattern-solid flowchart-link";
+const DOTTED = "edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link";
+const PATH_EDGES = [["p1", "p2", SOLID], ["p2", "p3", SOLID], ["p3", "p4", SOLID], ["p3", "q", SOLID], ["p4", "p5", SOLID], ["p5", "p1", DOTTED]];
+
+function boxCanvas({ viewportSize = { w: 400, h: 500 } } = {}) {
   const listeners = {};
   const viewport = {
     clientWidth: viewportSize.w,
@@ -182,10 +186,25 @@ function boxCanvas({ viewportSize = { w: 400, h: 300 } } = {}) {
     getBoundingClientRect: () => ({ left: 0, top: 0 }),
     setPointerCapture() {},
   };
-  const attributes = { viewBox: "0 0 1000 800" };
+  const attributes = { viewBox: "0 0 1000 1600" };
   const views = [];
   const clicked = [];
-  const boxes = { a: { x: 500, y: 400, w: 100, h: 60 }, b: { x: 700, y: 500, w: 100, h: 60 }, huge: { x: 0, y: 0, w: 2000, h: 1600 } };
+  const at = (x, y) => ({ x, y, w: 100, h: 60 });
+  const boxes = {
+    a: at(500, 400),
+    b: at(700, 500),
+    huge: { x: 0, y: 0, w: 2000, h: 1600 },
+    p1: at(450, 100),
+    p2: at(450, 300),
+    p3: at(450, 500),
+    p4: at(450, 700),
+    p5: at(450, 900),
+    q: at(700, 720),
+    ctx: at(450, 1200),
+  };
+  const edges = PATH_EDGES.map(([from, to, className]) => ({
+    getAttribute: (name) => ({ "data-id": `L_${from}_${to}_0`, class: className })[name] ?? null,
+  }));
   const state = {
     get svgLeft() {
       return views.at(-1).x;
@@ -214,7 +233,7 @@ function boxCanvas({ viewportSize = { w: 400, h: 300 } } = {}) {
   const svg = {
     style: {},
     getAttribute: (name) => attributes[name] ?? null,
-    querySelectorAll: () => groups,
+    querySelectorAll: (selector) => (selector === "path[data-id]" ? edges : groups),
     getBoundingClientRect: () => ({ left: state.svgLeft, top: state.svgTop }),
   };
   const canvas = createCanvas(viewport, svg, { onNode: (id) => clicked.push(id), onView: (view) => views.push(view) });
@@ -226,19 +245,19 @@ function boxCanvas({ viewportSize = { w: 400, h: 300 } } = {}) {
   return { canvas, views, clicked, clickBox, viewport };
 }
 
-test("centerOn centres a box in the pane at the current zoom", () => {
+test("centerOn centres a box horizontally and leaves y alone when the box is in view", () => {
   const { canvas, views } = boxCanvas();
   canvas.centerOn(["a"]);
   const view = views.at(-1);
   assert.equal(view.scale, 1);
-  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 550, y: 150 - 430 });
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 550, y: 0 });
 });
 
-test("centerOn centres the bounds of several boxes", () => {
+test("centerOn centres the bounds of several boxes horizontally and brings them into view", () => {
   const { canvas, views } = boxCanvas();
   canvas.centerOn(["a", "b"]);
   const view = views.at(-1);
-  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 650, y: 150 - 480 });
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 650, y: 492 - 560 });
 });
 
 test("centerOn measures boxes against the current pan and zoom", () => {
@@ -246,7 +265,7 @@ test("centerOn measures boxes against the current pan and zoom", () => {
   canvas.centerOn(["a"]);
   canvas.centerOn(["b"]);
   const view = views.at(-1);
-  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 750, y: 150 - 530 });
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 750, y: 492 - 560 });
 });
 
 test("centerOn zooms out to fit a box larger than the pane", () => {
@@ -259,7 +278,7 @@ test("centerOn accepts a rect in diagram units", () => {
   const { canvas, views } = boxCanvas();
   canvas.centerOn({ x: 500, y: 400, w: 100, h: 60 });
   const view = views.at(-1);
-  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 550, y: 150 - 430 });
+  assert.deepEqual({ x: view.x, y: view.y }, { x: 200 - 550, y: 250 - 430 });
 });
 
 test("centerOn leaves the canvas alone for an empty list or boxes that are not drawn", () => {
@@ -268,6 +287,82 @@ test("centerOn leaves the canvas alone for an empty list or boxes that are not d
   canvas.centerOn([]);
   canvas.centerOn(["missing"]);
   assert.equal(views.length, count);
+});
+
+function follow(ids, { from = [], viewportSize } = {}) {
+  const { canvas, views } = boxCanvas({ viewportSize });
+  for (const earlier of from) canvas.centerOn(earlier);
+  canvas.centerOn(ids);
+  const view = views.at(-1);
+  return { x: view.x, y: view.y, scale: view.scale };
+}
+
+test("centerOn follows the first box on the path with its one neighbour, ignoring the dotted return edge", () => {
+  assert.deepEqual(follow(["p1"]), { x: 200 - 500, y: 0, scale: 1 });
+});
+
+test("centerOn follows the last box on the path with its one neighbour", () => {
+  assert.deepEqual(follow(["p5"]), { x: 200 - 500, y: 492 - 960, scale: 1 });
+});
+
+test("centerOn leaves y alone when the box and its neighbours are already in view", () => {
+  assert.deepEqual(follow(["p4"], { from: [["p5"]] }), { x: 200 - 500, y: 492 - 960, scale: 1 });
+});
+
+test("centerOn moves only as far as it takes to bring a band below the view into it", () => {
+  assert.deepEqual(follow(["p4"]), { x: 200 - 500, y: 492 - 960, scale: 1 });
+});
+
+test("centerOn moves only as far as it takes to bring a band above the view into it", () => {
+  assert.deepEqual(follow(["p1"], { from: [["p5"]] }), { x: 200 - 500, y: 8 - 100, scale: 1 });
+});
+
+test("centerOn follows both successors of a branch", () => {
+  assert.deepEqual(follow(["p3"]), { x: 200 - 500, y: 492 - 780, scale: 1 });
+});
+
+test("centerOn follows a box with no edges alone", () => {
+  assert.deepEqual(follow(["ctx"]), { x: 200 - 500, y: 492 - 1260, scale: 1 });
+});
+
+test("centerOn follows a chunk's boxes together with their neighbours", () => {
+  assert.deepEqual(follow(["p1", "p2"]), { x: 200 - 500, y: 492 - 560, scale: 1 });
+});
+
+test("centerOn centres the box vertically when its band is taller than the viewport", () => {
+  assert.deepEqual(follow(["p2"], { viewportSize: { w: 400, h: 400 } }), { x: 200 - 500, y: 200 - 330, scale: 1 });
+});
+
+test("followView leaves y alone for a band inside the margin and centres the rect horizontally", () => {
+  const view = followView({ scale: 1, x: 0, y: -50 }, { x: 300, y: 200, w: 100, h: 60 }, { x: 300, y: 150, w: 100, h: 100 }, { w: 1000, h: 800 }, { w: 400, h: 300 });
+  assert.deepEqual(view, { scale: 1, x: 200 - 350, y: -50 });
+});
+
+test("followView raises the view until the band's top reaches the margin, and lowers it until the bottom does", () => {
+  const content = { w: 1000, h: 800 };
+  const viewport = { w: 400, h: 300 };
+  const rect = { x: 300, y: 400, w: 100, h: 60 };
+  assert.equal(followView({ scale: 1, x: 0, y: 0 }, rect, { x: 300, y: 380, w: 100, h: 120 }, content, viewport).y, 292 - 500);
+  assert.equal(followView({ scale: 1, x: 0, y: -450 }, rect, { x: 300, y: 380, w: 100, h: 120 }, content, viewport).y, 8 - 380);
+});
+
+test("followView centres the rect vertically for a band taller than the viewport inside the margin", () => {
+  const view = followView({ scale: 1, x: 0, y: 0 }, { x: 300, y: 400, w: 100, h: 60 }, { x: 300, y: 100, w: 100, h: 500 }, { w: 1000, h: 800 }, { w: 400, h: 300 });
+  assert.deepEqual(view, { scale: 1, x: 200 - 350, y: 150 - 430 });
+});
+
+test("followView scales as centerView does, dropping only when the rect alone does not fit", () => {
+  const content = { w: 1000, h: 800 };
+  const viewport = { w: 400, h: 300 };
+  const rect = { x: 100, y: 100, w: 768, h: 100 };
+  const view = followView({ scale: 1, x: 0, y: 0 }, rect, { ...rect, h: 300 }, content, viewport);
+  assert.equal(view.scale, centerView({ scale: 1, x: 0, y: 0 }, rect, content, viewport).scale);
+  assert.equal(followView({ scale: 0.5, x: 0, y: 0 }, { x: 100, y: 100, w: 10, h: 10 }, { x: 100, y: 100, w: 10, h: 10 }, content, viewport).scale, 0.5);
+});
+
+test("followView keeps clampView's limits near the diagram's edges", () => {
+  const view = followView({ scale: 1, x: 0, y: 0 }, { x: -100, y: -300, w: 50, h: 50 }, { x: -100, y: -300, w: 50, h: 50 }, { w: 1000, h: 800 }, { w: 400, h: 300 });
+  assert.deepEqual(view, { scale: 1, x: 200, y: 150 });
 });
 
 test("a click on a box is reported and does not move the canvas by itself", () => {
@@ -300,7 +395,7 @@ test("a hidden viewport keeps the latest target and centres on it once it has a 
     const view = views.at(-1);
     close(view.scale, 0.384);
     close(view.x, 200 - 750 * 0.384);
-    close(view.y, 150 - 530 * 0.384);
+    close(view.y, 8);
   } finally {
     globalThis.ResizeObserver = original;
   }
@@ -322,7 +417,7 @@ test("centerOn glides to the target over about 200ms and a wheel interrupts it",
     const middle = views.at(-1);
     assert.ok(middle.x < start.x && middle.x > 200 - 550);
     frames.shift()(1200);
-    assert.deepEqual({ x: views.at(-1).x, y: views.at(-1).y }, { x: 200 - 550, y: 150 - 430 });
+    assert.deepEqual({ x: views.at(-1).x, y: views.at(-1).y }, { x: 200 - 550, y: 0 });
     assert.equal(frames.length, 0);
   } finally {
     globalThis.requestAnimationFrame = originalRaf;
