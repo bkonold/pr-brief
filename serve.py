@@ -12,8 +12,8 @@ extension finds runs/<key>/<variant>/..., and adds an API under /api/ that start
 
 `state` is idle, running, done, failed or canceled; `status` reads runs/<key>/status.json, which run.py
 writes at each stage (see run_status.py). `allowed` is only present when host, owner and repo are given.
-Every /api/ request must carry the server token in `X-PR-Describe-Token` and an `Origin` starting with
-chrome-extension://, or it gets 403. The token is created on first start in ~/.config/pr-describe/token
+Every /api/ request must carry the server token in `X-PR-Describe-Token`, and any `Origin` it carries must start
+with chrome-extension://, or it gets 403. The token is created on first start in ~/.config/pr-describe/token
 (mode 0600) and never logged. Static files need neither.
 
 local.toml sets `default_variant` (the variant a run uses) and `serve_repos`, the repositories a run may be
@@ -251,7 +251,9 @@ class Handler(SimpleHTTPRequestHandler):
             super().log_message(format, *args)
 
     def _authorized(self) -> bool:
-        origin_ok: bool = self.headers.get("Origin", "").startswith(EXTENSION_ORIGIN)
+        # Chrome sends no Origin on an extension's GETs, so only a page's own Origin is refused; the token is the gate.
+        origin: str | None = self.headers.get("Origin")
+        origin_ok: bool = origin is None or origin.startswith(EXTENSION_ORIGIN)
         token_ok: bool = hmac.compare_digest(self.headers.get(TOKEN_HEADER, "").encode("utf-8", "replace"), self.token)
         return origin_ok and token_ok
 

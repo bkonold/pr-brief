@@ -124,9 +124,12 @@ class ServeTest(unittest.TestCase):
         status, body = self.client.call("GET", "/hello.txt", token=None, origin=None)
         self.assertEqual((status, body), (200, b"static file"))
 
+    def test_api_accepts_the_token_without_an_origin(self) -> None:
+        self.assertEqual(self.client.call("GET", "/api/status?key=7", origin=None)[0], 200)
+
     def test_api_needs_the_token_and_an_extension_origin(self) -> None:
         for token, origin in [(None, ORIGIN), ("wrong", ORIGIN), (TOKEN + "x", ORIGIN), ("", ORIGIN),
-                              (TOKEN, None), (TOKEN, "https://github.com"), (TOKEN, "http://localhost:3300"),
+                              (TOKEN, "https://github.com"), (TOKEN, "http://localhost:3300"),
                               (TOKEN, "chrome-extension:/x")]:
             with self.subTest(token=token, origin=origin):
                 self.assertEqual(self.client.call("GET", "/api/status?key=7", token=token, origin=origin)[0], 403)
