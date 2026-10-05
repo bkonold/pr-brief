@@ -209,26 +209,47 @@
     diagram.setActive(null);
   }
 
-  // Runs the jump to `chunk`'s start line: its diff scrolls into view and the line is highlighted with its callout.
+  // A start with no line names only a file.
+  function isFileStart(start) {
+    return start.line == null;
+  }
+
+  // The anchor a start's callout and link use: the line's, else the file's diff id.
+  function startAnchor(start) {
+    return isFileStart(start) ? page.fileAnchor(start.path) : page.lineAnchor(start.path, start.side, start.line);
+  }
+
+  // Runs the jump to `chunk`'s start: for a line, its diff scrolls into view and the line is highlighted with its
+  // callout; for a file, the file's diff scrolls to its callout above the header.
   async function jumpToStart(session, chunk, options) {
     if (current !== session || !live()) return;
     const { path, side, line } = chunk.start;
-    await page.jumpToLine(path, side, line, options);
+    if (isFileStart(chunk.start)) await page.jumpToFile(path, options);
+    else await page.jumpToLine(path, side, line, options);
   }
 
-  // The callouts of the review's start lines, one per chunk that has one: each is built when its row is placed, and
-  // its buttons select a chunk as a click on that chunk in the list would, without the pulse: the reader is already
+  // The callouts of the review's starts, one per chunk that has one: each is built when its place is found, and its
+  // buttons select a chunk as a click on that chunk in the list would, without the pulse: the reader is already
   // following the callouts, so nothing needs finding.
   async function calloutsFor(session) {
     const { chunks } = session.review;
-    const anchors = await Promise.all(chunks.map((chunk) => (chunk.start ? page.lineAnchor(chunk.start.path, chunk.start.side, chunk.start.line) : null)));
+    const anchors = await Promise.all(chunks.map((chunk) => (chunk.start ? startAnchor(chunk.start) : null)));
     return chunks.flatMap((chunk, index) =>
-      anchors[index] ? [{ key: chunk.n, anchor: anchors[index], render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, null, { pulse: false }), diagram.titleOf) }] : [],
+      anchors[index]
+        ? [
+            {
+              key: chunk.n,
+              anchor: anchors[index],
+              ...(isFileStart(chunk.start) ? { file: true } : {}),
+              render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, null, { pulse: false }), diagram.titleOf),
+            },
+          ]
+        : [],
     );
   }
 
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
-  // jumps to its start line; a chunk with no start line lands on that file's header instead. `boxId` is the diagram
+  // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. `boxId` is the diagram
   // box the selection came from, which pulses once the jump has landed. Selecting the open chunk again jumps again.
   // `jump` passes on to the line jump, e.g. `{ pulse: false }`.
   async function selectChunk(session, chunk, boxId = null, jump = undefined) {
@@ -329,14 +350,14 @@
     return tree.owns(node) || diagram.owns(node) || page.ownsLine(node);
   }
 
-  // A link to a chunk's start line, such as the PR brief card's, carries that line's anchor in the URL fragment.
+  // A link to a chunk's start, such as the PR brief card's, carries the anchor of that line or file in the URL fragment.
   // Opening the files page on it does what the chunk's "Start here" button does. Any other fragment is left to the page.
   async function jumpToLinkedStart(session) {
     const wanted = location.hash.slice(1);
     if (!wanted.startsWith("diff-") || !session?.review || !live()) return;
     for (const chunk of session.review.chunks) {
       const { start } = chunk;
-      if (start && (await page.lineAnchor(start.path, start.side, start.line)) === wanted) {
+      if (start && (await startAnchor(start)) === wanted) {
         if (current === session && live()) handlersFor(session).onJumpToStart(chunk.n);
         return;
       }

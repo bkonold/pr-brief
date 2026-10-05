@@ -1,5 +1,5 @@
 // The page behaviour shared by every host: scrolling a diff under the sticky chrome, jumping to a line, the
-// callouts shown above the start lines, and watching for changes. createPage(spec) returns the adapter the rest of the extension
+// callouts shown above the start lines and start files, and watching for changes. createPage(spec) returns the adapter the rest of the extension
 // calls through prFocus.page (see page.js). The spec holds everything that differs per host, which is all
 // the DOM knowledge and nothing else; a host's spec lives in its own file (github_page.js, forgejo_page.js).
 //
@@ -31,6 +31,7 @@
 
   const LINE_TARGET = "prf-line-target";
   const CALLOUT_ROW = "prf-callout-row";
+  const FILE_CALLOUT = "prf-callout-file";
   const PULSE = "prf-pulse";
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
@@ -170,9 +171,13 @@
       return [...new Set([...document.querySelectorAll(spec.blockSelector)].map(entryOf))];
     }
 
+    // The entry of the diff block with this id, or null while that diff is not in the page.
+    function entryOfId(id) {
+      return entryOf(document.getElementById(id));
+    }
+
     async function entryFor(path) {
-      const block = document.getElementById(await spec.diffId(path));
-      return entryOf(block);
+      return entryOfId(await spec.diffId(path));
     }
 
     // The host's anchor for a line of a file's diff: the diff block's id plus the side ("L" old file,
@@ -181,7 +186,13 @@
       return `${await spec.diffId(path)}${side}${line}`;
     }
 
-    // The row that is the line target now, by its anchor, so a re-render of the row by the host can be undone.
+    // The id of a file's diff block: the anchor of a file-level start, which has no line.
+    function fileAnchor(path) {
+      return spec.diffId(path);
+    }
+
+    // What the jump landed on, so a re-render of it by the host can be undone: { anchor } is the line row with that
+    // anchor, { anchor, file: true } is the callout at the top of the diff entry with that id.
     let lineTarget = null;
     // The callouts to show, as given to showCallouts.
     let callouts = [];
@@ -195,31 +206,60 @@
       return above?.classList.contains(CALLOUT_ROW) ? above : null;
     }
 
-    // A callout is a full-width table row directly above its start line, so the host's columns stay as they are. Each
-    // entry's row is found again on every call: it keeps the row it has, makes one the host dropped, and removes a row
-    // that no longer sits above its line or belongs to no entry.
+    // The callout at the top of a diff entry, above its file header, or null.
+    function fileCalloutOf(entry) {
+      const first = entry?.firstElementChild;
+      return first?.classList.contains(CALLOUT_ROW) ? first : null;
+    }
+
+    function isPlaced(element, entry) {
+      return entry.file ? fileCalloutOf(entryOfId(entry.anchor)) === element : element.nextElementSibling === findRow(entry.anchor);
+    }
+
+    // A line callout is a full-width table row directly above its start line, so the host's columns stay as they are.
+    function placeLineCallout(entry) {
+      const row = findRow(entry.anchor);
+      if (!row || calloutRowOf(row)) return;
+      const cell = document.createElement("td");
+      cell.colSpan = Math.max(1, row.children.length);
+      cell.append(entry.render());
+      const callout = document.createElement("tr");
+      callout.className = CALLOUT_ROW;
+      callout.dataset.key = String(entry.key);
+      callout.append(cell);
+      row.before(callout);
+    }
+
+    // A file callout is the first child of the file's diff entry, so it spans the entry's width, sits above the file
+    // header and is hidden with the entry.
+    function placeFileCallout(entry) {
+      const host = entryOfId(entry.anchor);
+      if (!host || fileCalloutOf(host)) return;
+      const callout = document.createElement("div");
+      callout.className = `${CALLOUT_ROW} ${FILE_CALLOUT}`;
+      callout.dataset.key = String(entry.key);
+      callout.dataset.anchor = entry.anchor;
+      callout.append(entry.render());
+      host.prepend(callout);
+    }
+
+    // Each entry's place is found again on every call: it keeps the callout it has, makes one the host dropped, and
+    // removes a callout that no longer sits at its place or belongs to no entry.
     function placeCallouts() {
       const wanted = new Map(callouts.map((entry) => [String(entry.key), entry]));
       for (const element of document.querySelectorAll(`.${CALLOUT_ROW}`)) {
         const entry = wanted.get(element.dataset.key);
-        if (!entry || element.nextElementSibling !== findRow(entry.anchor)) element.remove();
+        if (!entry || !isPlaced(element, entry)) element.remove();
       }
       for (const entry of callouts) {
-        const row = findRow(entry.anchor);
-        if (!row || calloutRowOf(row)) continue;
-        const cell = document.createElement("td");
-        cell.colSpan = Math.max(1, row.children.length);
-        cell.append(entry.render());
-        const callout = document.createElement("tr");
-        callout.className = CALLOUT_ROW;
-        callout.dataset.key = String(entry.key);
-        callout.append(cell);
-        row.before(callout);
+        if (entry.file) placeFileCallout(entry);
+        else placeLineCallout(entry);
       }
     }
 
-    // Shows a callout above each start line: entries are { key, anchor, render() }, `render` building the content of one
-    // row. An empty list removes them all. Calling again with the same entries changes nothing.
+    // Shows a callout for each start: entries are { key, anchor, file?, render() }. `anchor` is a line's anchor, or, with
+    // `file: true`, a file's diff id, whose callout goes above that file's header. `render` builds the content of one
+    // callout. An empty list removes them all. Calling again with the same entries changes nothing.
     function showCallouts(entries) {
       callouts = entries;
       placeCallouts();
@@ -230,21 +270,25 @@
       for (const row of document.querySelectorAll(`.${LINE_TARGET}, .${PULSE}`)) row.classList.remove(LINE_TARGET, PULSE);
     }
 
-    // Pulses the start line and its callout together, once the jump has landed: the same animation, started at the same
-    // moment. Skipped under reduced motion.
-    function pulseTarget(row) {
+    // Pulses the start line and its callout together (a file start, its callout alone), once the jump has landed: the
+    // same animation, started at the same moment. Skipped under reduced motion.
+    function pulseTarget(elements) {
       if (reducedMotion()) return;
-      for (const element of [row, calloutRowOf(row)]) {
+      for (const element of elements) {
         if (!element) continue;
         element.classList.add(PULSE);
         element.addEventListener("animationend", () => element.classList.remove(PULSE), { once: true });
       }
     }
 
-    // The host re-renders diff rows, which drops our class; the target row gets it back.
+    function targetElement(target) {
+      return target.file ? fileCalloutOf(entryOfId(target.anchor)) : findRow(target.anchor);
+    }
+
+    // The host re-renders diff rows, which drops our class; the target gets it back.
     function restoreLineTarget() {
-      const row = lineTarget ? findRow(lineTarget.anchor) : null;
-      if (row && !row.classList.contains(LINE_TARGET)) row.classList.add(LINE_TARGET);
+      const element = lineTarget ? targetElement(lineTarget) : null;
+      if (element && !element.classList.contains(LINE_TARGET)) element.classList.add(LINE_TARGET);
     }
 
     function ownsLine(node) {
@@ -252,9 +296,13 @@
       return Boolean(element?.closest(`.${CALLOUT_ROW}`));
     }
 
-    // The header of a file's diff entry: the host's header element when it can be found, else the entry's first child.
+    // The header of a file's diff entry: the host's header element when it can be found, else the entry's first child
+    // that is not our callout.
     function fileHeaderOf(entry) {
-      return entry?.querySelector(spec.fileHeaderSelector) ?? entry?.firstElementChild ?? null;
+      if (!entry) return null;
+      const first = entry.firstElementChild;
+      const fallback = first?.classList.contains(CALLOUT_ROW) ? first.nextElementSibling : first;
+      return entry.querySelector(spec.fileHeaderSelector) ?? fallback ?? null;
     }
 
     // The page's sticky and fixed elements outside the diffs, the list and the diagram, with their stuck tops.
@@ -389,7 +437,39 @@
         return false;
       }
       row.classList.add(LINE_TARGET);
-      if (pulse) pulseTarget(row);
+      if (pulse) pulseTarget([row, calloutRowOf(row)]);
+      return landed;
+    }
+
+    // Scrolls to a file's diff entry, whose callout is its first child, so the callout sits just below the sticky chrome
+    // with the file header under it. Returns whether the entry ended in place. `pulse: false` lands without the pulse.
+    async function jumpToFile(path, { pulse = true } = {}) {
+      const mine = ++latestJump;
+      cancelPendingJump?.();
+      clearLineTarget();
+      const anchor = await fileAnchor(path);
+      if (!entryOfId(anchor) || mine !== latestJump) return false;
+      placeCallouts();
+      const target = { anchor, file: true };
+      const marked = targetElement(target);
+      if (marked) {
+        lineTarget = target;
+        marked.classList.add(LINE_TARGET);
+      }
+      const landed = await scrollUntilLanded(() => {
+        const entry = entryOfId(anchor);
+        return entry ? landingDelta(entry.getBoundingClientRect().top, currentStickyOffset(entry)) : 0;
+      }, newScrollToken());
+      if (mine !== latestJump) return false;
+      if (!marked) return landed;
+      placeCallouts();
+      const callout = targetElement(target);
+      if (!callout) {
+        clearLineTarget();
+        return false;
+      }
+      callout.classList.add(LINE_TARGET);
+      if (pulse) pulseTarget([callout]);
       return landed;
     }
 
@@ -435,6 +515,7 @@
       diffEntries,
       entryFor,
       lineAnchor,
+      fileAnchor,
       scrollToElement,
       fileHeaderOf,
       stickyOffset,
@@ -443,6 +524,7 @@
       centeringDelta,
       correctLanding,
       jumpToLine,
+      jumpToFile,
       clearLineTarget,
       restoreLineTarget,
       showCallouts,

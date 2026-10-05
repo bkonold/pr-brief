@@ -170,16 +170,16 @@
     return element;
   }
 
-  // Why to read the chunk's start line: the model's reason for that line, else the chunk's own.
+  // Why to read the chunk's start (its line or file): the model's reason for it, else the chunk's own.
   function readFirstReason(chunk) {
     return chunk.start?.why?.trim() || chunk.why || "";
   }
 
-  // The button under an open chunk's files that jumps again to the line the model says to read first.
+  // The button under an open chunk's files that jumps again to the line or file the model says to read first.
   function startHere(chunk, handlers) {
     const element = button("prf-start-here", undefined, () => handlers.onJumpToStart(chunk.n));
     element.append(outlineIcon(JUMP_ICON, 14, "prf-start-icon"), "Start here");
-    element.title = `${baseNameOf(chunk.start.path)}:${chunk.start.line}`;
+    element.title = baseNameOf(chunk.start.path) + (chunk.start.line == null ? "" : `:${chunk.start.line}`);
     return element;
   }
 
@@ -195,8 +195,8 @@
     return `${chunk.n} · ${boxTitleOf(chunk, titleOf) || chunk.name}`;
   }
 
-  // The card shown above a chunk's start line, in the diff: where the chunk is (its box title, then its name), why
-  // the model starts at that line, and buttons to the chunks to read next and to the previous one. `onGo(chunk)`
+  // The card shown above a chunk's start line, or above its start file's header, in the diff: where the chunk is (its
+  // box title, then its name), why the model starts there, and buttons to the chunks to read next and to the previous one. `onGo(chunk)`
   // opens a chunk and jumps to its start; `titleOf(nodeId)` gives a diagram box's title.
   function startCallout(chunk, chunks, onGo, titleOf = () => "") {
     const card = make("div", "prf-callout");

@@ -21,17 +21,18 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   muted. A basename shared by two files of the list gets its folder as a dim suffix; the full path is the row's tooltip. The
   file order is the chunk's own.
 - Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and does what its "Start here"
-  button does (below); clicking the open chunk jumps again. A chunk with no start line scrolls to its first file
+  button does (below); clicking the open chunk jumps again. A chunk with no start scrolls to its first file
   instead. "GitHub tree" mode shows every diff again.
   Clicking a file focuses its chunk and scrolls to its diff. A chunk opened with "Expand all" closes again with "Collapse all" or when another chunk is clicked.
-- A "Start here" button under the open chunk's files, when the chunk has a start line (the `start` field of `review.json`, the
-  one line the model says to read first), jumps to that line and centres it. If another chunk is
+- A "Start here" button under the open chunk's files, when the chunk has a start (the `start` field of `review.json`: the
+  one line the model says to read first, or, when no single line anchors the chunk, the file to open first, with `side` and
+  `line` null), jumps to that line and centres it, or, for a file start, scrolls to the file's callout above its header. If another chunk is
   focused it focuses this chunk first, since the line's diff is hidden otherwise. GitHub renders a diff's rows only once
   the diff is near the window, so the jump scrolls to the file's diff, waits up to 10 seconds for the row, then centres
   it, measuring the row again after each scroll and nudging until it sits mid-window (GitHub's layout shifts while diffs
-  load); on a timeout the view stays at the file's header. The button's tooltip is `file:line`. Opening the files page on
-  a link to a chunk's start line (the PR brief card's links) does the same.
-- Every chunk's start line that has loaded gets a callout above it, as soon as the review shows and as GitHub or Forgejo
+  load); on a timeout the view stays at the file's header. The button's tooltip is `file:line`, or the file's basename for a file start. Opening the files page on
+  a link to a chunk's start (the PR brief card's links) does the same.
+- Every chunk's start that has loaded gets a callout above its line (above the file's header for a file start), as soon as the review shows and as GitHub or Forgejo
   load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
   (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text) with a route icon,
   a breadcrumb header, `<n> · <box title>` in bold default text, a small muted chevron, then the chunk name in normal weight
@@ -45,6 +46,10 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   order; a run without `next` goes to the chunk with the next higher number. A callout is placed once per chunk, so a
   re-render or a lazy load never doubles it. The callouts show only in "By review" mode, and a focused chunk shows only
   its own, since the other diffs are hidden.
+- A file start's callout is the first child of that file's diff entry (the GitHub diff entry, the Forgejo file box), so it sits
+  directly above the file header, spans the entry's full width with the same card, and is hidden with the entry. The jump scrolls
+  the entry's top just below the sticky chrome, so the callout shows with the header under it, and marks and pulses the callout
+  alone. It is placed once, comes back if the host drops it, and goes with the callouts.
 - The start line itself is left exactly as the host draws it. Each callout card spans from the file pane's left edge, and
   the jumped-to chunk's card border is the full purple where the other callouts' is purple at 45%. The jump centres the callout and the line together.
   The file, line number and code are not repeated, since the diff row shows them. Only one card is marked as the target; the mark
@@ -168,9 +173,9 @@ the page's data, and its header links to the files view. Without a run it is the
   the rows in place (their numbers stay the flow numbers, which are the diagram's labels), keeps the review order open,
   and is not remembered. The rows carry `data-flow` and `data-risk`; a body with none shows no switch.
 - The review order shows with its `<details>` closed, and each chunk's file list is a closed `<details>` headed by the
-  file count. A chunk's start (the file:line link and the quoted line) sits in a closed "Start here" `<details>` under
+  file count. A chunk's start (the file:line link and the quoted line, or the file link and the reason for a file start) sits in a closed "Start here" `<details>` under
   the chunk name. Links into the PR's files view are rewritten to this host's files view, fragment kept.
-- A chunk's start link opens the files view with that line's anchor in the fragment. When the files page loads with a
+- A chunk's start link opens the files view with that line's anchor (a file start's, the file's diff id) in the fragment. When the files page loads with a
   fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's "Start here" button; any other
   fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,

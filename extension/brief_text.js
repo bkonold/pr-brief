@@ -249,12 +249,13 @@
     );
   }
 
-  // In the review-order table, a chunk cell's start (the file:line link and the quoted line under the chunk name)
-  // goes into a closed <details> headed "Start here"; a chunk with no start is left as it is.
+  // In the review-order table, a chunk cell's start (the file:line link and the quoted line under the chunk name, or the
+  // file link and the reason for a start that names only a file) goes into a closed <details> headed "Start here"; a
+  // chunk with no start is left as it is.
   function foldStarts(html) {
     const start = html.indexOf('class="review-order"');
     if (start === -1) return html;
-    const chunkStart = /<br><sub>start (<a\b[^>]*>(?:(?!<\/a>)[\s\S])*<\/a>)<\/sub>(<br><code>(?:(?!<\/code>)[\s\S])*<\/code>)?/g;
+    const chunkStart = /<br><sub>start (<a\b[^>]*>(?:(?!<\/a>)[\s\S])*<\/a>)<\/sub>(<br><(code|em)>(?:(?!<\/(?:code|em)>)[\s\S])*<\/\3>)?/g;
     return (
       html.slice(0, start) +
       html.slice(start).replace(chunkStart, (_, link, quote = "") => `<details class="start"><summary>Start here</summary><sub>${link}</sub>${quote}</details>`)

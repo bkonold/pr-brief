@@ -82,3 +82,8 @@ html[data-theme*="dark"] {
   background-color: var(--bgColor-default, #ffffff);
   border: 0;
 }
+
+.prf-callout-file {
+  padding: 10px 16px 10px 8px;
+  background-color: var(--bgColor-default, #ffffff);
+}

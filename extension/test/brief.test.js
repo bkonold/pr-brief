@@ -154,6 +154,17 @@ test("each chunk's start is a closed Start here details that keeps the rewritten
   assert.doesNotMatch(html, /<details class="start"[^>]*\bopen\b/);
 });
 
+test("a file-only start is a Start here details with the file link and the reason, and no line", () => {
+  const fileStart = '<br><sub>start <a href="https://github.com/acme/widgets/pull/7/files#diff-alpha" title="src/alpha.js">alpha.js</a></sub><br><em>Where the screen is built.</em>';
+  const table = `<table class="review-order"><tbody><tr><td>1</td><td><strong>Screen</strong>${fileStart}</td><td>read</td></tr></tbody></table>`;
+  const { html } = briefText.renderBody(bodyHtml(`<details open>\n\n${table}\n\n</details>\n`), FILES_URL);
+  assert.match(
+    html,
+    /<strong>Screen<\/strong><details class="start"><summary>Start here<\/summary><sub><a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-alpha" title="src\/alpha\.js">alpha\.js<\/a><\/sub><br><em>Where the screen is built\.<\/em><\/details>/,
+  );
+  assert.doesNotMatch(html, /<sub>start /);
+});
+
 test("a chunk with no start is left alone", () => {
   const cell = '<td>1</td><td><strong>No start</strong></td><td>read</td>';
   const table = `<table class="review-order"><tbody><tr>${cell}</tr></tbody></table>`;
@@ -253,7 +264,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "" }) {
   const log = [];
   const description = {
     name: "description",
@@ -268,6 +279,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const lines = [];
   const renders = [];
   const jumps = [];
+  const fileJumps = [];
   const callouts = [];
   const emphasized = [];
   const pulses = [];
@@ -290,8 +302,10 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       restoreLineTarget() {},
       ownsLine: () => false,
       lineAnchor: async (path, side, line) => `${path}${side}${line}`,
+      fileAnchor: async (path) => `diff-${path}`,
       showCallouts: (entries) => callouts.push(entries),
       jumpToLine: async (...args) => jumps.push(args),
+      jumpToFile: async (...args) => fileJumps.push(args),
     },
     source: {
       loadBrief: async () => run,
@@ -340,10 +354,10 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     timer.unref?.();
     return timer;
   };
-  const context = { prFocus, location: { href: "x", hash: "" }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
+  const context = { prFocus, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, callouts, emphasized, pulses, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -862,4 +876,50 @@ test("a diagram box click pulses that box after the jump, and a chunk click or a
   const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
   await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
   assert.deepEqual(pulses, ["b"]);
+});
+
+const FILE_START_REVIEW = {
+  ...STEP_REVIEW,
+  chunks: STEP_REVIEW.chunks.map((chunk) => (chunk.n === 2 ? { ...chunk, start: { path: "src/api.js", side: null, line: null, why: "Open this first." } } : chunk)),
+};
+
+test("a chunk whose start names only a file gets a file callout entry anchored at that file's diff", async () => {
+  const { callouts } = loadContent({ run: null, view: "files", review: FILE_START_REVIEW });
+  await settle();
+  assert.deepEqual(
+    callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file ?? false]),
+    [[1, "src/ui.jsR4", false], [2, "diff-src/api.js", true], [3, "db/V1.sqlR2", false]],
+  );
+});
+
+test("clicking a chunk with a file start, its Start here button and a callout button jump to the file, not to a line", async () => {
+  const { renders, jumps, fileJumps, callouts } = loadContent({ run: null, view: "files", review: FILE_START_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onSelectChunk(2);
+  await renders.at(-1).handlers.onJumpToStart(2);
+  assert.deepEqual(fileJumps, [["src/api.js", undefined], ["src/api.js", undefined]]);
+  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
+  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  assert.equal(JSON.stringify(fileJumps.at(-1)), JSON.stringify(["src/api.js", { pulse: false }]));
+  assert.deepEqual(jumps, []);
+  assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [2, [2]]);
+});
+
+test("a diagram box click on a file-start chunk still pulses its box after the jump", async () => {
+  const { fileJumps, pulses, diagramHandlers } = loadContent({ run: null, view: "files", review: FILE_START_REVIEW });
+  await settle();
+  diagramHandlers.at(-1).onNode("b");
+  await settle();
+  assert.equal(fileJumps.length, 1);
+  assert.deepEqual(pulses, ["b"]);
+});
+
+test("opening the files page on a file start's diff anchor jumps to that file, and any other anchor jumps nowhere", async () => {
+  const onFile = loadContent({ run: null, view: "files", review: FILE_START_REVIEW, hash: "#diff-src/api.js" });
+  await settle();
+  assert.deepEqual(onFile.fileJumps, [["src/api.js", undefined]]);
+  assert.deepEqual(onFile.jumps, []);
+  const elsewhere = loadContent({ run: null, view: "files", review: FILE_START_REVIEW, hash: "#diff-src/other.js" });
+  await settle();
+  assert.deepEqual([elsewhere.fileJumps, elsewhere.jumps], [[], []]);
 });

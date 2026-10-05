@@ -698,3 +698,211 @@ test("showCallouts replaces a callout the host dropped and removes callouts that
     delete globalThis.document;
   }
 });
+
+function fakeEntries(ids) {
+  class Node {
+    constructor(className = "") {
+      this.classes = new Set(className.split(" ").filter(Boolean));
+      this.dataset = {};
+      this.children = [];
+      this.parent = null;
+      this.classList = {
+        contains: (name) => this.classes.has(name),
+        add: (...names) => names.forEach((name) => this.classes.add(name)),
+        remove: (...names) => names.forEach((name) => this.classes.delete(name)),
+      };
+    }
+    set className(value) {
+      this.classes = new Set(value.split(" ").filter(Boolean));
+    }
+    get className() {
+      return [...this.classes].join(" ");
+    }
+    get firstElementChild() {
+      return this.children[0] ?? null;
+    }
+    get nextElementSibling() {
+      return this.parent?.children[this.parent.children.indexOf(this) + 1] ?? null;
+    }
+    append(...nodes) {
+      for (const node of nodes) {
+        node.parent = this;
+        this.children.push(node);
+      }
+    }
+    prepend(node) {
+      node.parent = this;
+      this.children.unshift(node);
+    }
+    remove() {
+      if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1);
+      this.parent = null;
+    }
+    getBoundingClientRect() {
+      return { top: 0, height: 0, bottom: 0, left: 0, right: 0 };
+    }
+    addEventListener() {}
+    querySelector(selector) {
+      return this.all().find((node) => node !== this && node.classes?.has(selector.slice(1))) ?? null;
+    }
+    all() {
+      return [this, ...this.children.flatMap((child) => child.all?.() ?? [])];
+    }
+  }
+  const root = new Node();
+  const entries = new Map(ids.map((id) => [id, new Node("entry")]));
+  for (const [id, entry] of entries) {
+    entry.dataset.id = id;
+    const header = new Node("file-header");
+    header.dataset.path = id;
+    entry.append(header);
+    root.append(entry);
+  }
+  const matching = (selector) => {
+    const wanted = selector.split(",").map((part) => part.trim().slice(1));
+    return root.all().filter((node) => wanted.some((name) => node.classes.has(name)));
+  };
+  globalThis.document = {
+    createElement: () => new Node(),
+    getElementById: (id) => entries.get(id) ?? null,
+    querySelectorAll: matching,
+    querySelector: () => null,
+    createTreeWalker: () => ({ nextNode: () => null }),
+    body: root,
+  };
+  globalThis.NodeFilter = { SHOW_ELEMENT: 1, FILTER_ACCEPT: 1, FILTER_SKIP: 3, FILTER_REJECT: 2 };
+  globalThis.innerHeight = 800;
+  globalThis.scrollY = 0;
+  globalThis.scrollBy = () => {};
+  const done = () => {
+    for (const name of ["document", "NodeFilter", "innerHeight", "scrollY", "scrollBy"]) delete globalThis[name];
+  };
+  return { root, entries, callouts: () => matching(".prf-callout-row"), done };
+}
+
+function filePage(extra = {}) {
+  return require("../page_common.js").createPage({
+    findRow: () => null,
+    entryOf: (block) => block,
+    diffId: async (path) => path,
+    fileHeaderSelector: ".file-header",
+    stickySkip: ".none",
+    contentSelector: ".content",
+    ...extra,
+  });
+}
+
+const fileEntry = (key, anchor, built = []) => ({ key, anchor, file: true, render: () => (built.push(anchor), { key }) });
+
+test("showCallouts puts a file callout as the first child of its file's entry, above the header, once", () => {
+  const dom = fakeEntries(["a", "b"]);
+  try {
+    const page = filePage();
+    const built = [];
+    const entries = [fileEntry(1, "a", built), fileEntry(2, "b", built)];
+    page.showCallouts(entries);
+    page.showCallouts(entries);
+    assert.deepEqual(built, ["a", "b"]);
+    assert.equal(dom.callouts().length, 2);
+    for (const [id, entry] of dom.entries) {
+      assert.deepEqual(entry.children.map((child) => child.className), ["prf-callout-row prf-callout-file", "file-header"], id);
+    }
+    assert.equal(dom.entries.get("a").children[0].dataset.anchor, "a");
+    assert.equal(page.fileHeaderOf(dom.entries.get("a")).className, "file-header");
+  } finally {
+    dom.done();
+  }
+});
+
+test("a file callout waits for its diff to load, comes back when the host drops it, and goes when no longer wanted", () => {
+  const dom = fakeEntries(["a"]);
+  try {
+    const page = filePage();
+    const entries = [fileEntry(1, "a"), fileEntry(2, "late")];
+    page.showCallouts(entries);
+    assert.equal(dom.callouts().length, 1);
+    dom.entries.get("a").children[0].remove();
+    page.showCallouts(entries);
+    assert.equal(dom.entries.get("a").children.length, 2);
+    page.showCallouts([]);
+    assert.deepEqual(dom.callouts(), []);
+    assert.equal(dom.entries.get("a").children.length, 1);
+  } finally {
+    dom.done();
+  }
+});
+
+test("a file callout and a line callout can be shown together without disturbing each other", () => {
+  const dom = fakeEntries(["a"]);
+  try {
+    const page = filePage();
+    const entries = [fileEntry(1, "a"), { key: 2, anchor: "line", render: () => ({}) }];
+    page.showCallouts(entries);
+    page.showCallouts(entries);
+    assert.deepEqual(dom.callouts().map((callout) => callout.dataset.key), ["1"]);
+  } finally {
+    dom.done();
+  }
+});
+
+test("jumpToFile marks the file callout as the target and pulses it, and a jump without the pulse only marks it", async () => {
+  const dom = fakeEntries(["a", "b"]);
+  try {
+    const page = filePage();
+    page.showCallouts([fileEntry(1, "a"), fileEntry(2, "b")]);
+    const [first, second] = dom.callouts();
+    assert.equal(await page.jumpToFile("a"), true);
+    assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [true, true]);
+    assert.deepEqual([second.classes.has("prf-line-target"), second.classes.has("prf-pulse")], [false, false]);
+    assert.equal(await page.jumpToFile("b", { pulse: false }), true);
+    assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [false, false]);
+    assert.deepEqual([second.classes.has("prf-line-target"), second.classes.has("prf-pulse")], [true, false]);
+    page.clearLineTarget();
+    assert.equal(second.classes.has("prf-line-target"), false);
+  } finally {
+    dom.done();
+  }
+});
+
+test("restoreLineTarget gives a re-created file callout its target mark back", async () => {
+  const dom = fakeEntries(["a"]);
+  try {
+    const page = filePage();
+    const entries = [fileEntry(1, "a")];
+    page.showCallouts(entries);
+    await page.jumpToFile("a", { pulse: false });
+    dom.callouts()[0].remove();
+    page.showCallouts(entries);
+    assert.equal(dom.callouts()[0].classes.has("prf-line-target"), false);
+    page.restoreLineTarget();
+    assert.equal(dom.callouts()[0].classes.has("prf-line-target"), true);
+  } finally {
+    dom.done();
+  }
+});
+
+test("jumpToFile does nothing for a diff that is not in the page", async () => {
+  const dom = fakeEntries(["a"]);
+  try {
+    const page = filePage();
+    page.showCallouts([fileEntry(1, "a")]);
+    assert.equal(await page.jumpToFile("missing"), false);
+    assert.equal(dom.callouts()[0].classes.has("prf-line-target"), false);
+  } finally {
+    dom.done();
+  }
+});
+
+test("a start callout for a file start reads the start's reason and keeps its next and previous buttons", () => {
+  globalThis.document = fakeDom();
+  try {
+    const fileStart = { path: "b.js", side: null, line: null, why: "Open this file first." };
+    const chunks = FLOW_CHUNKS.map((chunk) => (chunk.n === 2 ? { ...chunk, start: fileStart } : chunk));
+    const card = startCallout(chunks[1], chunks, () => {});
+    assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Open this file first.");
+    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
+    assert.equal(byClass(card, "prf-callout-prev")[0].title, "1 · Screen");
+  } finally {
+    delete globalThis.document;
+  }
+});
