@@ -34,7 +34,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - Every chunk's start line that has loaded gets a callout above it, as soon as the review shows and as GitHub or Forgejo
   load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
   (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text) with a route icon,
-  the chunk as `<n> · <name>` in purple, "why the model starts here" in secondary text, and the reason, wrapping if it is
+  the chunk as `<n> · <name>` in bold default text, "why the model starts here" in secondary text, and the reason, wrapping if it is
   long: the chunk's `start.why`, else the chunk's own `why`. A last row starts with a `↑ <n> · <name>` button for the
   chunk numbered one lower when there is one, then "Next" followed by one small button per chunk to read next,
   `<n> · <name> ↓`, or the quiet text "Last step" when there is none. A button does what a click on that

@@ -485,11 +485,13 @@
 
 .prf-callout-icon {
   flex: none;
-  color: var(--prf-guide);
+  color: var(--fgColor-default, #1f2328);
+  stroke-width: 2;
 }
 
 .prf-callout-chunk {
-  color: var(--prf-guide);
+  font-weight: 600;
+  color: var(--fgColor-default, #1f2328);
 }
 
 .prf-callout-label {
