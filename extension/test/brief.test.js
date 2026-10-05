@@ -192,8 +192,15 @@ test("the card is a closed details that reads and writes no storage", () => {
     assert.match(shadow, /<span class="title">PR brief<\/span>/);
     assert.match(shadow, /<span class="badge"[^>]*>local, not posted<\/span>/);
     assert.match(shadow, /<a class="files-link" href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files">Review in files view<\/a>/);
-    assert.match(shadow, /<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<\/figure>/s);
-    assert.match(shadow, /<p class="legend">Legend:/);
+    const diagramBox = /<details class="diagram-box"><summary>Diagram<\/summary>(.*?)<\/details>/s.exec(shadow);
+    assert.ok(diagramBox, "the diagram is in its own details headed Diagram");
+    assert.match(diagramBox[1], /^<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<p class="legend">Legend:.*<\/figure>$/s);
+    const at = (needle) => shadow.indexOf(needle);
+    assert.ok(at("Second point") < at('<details class="diagram-box">'), "the diagram follows the description's bullets");
+    assert.ok(at('<details class="diagram-box">') < at("Review order"), "the diagram precedes the review order");
+    assert.equal(shadow.match(/<details class="diagram-box">/g).length, 1);
+    assert.doesNotMatch(shadow, /grid-template-columns/);
+    assert.match(shadow, /\.text > ul > li, \.text > ol > li \{ margin-bottom: 1\.5em; \}/);
     assert.doesNotMatch(shadow, /<script/i);
     assert.deepEqual(touched, []);
   } finally {
@@ -211,8 +218,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
   try {
     for (const diagramSvg of [null, "", "<html>nope</html>"]) {
       const shadow = buildBrief({ key: "7", variant: "v1", bodyHtml: bodyHtml(), diagramSvg, filesUrl: FILES_URL }).shadow.innerHTML;
-      assert.doesNotMatch(shadow, /<figure|<svg/);
-      assert.match(shadow, /class="content no-diagram"/);
+      assert.doesNotMatch(shadow, /<figure|<svg|<details class="diagram-box"/);
     }
   } finally {
     delete globalThis.document;

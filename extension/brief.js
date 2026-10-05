@@ -55,22 +55,21 @@
     .badge { padding: 0 7px; font-size: 12px; line-height: 18px; color: var(--muted); border: 1px solid var(--border); border-radius: 2em; }
     .files-link { margin-left: auto; color: var(--accent); font-size: 12px; text-decoration: none; }
     .files-link:hover { text-decoration: underline; }
-    .content { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px 24px; padding: 16px; }
-    .content.no-diagram { grid-template-columns: minmax(0, 1fr); }
-    .order { grid-column: 1 / -1; }
-    @media (max-width: 760px) { .content { grid-template-columns: minmax(0, 1fr); } }
+    .content { padding: 16px; }
     .text > :first-child { margin-top: 0; }
     h1, h2, h3, h4 { margin: 16px 0 8px; font-size: 14px; line-height: 1.25; }
     p, ul, ol, details { margin: 0 0 12px; }
     ul, ol { padding-left: 24px; }
     li > ul { margin: 2px 0; }
+    .text > ul > li, .text > ol > li { margin-bottom: 1.5em; }
     hr { height: 1px; margin: 12px 0; border: 0; background: var(--border); }
     code { padding: 0.1em 0.35em; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 4px; overflow-wrap: anywhere; }
     a { color: var(--accent); }
     sub { font-size: 12px; color: var(--muted); }
     summary { cursor: pointer; }
     summary h3 { display: inline; margin: 0; }
-    .diagram { margin: 0; }
+    details.diagram-box > summary { font-weight: 600; }
+    .diagram { margin: 8px 0 0; }
     .paper { padding: 8px; overflow: auto; color: #1f2328; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; }
     .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
     .legend { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
@@ -91,8 +90,8 @@
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  // The description and the review order are split at the review order's <details>, so the diagram sits beside
-  // the description while the wide table keeps the card's full width below them.
+  // The description and the review order are split at the review order's <details>, so the diagram's own <details>
+  // can sit between them.
   function splitOrder(html) {
     const at = html.indexOf("<details");
     return at === -1 ? { text: html, order: "" } : { text: html.slice(0, at), order: html.slice(at) };
@@ -105,7 +104,7 @@
     const svg = /^\s*<svg[\s>]/.test(diagramSvg ?? "") ? ns.briefText.sanitize(diagramSvg, "svg") : "";
     const { text, order } = splitOrder(html);
     const diagram = svg
-      ? `<figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${legend ? `<p class="legend">${legend}</p>` : ""}</figure>`
+      ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${legend ? `<p class="legend">${legend}</p>` : ""}</figure></details>`
       : "";
 
     const host = document.createElement("div");
@@ -118,7 +117,7 @@
       '<summary><span class="chevron"></span><span class="title">PR brief</span>' +
       `<span class="badge" title="Run ${escapeHtml(key)}, variant ${escapeHtml(variant)}">local, not posted</span>` +
       `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
-      `<div class="content${svg ? "" : " no-diagram"}"><div class="text">${text}</div>${diagram}` +
+      `<div class="content"><div class="text">${text}</div>${diagram}` +
       `${order ? `<div class="order">${order}</div>` : ""}</div></details>`;
     return host;
   }

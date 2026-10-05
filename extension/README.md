@@ -111,8 +111,9 @@ the page's data, and its header links to the files view.
 - `body.html` from `render.py` is a standalone page that draws itself: the description is a markdown string in a
   script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
   `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
-  "Diagram Walkthrough" heading are left out; `diagram.svg` is shown next to the description instead, with the
-  legend under it, on a white panel in both themes.
+  "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
+  description's bullets and above the review order, with the legend under it, on a white panel in both themes. The
+  card is one column, and each top-level bullet in the description has a blank line's space after it.
 - The review order shows with its `<details>` closed, and each chunk's file list is a closed `<details>` headed by the
   file count. Links into the PR's files view are rewritten to this host's files view, fragment kept.
 - A chunk's start link opens the files view with that line's anchor in the fragment. When the files page loads with a
