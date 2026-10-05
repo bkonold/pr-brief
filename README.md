@@ -77,7 +77,7 @@ Each run writes `runs/<key>/<variant>/`, where `<key>` is the PR number on GitHu
 Forgejo, so the two hosts' numbers cannot collide: `prompt.txt`, `answer.yaml` (raw model output), `pr.json` (the PR
 data the run used), `run.json` (including `diagram_edges`, the labelled and total arrows of the diagram),
 `body.md`, `body.html`, `diagram.svg`, `review.json` (chunked variants only; the extension reads it),
-`context.md` (when the variant has a context pack) and `error.txt` on failure or when the renderer
+`context.md` and `contract.json` (when the variant has a context pack with a contract section) and `error.txt` on failure or when the renderer
 dropped something. Open any `.html` straight from disk. A rerun of the same PR and variant overwrites its
 folder. `runs/` is git-ignored: it holds the diffs and prompts of whatever repository you ran against.
 
@@ -110,7 +110,8 @@ One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own)
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
 `boxes`), `start_line` and `chunk_box_fallback`. `review_floor.toml` sets the minimum review level per
-path for the chunked file table.
+path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
+removal the run's `contract.json` lists (see `review_floor.example.toml`).
 
 | Variant | What it is |
 | --- | --- |

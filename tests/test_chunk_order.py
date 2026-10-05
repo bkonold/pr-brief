@@ -6,7 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from render import build_chunks  # noqa: E402
+from context_pack import contract_lines  # noqa: E402
+from render import build_chunks, file_floor  # noqa: E402
 
 FLOORS = {"floor": [{"name": "schema file", "level": "read carefully", "globs": ["**/schema.json"]}]}
 PATHS = ["src/a.js", "src/b.js", "src/c.js", "src/d.js", "api/schema.json"]
@@ -42,6 +43,54 @@ class ChunkOrder(unittest.TestCase):
     def test_files_the_model_left_out_stay_last(self) -> None:
         chunks = build([raw("A", "skim", "src/a.js")], ["src/a.js", "src/b.js"])
         self.assertEqual([c.name for c in chunks], ["A", "Unchunked"])
+
+
+SPEC = "api/openapi.json"
+RULE = {"name": "OpenAPI spec", "level": "read", "level_if_deleted": "read carefully", "globs": [SPEC]}
+
+
+class ContractFloor(unittest.TestCase):
+    def level(self, rule: dict, contract: dict | None, deletions: int = 12) -> str:
+        floor = file_floor({"floor": [rule]}, SPEC, deletions, contract)
+        return floor[0] if floor else ""
+
+    def test_an_edited_spec_with_no_removals_is_not_raised(self) -> None:
+        contract = {"path": SPEC, "removals": []}
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read")
+
+    def test_a_spec_with_a_listed_removal_is_raised(self) -> None:
+        contract = {"path": SPEC, "removals": ["removed operation GET /widgets"]}
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read carefully")
+
+    def test_a_rule_without_the_key_counts_deleted_lines_as_before(self) -> None:
+        contract = {"path": SPEC, "removals": []}
+        self.assertEqual(self.level(RULE, contract), "read carefully")
+        self.assertEqual(self.level(RULE, contract, deletions=0), "read")
+
+    def test_a_run_with_no_contract_json_counts_deleted_lines_as_before(self) -> None:
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None), "read carefully")
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None, deletions=0), "read")
+
+    def test_a_removal_listed_for_another_file_does_not_raise_this_one(self) -> None:
+        contract = {"path": "other/openapi.json", "removals": ["removed operation GET /widgets"]}
+        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read")
+
+
+class ContractRemovals(unittest.TestCase):
+    BASE = {"paths": {"/widgets": {"get": {}, "delete": {}}},
+            "components": {"schemas": {"Widget": {"properties": {"id": {}, "size": {"enum": ["S", "L"]}}, "required": ["id"]}}}}
+
+    def test_a_newly_required_property_is_a_contract_line_but_not_a_removal(self) -> None:
+        head = {"paths": self.BASE["paths"],
+                "components": {"schemas": {"Widget": {"properties": {"id": {}, "size": {"enum": ["S", "L"]}}, "required": ["id", "size"]}}}}
+        self.assertEqual(contract_lines(self.BASE, head), ["Widget.size (now required)"])
+        self.assertEqual(contract_lines(self.BASE, head, removals_only=True), [])
+
+    def test_removed_operations_properties_and_enum_values_are_removals(self) -> None:
+        head = {"paths": {"/widgets": {"get": {}}},
+                "components": {"schemas": {"Widget": {"properties": {"size": {"enum": ["S"]}}, "required": ["id"]}}}}
+        self.assertEqual(contract_lines(self.BASE, head, removals_only=True),
+                         ["removed operation DELETE /widgets", "Widget.id (property removed)", "Widget.size (enum value L removed)"])
 
 
 if __name__ == "__main__":

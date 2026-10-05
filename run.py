@@ -90,7 +90,7 @@ def render_only(key: str, name: str, variant_path: Path, source_name: str) -> in
     """Copy the source variant's run into this variant's folder and render it with this variant's settings."""
     source_dir: Path = HOME / "runs" / key / source_name
     copied: tuple[str, ...] = ("prompt.txt", "answer.yaml", "pr.json", "run.json")
-    optional: tuple[str, ...] = ("context.md",)
+    optional: tuple[str, ...] = ("context.md", "contract.json")
     absent: list[str] = [f for f in copied if not (source_dir / f).exists()]
     if absent:
         raise SystemExit(f"{name} renders from {source_name}, but {source_dir} has no {', '.join(absent)}. "
@@ -161,11 +161,13 @@ def main() -> int:
 
     run_dir: Path = HOME / "runs" / key / a.variant
     run_dir.mkdir(parents=True, exist_ok=True)
-    for stale in ("error.txt", "body.md", "body.html", "context.md"):
+    for stale in ("error.txt", "body.md", "body.html", "context.md", "contract.json"):
         (run_dir / stale).unlink(missing_ok=True)
     (run_dir / "prompt.txt").write_text(prompt_text)
     if pack:
         (run_dir / "context.md").write_text(context_md + "\n")
+        if pack.contract is not None:
+            (run_dir / "contract.json").write_text(json.dumps(pack.contract, indent=2) + "\n")
     (run_dir / "pr.json").write_text(json.dumps(pr, indent=2) + "\n")
 
     started: datetime = now()

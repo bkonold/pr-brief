@@ -202,13 +202,25 @@ def matches(globs: list[str], path: str) -> bool:
     return any(glob_to_regex(g).match(path) for g in globs)
 
 
-def file_floor(floor_cfg: dict[str, Any], path: str, deletions: int) -> tuple[str, str] | None:
+def removal_counts(rule: dict[str, Any], path: str, deletions: int, contract: dict[str, Any] | None) -> bool:
+    """Whether `level_if_deleted` applies to the file. By default any deleted line counts; a rule with
+    `deleted_from = "contract"` counts only a removal that the run's contract.json lists for the file, and falls
+    back to the deleted-line count for a run that saved no contract.json."""
+    if "level_if_deleted" not in rule:
+        return False
+    if rule.get("deleted_from") == "contract" and contract is not None:
+        return contract.get("path") == path and bool(contract.get("removals"))
+    return deletions > 0
+
+
+def file_floor(floor_cfg: dict[str, Any], path: str, deletions: int,
+               contract: dict[str, Any] | None = None) -> tuple[str, str] | None:
     """The highest (level, rule name) among the rules that match the file, or None."""
     best: tuple[str, str] | None = None
     for rule in floor_cfg.get("floor", []):
         if not matches(rule["globs"], path):
             continue
-        level: str = rule["level_if_deleted"] if deletions > 0 and "level_if_deleted" in rule else rule["level"]
+        level: str = rule["level_if_deleted"] if removal_counts(rule, path, deletions, contract) else rule["level"]
         if best is None or LEVELS.index(level) > LEVELS.index(best[0]):
             best = (level, rule["name"])
     return best
@@ -372,7 +384,7 @@ UNCHUNKED = "Unchunked"
 
 
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
-                 notes: list[str], diff_lines: dict[str, list[DiffLine]]) -> list[Chunk]:
+                 notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None) -> list[Chunk]:
     chunks: list[Chunk] = []
     seen: set[str] = set()
     for item in raw_chunks if isinstance(raw_chunks, list) else []:
@@ -401,7 +413,7 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
         notes.append("files the model left out of every chunk: " + ", ".join(missing))
         chunks.append(Chunk(UNCHUNKED, "read", "Not assigned to a chunk by the model", missing))
     for chunk in chunks:
-        apply_floor(chunk, counts, floor_cfg)
+        apply_floor(chunk, counts, floor_cfg, contract)
     # Highest level first, ties in the model's order, and the catch-all chunk last, as the extension's list has it.
     chunks.sort(key=lambda chunk: (chunk.name == UNCHUNKED, -LEVELS.index(chunk.review)))
     for number, chunk in enumerate(chunks, 1):
@@ -634,10 +646,11 @@ def format_boxes(boxes: list[int]) -> str:
     return ", ".join(str(run[0]) if len(run) == 1 else f"{run[0]}–{run[-1]}" for run in runs) or "—"
 
 
-def apply_floor(chunk: Chunk, counts: dict[str, tuple[int, int]], floor_cfg: dict[str, Any]) -> None:
+def apply_floor(chunk: Chunk, counts: dict[str, tuple[int, int]], floor_cfg: dict[str, Any],
+                contract: dict[str, Any] | None = None) -> None:
     floors: list[tuple[str, str]] = []
     for path in chunk.files:
-        found: tuple[str, str] | None = file_floor(floor_cfg, path, counts[path.lower()][1])
+        found: tuple[str, str] | None = file_floor(floor_cfg, path, counts[path.lower()][1], contract)
         if found:
             floors.append(found)
     top: int = max([LEVELS.index(chunk.review)] + [LEVELS.index(level) for level, _ in floors])
@@ -697,7 +710,7 @@ def chunks_walkthrough(chunks: list[Chunk], counts: dict[str, tuple[int, int]], 
 
 def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cfg: dict[str, Any],
                floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
-               notes: list[str]) -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None]:
+               notes: list[str], contract: dict[str, Any] | None = None) -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None]:
     pr_number: str = str(run["pr"])
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     paths: list[str] = [f["path"] for f in pr["files"]]
@@ -710,7 +723,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
             ordered[key] = data[key]
     chunks: list[Chunk] = []
     if cfg.get("files") == "chunks":
-        chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines)
+        chunks = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract)
     diagram: str = render_diagram(data.get("changes_diagram"), cfg)
     numbering: str = cfg.get("numbering", "chunks")
     if numbering not in ("chunks", "boxes"):
@@ -1013,6 +1026,8 @@ def main() -> int:
     floor_file: Path | None = config_file("review_floor", fall_back_to_example=True)
     floor_cfg: dict[str, Any] = tomllib.loads(floor_file.read_text()) if floor_file else {}
     raw: str = (run_dir / "answer.yaml").read_text()
+    contract_file: Path = run_dir / "contract.json"
+    contract: dict[str, Any] | None = json.loads(contract_file.read_text()) if contract_file.exists() else None
     notes: list[str] = []
     for stale in ("body.md", "body.html", "review.json", DIAGRAM_SVG, "error.txt"):
         (run_dir / stale).unlink(missing_ok=True)
@@ -1023,7 +1038,7 @@ def main() -> int:
         data: dict[str, Any] = parse_answer(raw)
         prompt_file: Path = run_dir / "prompt.txt"
         diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_from_prompt(prompt_file.read_text())) if prompt_file.exists() else {}
-        md, (labelled, total), chunks, nodes = build_body(run, pr, data, cfg, floor_cfg, diff_lines, notes)
+        md, (labelled, total), chunks, nodes = build_body(run, pr, data, cfg, floor_cfg, diff_lines, notes, contract)
     except AnswerError as e:
         (run_dir / "error.txt").write_text(f"{e}\n")
         (run_dir / "body.html").write_text(ERROR_PAGE.replace("__ERROR__", html.escape(str(e))).replace("__RAW__", html.escape(raw)))

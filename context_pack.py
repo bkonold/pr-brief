@@ -561,7 +561,9 @@ def enum_values(node: Any) -> list[Any]:
     return [*node.get("enum", []), *enum_values(node.get("items"))]
 
 
-def contract_lines(base: dict[str, Any], head: dict[str, Any]) -> list[str]:
+def contract_lines(base: dict[str, Any], head: dict[str, Any], removals_only: bool = False) -> list[str]:
+    """The contract differences, in the order the pack lists them. `removals_only` leaves out the properties that
+    became required, which add a demand on callers but take nothing away."""
     operations: list[str] = []
     removed_props: list[str] = []
     required: list[str] = []
@@ -592,7 +594,7 @@ def contract_lines(base: dict[str, Any], head: dict[str, Any]) -> list[str]:
             if p in new_props:
                 gone: list[Any] = [v for v in enum_values(prop) if v not in enum_values(new_props[p])]
                 enums.extend(f"{name}.{p} (enum value {v} removed)" for v in gone)
-    return [*operations, *removed_props, *required, *enums]
+    return [*operations, *removed_props, *enums] if removals_only else [*operations, *removed_props, *required, *enums]
 
 
 def migration_items(files: list[DiffFile]) -> list[str]:
@@ -684,6 +686,7 @@ class Pack:
     intros: dict[str, str] = field(default_factory=dict)
     caller_files: dict[str, list[str]] = field(default_factory=dict)
     precise: dict[str, str | None] | None = None
+    contract: dict[str, Any] | None = None
     _text: str | None = None
     _tokens: int = 0
 
@@ -874,11 +877,13 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
         items["reach"] = [f"- {a['name']}: {changed_by_app[a['name']]} changed files, {callers_by_app[a['name']]} caller files"
                           for a in apps if changed_by_app[a["name"]] or callers_by_app[a["name"]]]
 
+    contract: dict[str, Any] | None = None
     if "contract" in wanted and "contract" not in dropped and OPENAPI_PATH in changed:
         old: dict[str, Any] | None = read_json_at(base, OPENAPI_PATH)
         new: dict[str, Any] | None = read_json_at(head, OPENAPI_PATH)
         if old is not None and new is not None:
             lines: list[str] = contract_lines(old, new)
+            contract = {"path": OPENAPI_PATH, "removals": contract_lines(old, new, removals_only=True)}
             items["contract"] = [f"- {line}" for line in lines[:MAX_CONTRACT_LINES]]
             if len(lines) > MAX_CONTRACT_LINES:
                 items["contract"].append(f"- ({len(lines) - MAX_CONTRACT_LINES} more contract lines not listed)")
@@ -891,4 +896,4 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
 
     return Pack(items=items, skipped_common=skipped_common, dropped=dropped, wiki_sha=wiki_sha() if "wiki" in wanted and "wiki" not in dropped else None,
                 footers=footers, uncalled=uncalled, new_in_pr=new_in_pr, fields_dropped=fields_dropped, intros=intros,
-                caller_files=caller_files, precise=reasons)
+                caller_files=caller_files, precise=reasons, contract=contract)

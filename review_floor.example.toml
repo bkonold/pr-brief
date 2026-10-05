@@ -12,6 +12,17 @@ level = "read"
 level_if_deleted = "read carefully"
 globs = ["**/db/migrations/**"]
 
+# `deleted_from = "contract"` (optional) makes `level_if_deleted` apply only when the run's contract.json, saved from
+# the context pack's contract section, lists a removal or breaking change for the file. Without the key, or for a
+# run with no contract.json, any deleted line in the file counts. contract.json covers the file named by local.toml's
+# openapi_path, so use the key on the rule for that file.
+[[floor]]
+name = "OpenAPI spec"
+level = "read"
+level_if_deleted = "read carefully"
+deleted_from = "contract"
+globs = ["api/openapi.json"]
+
 [[floor]]
 name = "public API controller"
 level = "read"
