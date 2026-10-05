@@ -611,6 +611,13 @@ def differing_keys(old: dict[str, Any], new: dict[str, Any], skip: frozenset[str
     return sorted(key for key in {*old, *new} - skip if old.get(key) != new.get(key))
 
 
+def nested_differing_keys(old: Any, new: Any) -> list[str]:
+    """The keys that differ between two schema objects; every key of the one that is a dict when the other is not."""
+    if isinstance(old, dict) and isinstance(new, dict):
+        return differing_keys(old, new)
+    return sorted({*(old if isinstance(old, dict) else {}), *(new if isinstance(new, dict) else {})}) or ["type"]
+
+
 def parameter_entry(method: str, path: str, operation_id: str | None, key: tuple[str, str],
                     parameter: dict[str, Any]) -> dict[str, Any]:
     return {"method": method, "path": path, "operation_id": operation_id, "name": key[1], "in": key[0],
@@ -636,9 +643,8 @@ def schema_refs(node: Any, document: dict[str, Any]) -> set[str]:
     return found
 
 
-def operations_using(names: set[str], document: dict[str, Any]) -> dict[str, set[str]]:
-    """Schema name -> the `METHOD /path` operations whose parameters, request or responses reach it, directly or
-    through other schemas."""
+def schemas_reaching(names: set[str], document: dict[str, Any]) -> dict[str, set[str]]:
+    """Schema name -> the names of the schemas that contain it, directly or through other schemas, itself included."""
     schemas: dict[str, Any] = document.get("components", {}).get("schemas", {})
     parents: dict[str, set[str]] = {}
     for name, schema in schemas.items():
@@ -653,6 +659,13 @@ def operations_using(names: set[str], document: dict[str, Any]) -> dict[str, set
                 reached.add(parent)
                 pending.append(parent)
         reaching[name] = reached
+    return reaching
+
+
+def operations_using(names: set[str], document: dict[str, Any]) -> dict[str, set[str]]:
+    """Schema name -> the `METHOD /path` operations whose parameters, request or responses reach it, directly or
+    through other schemas."""
+    reaching: dict[str, set[str]] = schemas_reaching(names, document)
     used: dict[str, set[str]] = {name: set() for name in names}
     for path, item in document.get("paths", {}).items():
         shared: set[str] = schema_refs(item.get("parameters", []), document)
@@ -666,6 +679,30 @@ def operations_using(names: set[str], document: dict[str, Any]) -> dict[str, set
     return used
 
 
+REQUEST = "request"
+RESPONSE = "response"
+
+
+def operation_sides(names: set[str], document: dict[str, Any]) -> dict[str, dict[str, set[str]]]:
+    """Schema name -> `METHOD /path` -> the sides of that operation that reach the schema: `request` for its parameters
+    and request body, `response` for its responses. A schema reached on both sides has both."""
+    reaching: dict[str, set[str]] = schemas_reaching(names, document)
+    used: dict[str, dict[str, set[str]]] = {name: {} for name in names}
+    for path, item in document.get("paths", {}).items():
+        shared: set[str] = schema_refs(item.get("parameters", []), document)
+        for method, operation in item.items():
+            if method not in HTTP_METHODS or not isinstance(operation, dict):
+                continue
+            request: set[str] = shared | schema_refs({"parameters": operation.get("parameters", []),
+                                                      "requestBody": operation.get("requestBody")}, document)
+            response: set[str] = schema_refs(operation.get("responses", {}), document)
+            for name in names:
+                sides: set[str] = {side for side, refs in ((REQUEST, request), (RESPONSE, response)) if refs & reaching[name]}
+                if sides:
+                    used[name][f"{method.upper()} {path}"] = sides
+    return used
+
+
 def touched_schemas(entries: list[str]) -> set[str]:
     """The schema names in contract lines such as `Widget.size (now required)` or `Widget (schema removed)`."""
     names: set[str] = set()
@@ -676,14 +713,41 @@ def touched_schemas(entries: list[str]) -> set[str]:
     return names
 
 
+def operation_tags(base: dict[str, Any], head: dict[str, Any], breaks: dict[str, list[str]], added: dict[str, list[Any]],
+                   changed: dict[str, list[Any]], deprecated: dict[str, list[Any]],
+                   used: dict[str, set[str]]) -> dict[str, str]:
+    """`METHOD /path` -> the operation's first tag, for every operation the contract changes touch (the head's tag, else the
+    base's for an operation that was removed). Untagged operations are left out."""
+    labels: set[str] = {f"{o['method']} {o['path']}"
+                        for group in (added["operations"], changed["operations"], added["parameters"], changed["parameters"],
+                                      deprecated["operations"]) for o in group}
+    labels.update(operation for operations in used.values() for operation in operations)
+    labels.update(f"{m.group(1)} {m.group(2)}" for entry in breaks["removals"] if (m := re.match(r"removed operation ([A-Z]+) (\S+)$", entry)))
+    labels.update(f"{m.group(1)} {m.group(2)}" for entry in breaks["newly_required"]
+                  if (m := re.match(r"([A-Z]+) (\S+) parameter ", entry)))
+    tags: dict[str, str] = {}
+    for label in sorted(labels):
+        method, _, path = label.partition(" ")
+        for document in (head, base):
+            operation: Any = document.get("paths", {}).get(path, {}).get(method.lower())
+            if isinstance(operation, dict) and operation.get("tags"):
+                tags[label] = str(operation["tags"][0])
+                break
+    return tags
+
+
 def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[str, list[str]]) -> dict[str, Any]:
     """What was added or changed in the contract, beside the breaking changes in `breaks`: `added` and `changed`, each
     with operations, properties and parameters (`added` also lists new schemas), and `schema_operations`, the operations
-    that reach each schema named in either (or in `breaks`)."""
+    that reach each schema named in either (or in `breaks`), `schema_sides`, the sides (`request`, `response`) through which
+    each of those operations reaches it, `operation_tags`, `deprecated` (operations and properties newly deprecated) and
+    `enums_added` and `removed_operations` (with their operationIds, for matching moves)."""
     old_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(base)
     new_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(head)
     added: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": [], "schemas": []}
     changed: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": []}
+    deprecated: dict[str, list[Any]] = {"operations": [], "properties": []}
+    enums_added: list[dict[str, Any]] = []
 
     for (method, path), operation in new_operations.items():
         operation_id: str | None = operation.get("operationId")
@@ -692,6 +756,8 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
             added["operations"].append({"method": method, "path": path, "operation_id": operation_id})
             continue
         what: list[str] = differing_keys(old, operation, OPERATION_KEYS_NOT_COMPARED)
+        if operation.get("deprecated") and not old.get("deprecated"):
+            deprecated["operations"].append({"method": method, "path": path})
         if what:
             changed["operations"].append({"method": method, "path": path, "operation_id": operation_id, "what": what})
         old_parameters: dict[tuple[str, str], dict[str, Any]] = resolved_parameters(base, path, method.lower())
@@ -699,8 +765,11 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
             if key not in old_parameters:
                 added["parameters"].append(parameter_entry(method, path, operation_id, key, parameter))
             elif old_parameters[key] != parameter:
-                changed["parameters"].append({**parameter_entry(method, path, operation_id, key, parameter),
-                                              "what": differing_keys(old_parameters[key], parameter)})
+                what_changed: list[str] = differing_keys(old_parameters[key], parameter)
+                entry: dict[str, Any] = {**parameter_entry(method, path, operation_id, key, parameter), "what": what_changed}
+                if "schema" in what_changed:
+                    entry["schema_what"] = nested_differing_keys(old_parameters[key].get("schema"), parameter.get("schema"))
+                changed["parameters"].append(entry)
 
     base_schemas: dict[str, Any] = base.get("components", {}).get("schemas", {})
     for name, schema in head.get("components", {}).get("schemas", {}).items():
@@ -710,10 +779,16 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
             continue
         old_props: dict[str, Any] = old_schema.get("properties", {})
         new_props: dict[str, Any] = schema.get("properties", {})
+        enums_added.extend({"schema": name, "property": None, "value": value}
+                           for value in enum_values(schema) if value not in enum_values(old_schema))
         for prop, definition in new_props.items():
             if prop not in old_props:
                 added["properties"].append({"schema": name, "name": prop})
             elif old_props[prop] != definition:
+                enums_added.extend({"schema": name, "property": prop, "value": value}
+                                   for value in enum_values(definition) if value not in enum_values(old_props[prop]))
+                if isinstance(definition, dict) and definition.get("deprecated") and not old_props[prop].get("deprecated"):
+                    deprecated["properties"].append({"schema": name, "name": prop})
                 changed["properties"].append({"schema": name, "name": prop,
                                               "what": differing_keys(old_props[prop], definition) if isinstance(definition, dict) else []})
         for prop in old_schema.get("required", []):
@@ -723,11 +798,22 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
     names: set[str] = {*(item["schema"] for item in [*added["properties"], *changed["properties"]]), *added["schemas"],
                        *touched_schemas([*breaks["removals"], *breaks["newly_required"]])}
     used: dict[str, set[str]] = {name: set() for name in names}
+    sides: dict[str, dict[str, set[str]]] = {name: {} for name in names}
     for document in (base, head):
         for name, operations in operations_using(names, document).items():
             used[name] |= operations
-    return {"added": added, "changed": changed,
-            "schema_operations": {name: sorted(operations) for name, operations in sorted(used.items())}}
+        for name, by_operation in operation_sides(names, document).items():
+            for operation, found in by_operation.items():
+                sides[name].setdefault(operation, set()).update(found)
+    removed_operations: list[dict[str, Any]] = [{"method": method, "path": path, "operation_id": operation.get("operationId")}
+                                                for (method, path), operation in old_operations.items()
+                                                if (method, path) not in new_operations]
+    return {"added": added, "changed": changed, "deprecated": deprecated, "enums_added": enums_added,
+            "removed_operations": removed_operations,
+            "schema_operations": {name: sorted(operations) for name, operations in sorted(used.items())},
+            "schema_sides": {name: {operation: sorted(found) for operation, found in sorted(by_operation.items())}
+                             for name, by_operation in sorted(sides.items())},
+            "operation_tags": operation_tags(base, head, breaks, added, changed, deprecated, used)}
 
 
 def contract_lines(base: dict[str, Any], head: dict[str, Any], removals_only: bool = False,
