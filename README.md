@@ -1,10 +1,10 @@
 # pr-describe
 
-Compares versions ("variants") of an AI-generated GitHub PR description, and feeds a browser
+Compares versions ("variants") of an AI-generated GitHub or Forgejo PR description, and feeds a browser
 extension that guides a reviewer through a pull request. It sends PR-Agent's open-source `/describe`
 prompt (vendored in `vendor/`) through `claude -p`, renders the YAML answer as the markdown PR-Agent
 would publish, and puts the variants side by side in one HTML page per PR. It only reads from GitHub
-and never posts anything. `HANDOFF.md` explains the purpose, findings and next steps.
+or Forgejo and never posts anything. `HANDOFF.md` explains the purpose, findings and next steps.
 
 ## Setup
 
@@ -15,7 +15,8 @@ python3 -m venv .venv && .venv/bin/pip install jinja2 pyyaml
 You also need:
 
 - the `claude` CLI, signed in (runs call `claude -p` with no tools);
-- the `gh` CLI, signed in, which reads the PR and its diff;
+- the `gh` CLI, signed in, which reads a GitHub PR and its diff (not needed for Forgejo, which is read
+  through its REST API with a token file named in `local.toml`);
 - Google Chrome, for prerendering the diagram to `diagram.svg` (a run still works without it; the
   failure is noted in `error.txt`);
 - Node 18 or later, only for the extension's tests.
@@ -34,7 +35,7 @@ cp review_floor.example.toml review_floor.toml
 `local.example.toml` explains each key. All of them are optional. When `local.toml` or a key is missing,
 the context-pack section that needs it is skipped, with the reason recorded under `context.dropped` in
 `run.json`; nothing is cloned, fetched or crashed. `--repo` on `run.py` defaults to `local.toml`'s `repo`
-and is required when that is unset. Without any of these files, use the `v15_nocontext` variant.
+(for the host `local.toml` names, GitHub unless `host` says otherwise) and is required when that is unset. Without any of these files, use the `v15_nocontext` variant.
 
 ### Keeping settings and runs outside the tool
 
@@ -54,11 +55,14 @@ and carry this tool as a submodule.
 #   --with-body       show the model the PR's existing description (default: empty body)
 #   --model opus      model passed to claude -p
 #   --prompt-only     print the rendered prompt and stop
+#   --host forgejo    read the PR from the Forgejo in local.toml (forgejo_url, forgejo_token_file);
+#                     --repo is then the Forgejo owner/name. Default: local.toml's `host`, else github
 
 # re-render a run from its saved answer, without calling the model
 .venv/bin/python render.py runs/42/one_path_risk_chunked_v15_nocontext
 
 # build runs/42/index.html and runs/index.html; columns come from compare.toml
+# (a Forgejo PR's folder is fj-<number>: compare.py fj-42)
 .venv/bin/python compare.py 42
 #   --variants a,b    these variants, in this order, instead of compare.toml's
 #   --all             every variant that has a run for the PR
@@ -68,12 +72,22 @@ and carry this tool as a submodule.
 groups the PR index (`runs/index.html`) by kind, with unmapped PRs under Unclassified, and falls back to
 a plain list when the file is missing.
 
-Each run writes `runs/<pr>/<variant>/`: `prompt.txt`, `answer.yaml` (raw model output), `pr.json` (the PR
+Each run writes `runs/<key>/<variant>/`, where `<key>` is the PR number on GitHub and `fj-<number>` on
+Forgejo, so the two hosts' numbers cannot collide: `prompt.txt`, `answer.yaml` (raw model output), `pr.json` (the PR
 data the run used), `run.json` (including `diagram_edges`, the labelled and total arrows of the diagram),
 `body.md`, `body.html`, `diagram.svg`, `review.json` (chunked variants only; the extension reads it),
 `context.md` (when the variant has a context pack) and `error.txt` on failure or when the renderer
 dropped something. Open any `.html` straight from disk. A rerun of the same PR and variant overwrites its
 folder. `runs/` is git-ignored: it holds the diffs and prompts of whatever repository you ran against.
+
+## Hosts
+
+`hosts/github.py` runs `gh pr view` and `gh pr diff`; `hosts/forgejo.py` calls Forgejo's
+`/api/v1/repos/{owner}/{repo}/pulls/{n}`, `.../commits`, `.../files` (paged) and `.../pulls/{n}.diff` with
+`Authorization: token <contents of forgejo_token_file>`. Both return what `pr.json` stores: title, body, head
+branch, base and head SHA, commits with headlines, and files with additions and deletions. On Forgejo the base
+SHA is the PR's merge base, since the diff is taken against it. Both hosts only read. The body's file and
+start-line links point at the host the run came from (`run.json`'s `host`; a run without one is GitHub).
 
 ## Serve the runs and load the extension
 
@@ -82,8 +96,9 @@ python3 -m http.server 8765 --bind 127.0.0.1     # from the repository root
 ```
 
 Then open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick the `extension/`
-folder. Open a PR's Files changed page (`https://github.com/<owner>/<repo>/pull/<n>/changes`). The
-extension finds `runs/<n>/<variant>/review.json` on that server; it shows nothing when the run is missing.
+folder. Open a PR's Files changed page (`https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
+`<forgejo_url>/<owner>/<repo>/pulls/<n>/files`). The extension finds `runs/<key>/<variant>/review.json` on that
+server (`<key>` is `<n>` on GitHub and `fj-<n>` on Forgejo); it shows nothing when the run is missing.
 `extension/README.md` lists what it does and every GitHub selector it depends on. Run its tests with
 `node --test extension/test/extension.test.js`.
 
@@ -153,7 +168,7 @@ and estimated tokens (characters / 4). `run.py --prompt-only` builds the pack to
 
 | Section | What it lists | Needs (in `local.toml` unless noted) |
 | --- | --- | --- |
-| callers | Files outside the PR that mention a changed symbol (at most 15 symbols; more than 50 caller files and the symbol is skipped as too common) | `source_checkout` (and `github_url` to fetch missing commits) |
+| callers | Files outside the PR that mention a changed symbol (at most 15 symbols; more than 50 caller files and the symbol is skipped as too common) | `source_checkout` (and `github_url` to fetch missing commits of a GitHub PR) |
 | reach | Per app, the changed files and caller files, mapped by globs | `reach.toml` |
 | contract | Removed operations, removed schema properties, newly required properties and removed enum values (at most 30 lines), only when the OpenAPI file changed | `openapi_path`, plus the mirror |
 | migrations | `DELETE FROM`, `UPDATE`, `DROP`, `TRUNCATE` and `SET NOT NULL` statements in added migration files | `migration_dirs` |
@@ -163,7 +178,9 @@ The pack is trimmed to 6000 estimated tokens by dropping whole items, wiki first
 contract and migrations, and the text says how many were left out.
 
 The mirror is a bare clone of your local checkout at `.cache/<mirror_name>` (git-ignored). `ensure_commits`
-fetches any base or head commit it lacks from `github_url` through the `gh` credential helper, under an
+fetches any base or head commit it lacks, for a GitHub PR from `github_url` through the `gh` credential helper
+and for a Forgejo PR from `source_checkout` (the commits of a Forgejo branch are normally already in your clone;
+GitHub is never asked), under an
 `fcntl` lock on `.cache/mirror.lock`, so parallel runs are safe. With several PRs, call it once for all their
 commits before starting parallel runs. When a commit still cannot be found, the callers and contract sections
 are dropped, the reason goes in `run.json`, and the run carries on.

@@ -25,6 +25,7 @@ KEYS: frozenset[str] = frozenset({
     "openapi_path", "migration_dirs",
     "sdk_dir", "sdk_specifier", "workspace_alias", "workspace_root",
     "test_dirs", "callers_exclude_globs", "routes_dir",
+    "host", "forgejo_url", "forgejo_token_file",
 })
 
 

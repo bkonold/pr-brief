@@ -17,7 +17,7 @@ Two risks are known and unresolved, so the brief should be treated as a guide an
 
 ## Pipeline
 
-1. `run.py` reads the PR with `gh`, builds a prompt from a modified PR-Agent `/describe` prompt (`vendor/`,
+1. `run.py` reads the PR through a host (`hosts/`: `gh` for GitHub, the REST API for Forgejo), builds a prompt from a modified PR-Agent `/describe` prompt (`vendor/`,
    plus the variant's `extra_instructions`, `schema_additions` and `example_additions`) and sends it through
    `claude -p` with no tools. Nothing is posted anywhere.
 2. Optionally a context pack (`context_pack.py`, only when `local.toml` configures it): callers of changed
@@ -90,9 +90,10 @@ Brittleness: every GitHub selector lives in `extension/github_page.js`. The CSS-
 (`[class*="PullRequestDiffsList-module__..."]`, `prc-PageLayout-...`) carry the highest risk, since GitHub can
 rename them in any deploy.
 
-Runs are keyed by PR number only (`runs/<pr>/...`). `review.json` records its `repo` and the extension drops a
-review for a different `owner/repo`, but two repositories with the same PR number would overwrite each other.
-Add an owner/repo key (`runs/<owner>/<repo>/<pr>/`) before using it across several repositories.
+Runs are keyed by PR number on GitHub and `fj-<number>` on Forgejo (`runs/<key>/...`). `review.json` records its
+`repo` and the extension drops a review for a different `owner/repo`, but two repositories on one host with the same
+PR number would overwrite each other. Add an owner/repo key (`runs/<owner>/<repo>/<pr>/`) before using it across
+several repositories.
 
 ## Next steps, in priority order
 

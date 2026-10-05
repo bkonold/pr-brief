@@ -1,0 +1,28 @@
+"""GitHub through the `gh` CLI, which must be signed in."""
+import hashlib
+import json
+import subprocess
+from typing import Any
+
+PR_FIELDS = "title,body,headRefName,baseRefOid,headRefOid,commits,files"
+
+
+def gh(*args: str) -> str:
+    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+
+
+class GitHub:
+    name = "github"
+
+    def pr(self, owner: str, repo: str, n: int | str) -> dict[str, Any]:
+        return json.loads(gh("pr", "view", str(n), "--repo", f"{owner}/{repo}", "--json", PR_FIELDS))
+
+    def diff(self, owner: str, repo: str, n: int | str) -> str:
+        return gh("pr", "diff", str(n), "--repo", f"{owner}/{repo}")
+
+    def diff_link(self, repo: str, pr: str, filename: str) -> str:
+        return f"https://github.com/{repo}/pull/{pr}/files#diff-{hashlib.sha256(filename.encode('utf-8')).hexdigest()}"
+
+    def line_link(self, repo: str, pr: str, start: dict[str, Any]) -> str:
+        digest: str = hashlib.sha256(start["path"].encode("utf-8")).hexdigest()
+        return f"https://github.com/{repo}/pull/{pr}/changes#diff-{digest}{start['side']}{start['line']}"

@@ -2,13 +2,15 @@
 """Run PR-Agent's /describe prompt for one PR and one variant through `claude -p`.
 
 usage: run.py <pr> --variant NAME [--with-body] [--model opus]
-              [--repo owner/name] [--prompt-only]
+              [--host github|forgejo] [--repo owner/name] [--prompt-only]
 
---repo is required unless local.toml sets `repo`.
+--host defaults to local.toml's `host`, else github. --repo is the host's `owner/name` and is required
+unless local.toml sets `repo` for that host (`repo` applies to the host named by `host`, github by default).
 
-Reads from GitHub only (`gh pr view`, `gh pr diff`). Writes runs/<pr>/<variant>/ under PR_DESCRIBE_HOME (default: the tool's folder).
-A variant with `render_from = "<other variant>"` makes no model call and no GitHub call: it
-copies the other variant's prompt, answer and PR data from runs/<pr>/ and renders them with its own settings.
+Reads from the host only (see hosts/). Writes runs/<key>/<variant>/ under PR_DESCRIBE_HOME (default: the tool's
+folder), where <key> is the PR number on GitHub and `fj-<number>` on Forgejo.
+A variant with `render_from = "<other variant>"` makes no model call and no host call: it
+copies the other variant's prompt, answer and PR data from runs/<key>/ and renders them with its own settings.
 """
 import argparse
 import hashlib
@@ -26,6 +28,7 @@ from jinja2 import Environment
 
 from config import HOME, ROOT, load_local, variant_file
 from context_pack import Pack, build, ensure_commits
+from hosts import get_host, host_names, run_key
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
 COLLAPSIBLE_FILE_LIST_THRESHOLD = 6
@@ -34,10 +37,6 @@ COLLAPSIBLE_FILE_LIST_THRESHOLD = 6
 # Both end with the `{%- endif %}` that closes the diagram block.
 SCHEMA_ANCHOR = re.compile(r"changes_diagram: str = Field\([^\n]*\n[^\n]*\{%- endif %\}")
 EXAMPLE_ANCHOR = re.compile(r"changes_diagram: \|\n  ```mermaid\n  flowchart LR\n    \.\.\.\n  ```\n\{%- endif %\}")
-
-
-def gh(*args: str) -> str:
-    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
 
 
 def insert_after(template: str, anchor: re.Pattern[str], text: str, what: str) -> str:
@@ -87,17 +86,17 @@ def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def render_only(pr: str, name: str, variant_path: Path, source_name: str) -> int:
+def render_only(key: str, name: str, variant_path: Path, source_name: str) -> int:
     """Copy the source variant's run into this variant's folder and render it with this variant's settings."""
-    source_dir: Path = HOME / "runs" / pr / source_name
+    source_dir: Path = HOME / "runs" / key / source_name
     copied: tuple[str, ...] = ("prompt.txt", "answer.yaml", "pr.json", "run.json")
     optional: tuple[str, ...] = ("context.md",)
     absent: list[str] = [f for f in copied if not (source_dir / f).exists()]
     if absent:
         raise SystemExit(f"{name} renders from {source_name}, but {source_dir} has no {', '.join(absent)}. "
-                         f"Run `run.py {pr} --variant {source_name}` first.")
+                         f"Run `run.py` for this PR with `--variant {source_name}` first.")
     source: dict[str, Any] = json.loads((source_dir / "run.json").read_text())
-    run_dir: Path = HOME / "runs" / pr / name
+    run_dir: Path = HOME / "runs" / key / name
     run_dir.mkdir(parents=True, exist_ok=True)
     for stale in ("error.txt", "body.md", "body.html", *optional):
         (run_dir / stale).unlink(missing_ok=True)
@@ -118,9 +117,15 @@ def main() -> int:
     p.add_argument("--variant", required=True)
     p.add_argument("--with-body", action="store_true", help="show the model the PR's existing description")
     p.add_argument("--model", default="opus")
-    p.add_argument("--repo", default=load_local().get("repo"), help="GitHub repository as owner/name (default: local.toml's `repo`)")
+    local: dict[str, Any] = load_local()
+    p.add_argument("--host", choices=host_names(), default=local.get("host", "github"),
+                   help="where the PR lives (default: local.toml's `host`, else github)")
+    p.add_argument("--repo", help="the host's repository as owner/name (default: local.toml's `repo`, for the host local.toml names)")
     p.add_argument("--prompt-only", action="store_true", help="print the rendered prompt and stop")
     a = p.parse_args()
+    if a.repo is None and a.host == local.get("host", "github"):
+        a.repo = local.get("repo")
+    key: str = run_key(a.host, a.pr)
 
     variant_path: Path | None = variant_file(a.variant)
     if variant_path is None:
@@ -130,16 +135,19 @@ def main() -> int:
     if "render_from" in variant:
         if a.prompt_only:
             raise SystemExit(f"{a.variant} renders from {variant['render_from']} and has no prompt of its own")
-        return render_only(a.pr, a.variant, variant_path, variant["render_from"])
+        return render_only(key, a.variant, variant_path, variant["render_from"])
     if not a.repo:
-        p.error("--repo owner/name is required when local.toml sets no `repo`")
+        p.error(f"--repo owner/name is required: local.toml sets no `repo` for the {a.host} host")
+    owner, _, name = a.repo.partition("/")
+    if not owner or not name:
+        p.error("--repo must be owner/name")
 
-    pr: dict[str, Any] = json.loads(gh("pr", "view", a.pr, "--repo", a.repo,
-                                       "--json", "title,body,headRefName,baseRefOid,headRefOid,commits,files"))
-    diff: str = gh("pr", "diff", a.pr, "--repo", a.repo)
+    host = get_host(a.host, local)
+    pr: dict[str, Any] = host.pr(owner, name, a.pr)
+    diff: str = host.diff(owner, name, a.pr)
     pack: Pack | None = None
     if variant.get("context"):
-        ensure_commits([pr["baseRefOid"], pr["headRefOid"]])
+        ensure_commits([pr["baseRefOid"], pr["headRefOid"]], a.host)
         pack = build(pr, diff, variant["context"], options=variant.get("context_options"))
     context_md: str = pack.markdown() if pack else ""
     system, user = build_prompts(variant, pr, diff, a.with_body, context_md)
@@ -151,7 +159,7 @@ def main() -> int:
             print(f"repo context: {len(context_md)} chars, ~{pack.stats()['estimated_tokens']} tokens", file=sys.stderr)
         return 0
 
-    run_dir: Path = HOME / "runs" / a.pr / a.variant
+    run_dir: Path = HOME / "runs" / key / a.variant
     run_dir.mkdir(parents=True, exist_ok=True)
     for stale in ("error.txt", "body.md", "body.html", "context.md"):
         (run_dir / stale).unlink(missing_ok=True)
@@ -175,6 +183,7 @@ def main() -> int:
         "variant_sha256": hashlib.sha256(variant_path.read_bytes()).hexdigest(),
         **({"context": pack.stats()} if pack else {}),
         "pr": int(a.pr),
+        "host": a.host,
         "repo": a.repo,
         "pr_head_sha": pr["headRefOid"],
         "model": a.model,

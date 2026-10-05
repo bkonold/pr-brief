@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Build runs/<pr>/index.html, one iframe column per variant, and runs/index.html listing every PR.
 
-usage: compare.py <pr> [--variants a,b,...] [--all]
+usage: compare.py <key> [--variants a,b,...] [--all]
+
+<key> is the run folder: a GitHub PR number, or `fj-<number>` for a Forgejo PR.
 
 Also writes runs/<pr>/variants.json for the browser extension: the variants of compare.toml that
 have a run with a review.json, as [{variant, label, description}], in compare.toml's order.
@@ -18,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from config import HOME, config_file, variant_file
+from hosts import run_label, run_order
 
 RUNS = HOME / "runs"
 ARCHETYPES: Path | None = config_file("archetypes")
@@ -101,10 +104,10 @@ def archetype_table(prs: list[Path]) -> str:
     groups: list[str] = [*config["order"], UNCLASSIFIED]
     rows: list[str] = []
     for group in groups:
-        members: list[Path] = sorted((d for d in prs if archetype_of(d.name, assigned, config["order"]) == group), key=lambda d: int(d.name), reverse=True)
+        members: list[Path] = sorted((d for d in prs if archetype_of(d.name, assigned, config["order"]) == group), key=lambda d: run_order(d.name), reverse=True)
         for i, d in enumerate(members):
             label: str = html.escape(group) if i == 0 else ""
-            rows.append(f'<tr><td>{label}</td><td><a href="{d.name}/index.html">PR {d.name}</a> {html.escape(pr_title(d))}</td>'
+            rows.append(f'<tr><td>{label}</td><td><a href="{d.name}/index.html">{run_label(d.name)}</a> {html.escape(pr_title(d))}</td>'
                         f'<td>{html.escape(pr_author(d))}</td></tr>')
     return f"<table><tr><th>Archetype</th><th>PR</th><th>Author</th></tr>{''.join(rows)}</table>"
 
@@ -135,17 +138,17 @@ def main() -> int:
         by_name: dict[str, Path] = {d.name: d for d in on_disk}
         missing: list[str] = [n for n in names if n not in by_name]
         if missing:
-            print(f"PR {pr}: no run for {', '.join(missing)}", file=sys.stderr)
+            print(f"{run_label(pr)}: no run for {', '.join(missing)}", file=sys.stderr)
         run_dirs = [by_name[n] for n in names if n in by_name]
     (pr_dir / "variants.json").write_text(json.dumps(variants_json(pr_dir), indent=2) + "\n")
-    title: str = f"PR {pr}: {pr_title(pr_dir)}"
+    title: str = f"{run_label(pr)}: {pr_title(pr_dir)}"
     (pr_dir / "index.html").write_text(page(title, f"<h1>{html.escape(title)}</h1><div class=\"cols\" style=\"grid-template-columns: repeat({len(run_dirs)}, minmax(0, 1fr))\">{''.join(column(d) for d in run_dirs)}</div>"))
 
-    prs: list[Path] = sorted((d for d in RUNS.iterdir() if (d / "index.html").exists()), key=lambda d: int(d.name))
+    prs: list[Path] = sorted((d for d in RUNS.iterdir() if (d / "index.html").exists()), key=lambda d: run_order(d.name))
     if ARCHETYPES:
         listing: str = archetype_table(prs)
     else:
-        items: str = "".join(f'<li><a href="{d.name}/index.html">PR {d.name}</a> {html.escape(pr_title(d))}</li>' for d in prs)
+        items: str = "".join(f'<li><a href="{d.name}/index.html">{run_label(d.name)}</a> {html.escape(pr_title(d))}</li>' for d in prs)
         listing = f"<ul>{items}</ul>"
     (RUNS / "index.html").write_text(page("PR description comparisons", f"<h1>PR description comparisons</h1>{listing}"))
     return 0

@@ -9,7 +9,6 @@ The body mirrors PR-Agent's _prepare_data, _prepare_pr_answer and process_pr_fil
 (pr_agent/tools/pr_description.py) with default settings: the PR's own title and description are
 kept, the diagram direction is adaptive, and the file table is collapsible above 6 files.
 """
-import hashlib
 import html
 import json
 import re
@@ -24,6 +23,8 @@ from typing import Any, Callable
 import yaml
 
 from config import ROOT, config_file, load_local, variant_file
+from hosts import get_host
+from hosts.github import GitHub
 
 sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, insert_br_after_x_chars, replace_code_tags, sanitize_diagram  # noqa: E402
@@ -109,13 +110,16 @@ def count_diagram_edges(diagram: str) -> tuple[int, int]:
 
 # ---------------------------------------------------------------- file links
 
+# The host that built the run (hosts/); main() sets it from run.json, and GitHub is the default.
+LINK_HOST = GitHub()
+
+
 def diff_link(repo: str, pr: str, filename: str) -> str:
-    return f"https://github.com/{repo}/pull/{pr}/files#diff-{hashlib.sha256(filename.encode('utf-8')).hexdigest()}"
+    return LINK_HOST.diff_link(repo, pr, filename)
 
 
 def line_link(repo: str, pr: str, start: dict[str, Any]) -> str:
-    digest: str = hashlib.sha256(start["path"].encode("utf-8")).hexdigest()
-    return f"https://github.com/{repo}/pull/{pr}/changes#diff-{digest}{start['side']}{start['line']}"
+    return LINK_HOST.line_link(repo, pr, start)
 
 
 # ---------------------------------------------------------------- PR-Agent's label-grouped walkthrough
@@ -991,8 +995,10 @@ def parse_answer(raw: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    global LINK_HOST
     run_dir: Path = Path(sys.argv[1]).resolve()
     run: dict[str, Any] = json.loads((run_dir / "run.json").read_text())
+    LINK_HOST = get_host(run.get("host", "github"), load_local())
     pr: dict[str, Any] = json.loads((run_dir / "pr.json").read_text())
     variant_path: Path | None = variant_file(run["variant"])
     if variant_path is None:

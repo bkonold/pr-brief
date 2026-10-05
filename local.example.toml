@@ -2,9 +2,22 @@
 # the context-pack section that needs a missing key is skipped, and run.json records why.
 # Use paths as they appear in the repository, relative to its root, with forward slashes.
 
-# The GitHub repository run.py reads, as "owner/name". Passing --repo overrides it; with neither,
-# run.py exits and asks for one.
+# Where run.py reads pull requests from: "github" (the default, through the `gh` CLI) or "forgejo".
+# `run.py --host` overrides it. `repo` below names a repository on this host.
+# host = "github"
+
+# The repository run.py reads, as "owner/name", on the host above. Passing --repo overrides it; with
+# neither, run.py exits and asks for one. A run with --host forgejo needs its own --repo (the Forgejo
+# owner/name) unless `host = "forgejo"` is set here.
 repo = "example-org/example-repo"
+
+# The Forgejo (or Gitea) instance, and the file holding an API token for it (read only is enough). The
+# token is sent in an Authorization header and nowhere else. Leave both unset for GitHub only; the
+# token file may be left unset for an instance that needs no sign-in.
+# Forgejo runs are kept as runs/fj-<number>/ and commits missing from the mirror are fetched from
+# source_checkout, not from github_url.
+# forgejo_url = "http://localhost:3000"
+# forgejo_token_file = "~/.config/forgejo/token"
 
 # Sections "callers" and "contract" search a bare mirror of the repository kept in .cache/.
 # source_checkout is a local clone the mirror is first cloned from; without it no mirror is created.
