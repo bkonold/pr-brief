@@ -121,6 +121,61 @@ class RequiredWording(unittest.TestCase):
         self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`kind` parameter added (required) to `GET /r`")])
 
 
+def typed(**kinds: str) -> dict:
+    return {"type": "object", "properties": {name: {"type": kind} for name, kind in kinds.items()}, "required": []}
+
+
+class TypeSweeps(unittest.TestCase):
+    def pair(self, schemas: int, per_schema: int, old: str = "number", new: str = "string") -> tuple[dict, dict]:
+        paths = response_paths(schemas)
+        names = [f"p{i}" for i in range(per_schema)]
+        base = document(paths, {f"S{i}": typed(**{n: old for n in names}) for i in range(schemas)})
+        head = document(paths, {f"S{i}": typed(**{n: new for n in names}) for i in range(schemas)})
+        return base, head
+
+    def test_one_type_change_on_many_properties_is_one_line_with_the_first_three_names(self) -> None:
+        self.assertEqual(texts(lines_for(*self.pair(9, 3))),
+                         [(CONSUMERS, "`number` → `string` on 27 properties in 9 schemas, response only · `p0`, `p1`, `p2`")])
+
+    def test_the_names_are_distinct_and_the_rest_are_counted(self) -> None:
+        self.assertEqual(texts(lines_for(*self.pair(3, 5))),
+                         [(CONSUMERS, "`number` → `string` on 15 properties in 3 schemas, response only · `p0`, `p1`, `p2` +2")])
+
+    def test_two_properties_are_not_a_sweep(self) -> None:
+        self.assertEqual(texts(lines_for(*self.pair(2, 1))),
+                         [(CONSUMERS, "response: `p0` type changed on `S0`"), (CONSUMERS, "response: `p0` type changed on `S1`")])
+
+    def test_different_type_pairs_are_different_lines(self) -> None:
+        paths = response_paths(6)
+        base = document(paths, {f"S{i}": typed(a="number") for i in range(6)})
+        head = document(paths, {f"S{i}": typed(a="string" if i < 3 else "boolean") for i in range(6)})
+        self.assertEqual({text for _, text in texts(lines_for(base, head))},
+                         {"`number` → `string` on 3 properties in 3 schemas, response only · `a`",
+                          "`number` → `boolean` on 3 properties in 3 schemas, response only · `a`"})
+
+    def test_a_request_side_type_change_makes_callers_change(self) -> None:
+        paths = {"/a": {"post": operation("a", request="In")}}
+        base = document(paths, {"In": typed(a="number", b="number", c="number")})
+        head = document(paths, {"In": typed(a="string", b="string", c="string")})
+        self.assertEqual(texts(lines_for(base, head)),
+                         [(CALLERS, "`number` → `string` on 3 properties in 1 schema, request only · `a`, `b`, `c`")])
+
+    def test_a_change_with_no_recorded_types_is_not_swept(self) -> None:
+        base, head = self.pair(4, 1)
+        contract = contract_of(base, head)
+        for item in contract["changed"]["properties"]:
+            del item["from"], item["to"]
+        diff = make_diff(SPEC, json.dumps(base, indent=2), json.dumps(head, indent=2))
+        found = contract_lines(contract, file_diff_lines(diff, SPEC), SPEC)
+        self.assertEqual(texts(found)[:1], [(CONSUMERS, "`p0` type changed on 4 schemas, response only · `S0`, `S1`, `S2` +1")])
+
+    def test_type_labels(self) -> None:
+        from context_pack import type_label
+        self.assertEqual([type_label(d) for d in ({"type": "integer", "format": "int64"}, {"$ref": "#/components/schemas/W"},
+                                                  {"type": "array", "items": {"type": "string"}}, {"oneOf": []}, {"enum": ["A"]}, None)],
+                         ["integer (int64)", "W", "string[]", "oneOf", None, None])
+
+
 class Moves(unittest.TestCase):
     def test_a_removed_and_an_added_operation_with_a_similar_path_are_one_move(self) -> None:
         base = document({"/api/old-widgets/{id}": {"get": operation("a", "w-controller")}}, {})

@@ -57,6 +57,7 @@ class Change:
     member: Member
     loc: tuple[str, int] | None
     detail: str = ""
+    types: tuple[str, str] | None = None
 
 
 def contract_impact(kind: str, sides: frozenset[str] | set[str] = frozenset()) -> str:
@@ -227,8 +228,8 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
         return Member(schema=schema, tag=tag_of_schema(schema))
 
     def add(kind: str, sides: frozenset[str], subject: str, scope: str, member: Member, loc: tuple[str, int] | None,
-            detail: str = "") -> None:
-        changes.append(Change(kind, contract_impact(kind, sides), sides, subject, scope, member, loc, detail))
+            detail: str = "", types: tuple[str, str] | None = None) -> None:
+        changes.append(Change(kind, contract_impact(kind, sides), sides, subject, scope, member, loc, detail, types))
 
     removed_ids: dict[str, str | None] = {f"{o['method']} {o['path']}": o.get("operation_id") for o in contract.get("removed_operations", [])}
     removed: list[tuple[str, str, str | None]] = []
@@ -360,7 +361,8 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
             add("property_no_longer_required", sides_of(schema), name, schema, schema_member(schema), loc)
             continue
         if set(what) & TYPE_KEYS:
-            add("property_type_changed", sides_of(schema), name, schema, schema_member(schema), loc)
+            add("property_type_changed", sides_of(schema), name, schema, schema_member(schema), loc,
+                types=(item["from"], item["to"]) if "from" in item and "to" in item else None)
         elif [k for k in what if k not in COSMETIC_KEYS and k != "enum" and not k.startswith("x-")]:
             add("property_constraint_changed", sides_of(schema), name, schema, schema_member(schema), loc)
     for entry in contract.get("removals", []):
@@ -420,8 +422,8 @@ def names_text(names: list[str]) -> str:
     return f"{shown} +{len(names) - LISTED_NAMES}" if len(names) > LISTED_NAMES else shown
 
 
-def plural(count: int, noun: str) -> str:
-    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+def plural(count: int, noun: str, many: str | None = None) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {many or noun + 's'}"
 
 
 
@@ -545,6 +547,28 @@ def property_lines(changes: list[Change], spec_path: str) -> list[Line]:
     return lines
 
 
+def type_sweep_lines(changes: list[Change], spec_path: str) -> tuple[list[Line], list[Change]]:
+    """The same type change (old type to new type) on three or more properties, on the same sides, is one line:
+    `number` → `string` on 23 properties in 9 schemas, then the first property names. Returns those lines and the
+    type changes that no sweep took."""
+    groups: dict[tuple[tuple[str, str], frozenset[str]], list[Change]] = {}
+    for change in changes:
+        if change.types:
+            groups.setdefault((change.types, change.sides), []).append(change)
+    lines: list[Line] = []
+    swept: set[int] = set()
+    for ((old, new), sides), group in groups.items():
+        if len(group) < SWEEP_MINIMUM:
+            continue
+        side: str = side_phrase(sides)
+        schemas: int = len({c.scope for c in group})
+        text: str = f"{code(old)} → {code(new)} on {plural(len(group), 'property', 'properties')} in {plural(schemas, 'schema')}"
+        text += (f", {side}" if side else "") + f" · {names_text(list(dict.fromkeys(c.subject for c in group)))}"
+        lines.append(Line(group[0].impact, text, spec_path, group[0].loc, [c.member for c in group]))
+        swept.update(id(c) for c in group)
+    return lines, [c for c in changes if id(c) not in swept]
+
+
 def schema_added_lines(changes: list[Change], covered: set[str], spec_path: str) -> list[Line]:
     """One line for the new schemas that no new operation family already counted."""
     fresh: list[Change] = [c for c in changes if c.kind == "schema_added" and c.scope not in covered]
@@ -623,11 +647,14 @@ def pattern_lines(changes: list[Change], extras: dict[str, Any], contract: dict[
     added_labels: set[str] = {f"{o['method']} {o['path']}" for o in extras["added"]}
     counted: set[str] = {schema for schema in contract.get("added", {}).get("schemas", [])
                          if added_labels & set(contract.get("schema_operations", {}).get(schema, []))}
+    type_lines, type_leftovers = type_sweep_lines(kinds("property_type_changed"), spec_path)
     lines: list[Line] = [
         *operations,
         *operation_change_lines(kinds("operation_changed", "responses_changed"), spec_path),
         *parameter_lines(kinds(*PARAMETER_PHRASE), spec_path),
-        *property_lines(kinds(*(k for k in PROPERTY_PHRASE if k != "schema_removed")), spec_path),
+        *type_lines,
+        *property_lines([c for c in kinds(*(k for k in PROPERTY_PHRASE if k != "schema_removed")) if c.kind != "property_type_changed"]
+                        + type_leftovers, spec_path),
         *property_lines(kinds("schema_removed"), spec_path),
         *schema_added_lines(changes, counted, spec_path),
         *enum_lines(kinds("enum_added", "enum_removed"), spec_path),

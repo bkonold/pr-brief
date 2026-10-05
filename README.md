@@ -190,7 +190,7 @@ sha256 of the variant file that produced each run.
   on the operations that use it. With no changes the section says "No API or database changes"; a side that could
   not be checked (no `openapi_path` or mirror, no `migration_globs`) is named. It needs `contract.json` for the API
   side and `migration_globs` in `local.toml` for the database side. `contract.json` lists `removals` and
-  `newly_required` (the only entries that raise a review floor) and, for this block, `added`, `changed`,
+  `newly_required` (the only entries that raise a review floor) and, for this block, `added`, `changed` (a changed property's `from` and `to` types when they differ),
   `schema_operations` and `added_required` (the newly required properties that the base schema did not declare, including
   in an inline `allOf` member; v22 words them `added (required)`, and the others `now required`).
 - `contract_layout = "by_chunk"` (v22; needs `contract_block` and `files = "chunks"`) replaces the single block with two
@@ -224,6 +224,7 @@ sha256 of the variant file that produced each run.
   | Three or more moves that change only a path prefix | `/old/*` → `/new/*`, 12 endpoints |
   | Operations removed, added or deprecated under one base path | `new /api/base GET POST PATCH`, with the number of new schemas |
   | A pagination parameter (`page`, `size`, `sort`, ...) added to 3 or more endpoints | `pagination added to 12 endpoints` |
+  | The same type change (old type → new type) on 3 or more properties, on the same sides | `` `number` → `string` `` on 23 properties in 9 schemas, with its side, then the first three property names and `+N` |
   | Another parameter change on 3 or more endpoints | one line with the endpoint count |
   | Enum values added to one enum | `Enum` + `A`, `B` |
   | Anything else | one line per change |

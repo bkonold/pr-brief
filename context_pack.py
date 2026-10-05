@@ -736,6 +736,23 @@ def operation_tags(base: dict[str, Any], head: dict[str, Any], breaks: dict[str,
     return tags
 
 
+def type_label(definition: Any) -> str | None:
+    """A property's type as a reader would name it: `string`, `integer (int64)`, `Widget` for a `$ref`, `string[]` for an
+    array, `oneOf` for a union; None when the definition says nothing about its type."""
+    if not isinstance(definition, dict):
+        return None
+    ref: Any = definition.get("$ref")
+    if isinstance(ref, str):
+        return ref.rsplit("/", 1)[-1]
+    kind: Any = definition.get("type")
+    if kind == "array":
+        inner: str | None = type_label(definition.get("items"))
+        return f"{inner}[]" if inner else "array"
+    if isinstance(kind, str):
+        return f"{kind} ({definition['format']})" if definition.get("format") else kind
+    return next((key for key in ("oneOf", "anyOf", "allOf") if key in definition), None)
+
+
 def declared_properties(schema: Any) -> dict[str, Any]:
     """The properties a schema declares: its own, and those of the inline objects in its `allOf` (a member that is a
     `$ref` is another schema and is left out)."""
@@ -747,7 +764,8 @@ def declared_properties(schema: Any) -> dict[str, Any]:
 
 def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[str, list[str]]) -> dict[str, Any]:
     """What was added or changed in the contract, beside the breaking changes in `breaks`: `added` and `changed`, each
-    with operations, properties and parameters (`added` also lists new schemas), and `schema_operations`, the operations
+    with operations, properties and parameters (`added` also lists new schemas; a changed property whose type differs also
+    carries `from` and `to`, the old and new type as `type_label` words), and `schema_operations`, the operations
     that reach each schema named in either (or in `breaks`), `schema_sides`, the sides (`request`, `response`) through which
     each of those operations reaches it, `operation_tags`, `deprecated` (operations and properties newly deprecated),
     `enums_added`, `removed_operations` (with their operationIds, for matching moves) and `added_required`, the
@@ -800,8 +818,13 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
                                    for value in enum_values(definition) if value not in enum_values(old_props[prop]))
                 if isinstance(definition, dict) and definition.get("deprecated") and not old_props[prop].get("deprecated"):
                     deprecated["properties"].append({"schema": name, "name": prop})
+                entry_types: dict[str, str] = {}
+                old_type, new_type = type_label(old_props[prop]), type_label(definition)
+                if old_type and new_type and old_type != new_type:
+                    entry_types = {"from": old_type, "to": new_type}
                 changed["properties"].append({"schema": name, "name": prop,
-                                              "what": differing_keys(old_props[prop], definition) if isinstance(definition, dict) else []})
+                                              "what": differing_keys(old_props[prop], definition) if isinstance(definition, dict) else [],
+                                              **entry_types})
         for prop in old_schema.get("required", []):
             if prop in new_props and prop not in schema.get("required", []):
                 changed["properties"].append({"schema": name, "name": prop, "what": ["no longer required"]})
