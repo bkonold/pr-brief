@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -76,17 +77,25 @@ NON_EDGE_LINE = re.compile(r"\s*(?:%%|classDef\b|class\b|style\b|linkStyle\b|sub
 LABEL_OPENERS = ("--", "==", "-.")
 
 
-def count_diagram_edges(diagram: str) -> tuple[int, int]:
-    """(labelled, total) arrows of a mermaid flowchart. A label is `-- x -->`, `-->|x|`, `-. x .->`
-    or `== x ==>`; `A & B --> C` counts one arrow per pair."""
-    labelled: int = 0
-    total: int = 0
+@dataclass(frozen=True)
+class DiagramEdge:
+    source: str
+    target: str
+    labelled: bool
+    link: str  # the connector as written (the opening one of a `A -- text --> B` label): `-->`, `-.->`, `<-->`, `~~~`
+
+
+def parse_diagram_edges(diagram: str) -> list[DiagramEdge]:
+    """Every arrow of a mermaid flowchart, one per source and target pair: chained links (`a --> b --> c`) give one
+    edge per link and `A & B --> C` one per pair. A label is `-- x -->`, `-->|x|`, `-. x .->` or `== x ==>`."""
+    edges: list[DiagramEdge] = []
     for raw_line in diagram.split("\n"):
         if NON_EDGE_LINE.match(raw_line):
             continue
         line: str = re.sub(r":::\w+", "", NODE_SHAPE.sub("", re.sub(r"(?<=\w)\s*[\[({]+\"(?:[^\"\\]|\\.)*\"[\])}]+", "", raw_line)))
         groups: list[list[str]] = []
         link_labelled: list[bool] = []
+        links: list[str] = []
         current: list[str] = []
         in_label: bool = False
         for token in LINK_TOKEN.finditer(line):
@@ -99,6 +108,7 @@ def count_diagram_edges(diagram: str) -> tuple[int, int]:
                 current = []
                 in_label = text in LABEL_OPENERS
                 link_labelled.append(in_label)
+                links.append(text)
             elif text.startswith('"') or text.startswith("|"):
                 if link_labelled and not current and len(groups) == len(link_labelled):
                     link_labelled[-1] = True
@@ -106,11 +116,16 @@ def count_diagram_edges(diagram: str) -> tuple[int, int]:
                 current.append(text)
         groups.append(current)
         for index, is_labelled in enumerate(link_labelled):
-            if index + 1 < len(groups) and groups[index] and groups[index + 1]:
-                arrows: int = len(groups[index]) * len(groups[index + 1])
-                total += arrows
-                labelled += arrows if is_labelled else 0
-    return labelled, total
+            if index + 1 < len(groups):
+                edges.extend(DiagramEdge(source, target, is_labelled, links[index])
+                             for source in groups[index] for target in groups[index + 1])
+    return edges
+
+
+def count_diagram_edges(diagram: str) -> tuple[int, int]:
+    """(labelled, total) arrows of a mermaid flowchart."""
+    edges: list[DiagramEdge] = parse_diagram_edges(diagram)
+    return sum(edge.labelled for edge in edges), len(edges)
 
 
 # ---------------------------------------------------------------- file links
@@ -398,6 +413,7 @@ class Chunk:
     raised_by: list[str] = field(default_factory=list)
     start: dict[str, Any] | None = None
     step: str | None = None
+    following: list[int] = field(default_factory=list)
 
 
 def clean_path(raw: Any) -> str:
@@ -628,6 +644,57 @@ def clean_node_files(raw: Any, position: dict[str, int], paths: list[str], notes
     return files
 
 
+MAX_FOLLOWING = 3
+# A dotted link is a return to an earlier box and `~~~` only spaces boxes apart, so neither is a step forward.
+NOT_A_STEP = re.compile(r"\.|^~")
+
+
+def diagram_successors(diagram: str) -> dict[str, list[str]]:
+    """Box id -> the boxes the diagram's arrows lead to from it, in the order the arrows are written. A connector
+    without an arrowhead is read from its first box to its second; `<-->` leads both ways."""
+    successors: dict[str, list[str]] = {}
+    for edge in parse_diagram_edges(diagram):
+        if NOT_A_STEP.search(edge.link):
+            continue
+        successors.setdefault(edge.source, []).append(edge.target)
+        if edge.link.startswith("<"):
+            successors.setdefault(edge.target, []).append(edge.source)
+    return successors
+
+
+def assign_following(diagram: str, chunks: list[Chunk]) -> None:
+    """Set each chunk's `following`: the numbers of the (at most three) chunks to read after it, in diagram order.
+
+    From the boxes the chunk owns the diagram's arrows are walked breadth-first. A box owned by the chunk itself or
+    by no chunk (context) is walked through; a box owned by other chunks ends that branch and gives each of them.
+    The chunks are ordered by where the box that reached them is first declared in the diagram, then by number.
+    A chunk with no boxes, or whose walk reaches no other chunk, is followed by the next higher number, if any."""
+    successors: dict[str, list[str]] = diagram_successors(diagram)
+    position: dict[str, int] = declaration_positions(diagram.split("\n"))
+    owners: dict[str, list[Chunk]] = {}
+    for chunk in chunks:
+        for node in chunk.nodes:
+            owners.setdefault(node, []).append(chunk)
+    by_number: list[Chunk] = sorted(chunks, key=lambda chunk: chunk.number)
+    for chunk in chunks:
+        reached: dict[int, int] = {}
+        seen: set[str] = set(chunk.nodes)
+        queue: deque[str] = deque(chunk.nodes)
+        while queue:
+            for target in successors.get(queue.popleft(), []):
+                if target in seen:
+                    continue
+                seen.add(target)
+                if target in owners:
+                    for other in owners[target]:
+                        reached[other.number] = min(reached.get(other.number, position[target]), position[target])
+                else:
+                    queue.append(target)
+        chunk.following = sorted(reached, key=lambda number: (reached[number], number))[:MAX_FOLLOWING]
+        if not chunk.following:
+            chunk.following = [other.number for other in by_number if other.number > chunk.number][:1]
+
+
 def add_context_style(diagram: str, context_nodes: list[str]) -> str:
     """Give the nodes that cover no changed file a dashed `context` style, before the closing fence."""
     if not context_nodes:
@@ -836,6 +903,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         diagram = number_by_flow(diagram, chunks, notes)
     elif diagram and any(isinstance(item, dict) and "nodes" in item for item in data.get("chunks") or []):
         diagram = number_chunks_by_path(diagram, chunks, notes)
+    assign_following(diagram, chunks)
     edges: tuple[int, int] = count_diagram_edges(diagram)
     legend: str = ""
     if diagram and cfg.get("files") == "chunks":
@@ -898,6 +966,7 @@ def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], ha
                     "nodes": c.nodes,
                     "files": [{"path": path, "additions": counts[path.lower()][0], "deletions": counts[path.lower()][1]}
                               for path in c.files],
+                    "next": c.following,
                     **({"step": c.step} if c.step else {}),
                     **({"start": c.start} if c.start else {})} for c in chunks],
     }

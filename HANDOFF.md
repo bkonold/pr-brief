@@ -27,7 +27,8 @@ Two risks are known and unresolved, so the brief should be treated as a guide an
    - validates each chunk's start line (it must match exactly one line of the diff) and `node_files`;
    - prerenders the Mermaid diagram to `diagram.svg` with headless Chrome;
    - writes `review.json` (schema 2): top level `nodes` and `diagram`; chunks with `n`, `name`, `review`,
-     `why`, `files`, `start {path, side, line, text, why?}` and `nodes`;
+     `why`, `files`, `start {path, side, line, text, why?}`, `nodes` and `next` (the numbers of the up to three chunks
+     to read after it, from the diagram's arrows);
    - applies the `chunk_box_fallback` (a box for every chunk the model left without one).
 4. `compare.py` builds side-by-side pages per PR and `variants.json` for the extension's choice of variant.
 

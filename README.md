@@ -202,7 +202,11 @@ sha256 of the variant file that produced each run.
 - Diagrams in `body.html` and `diagram.svg` share one minimal-outline theme (`DIAGRAM_STYLE` in
   `render.py`): rounded outlines, open-chevron arrowheads, hairline subgraphs. `body.md` is untouched.
 - `review.json` is schema 2: top-level `nodes` and `diagram`, and chunks with `n`, `name`, `review`, `why`,
-  `files`, `start`, `nodes` and (v16) `step`.
+  `files`, `start`, `nodes`, `next` and (v16) `step`. `next` lists the numbers of the up to three chunks to read after
+  a chunk. The diagram's arrows are walked from the chunk's boxes: boxes of the same chunk or of no chunk are walked
+  through, and a box of another chunk ends that branch and gives its chunk. The chunks come in the order their boxes are
+  declared in the diagram. Dotted arrows (returns) and `~~~` links are not followed. A chunk with no boxes, or
+  whose walk reaches no other chunk, is followed by the next higher number, and the last chunk by `[]`.
 - With `routes_dir` set in `local.toml`, files under it are labelled by their React Router flat-route URL in
   the grouped file list.
 
