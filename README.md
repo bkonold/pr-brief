@@ -188,6 +188,10 @@ sha256 of the variant file that produced each run.
   step of the chunk that owns them. A chunk's optional `step` (one or two words, such as `UI`, `API`, `Database`)
   is kept in `review.json` and shown under its number; a longer `step` is dropped with a note. The review table
   rows carry `data-flow` and `data-risk` so the extension can switch between the two orders.
+- Inside every chunk, whatever the variant, the files are written in this order: the start file (when the chunk has a
+  resolved start), then the other files in the model's order, test files last. A file is a test when it matches
+  `test_globs` in `local.toml` (default: `**/test/**`, `**/tests/**`, `**/*Test.*`, `**/*Tests.*`, `**/*.test.*`,
+  `**/*_test.*`) or contains a `test_dirs` marker. `review.json`'s `files` and the review table list them in that order.
 - `numbering = "boxes"` numbers the diagram's boxes 1 to N in declaration order, prefixes each label with its
   number and gives the Review order table a `Boxes` column.
 - `chunk_box_fallback = true`: after the model's node ids are validated, each chunk still without a node gets

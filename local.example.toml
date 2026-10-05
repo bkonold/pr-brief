@@ -58,6 +58,12 @@ workspace_root = "web"
 # "/src/test/", ".test." and "Test.java". Test files are never listed as callers.
 test_dirs = ["/src/integrationTest/"]
 
+# Globs over repository paths (`*` within a folder, `**` across folders) that make a file a test when the renderer
+# orders the files inside a chunk: the chunk's start file first, then the other files in the model's order, test files
+# last. Optional; without it the built-in globs apply (`**/test/**`, `**/tests/**`, `**/*Test.*`, `**/*Tests.*`,
+# `**/*.test.*`, `**/*_test.*`). Setting it replaces them. `test_dirs` above also counts.
+# test_globs = ["**/__tests__/**", "**/*.spec.*"]
+
 # Pathspec globs (git grep syntax without the leading ":!") excluded from the callers search when a
 # variant sets callers_code_only, in addition to markdown, lock and similar files.
 callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]

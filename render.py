@@ -42,6 +42,9 @@ ALSO_SUBGRAPH = f'subgraph {ALSO_ID}["Also in this PR"]'
 LEVELS: list[str] = ["skim", "read", "read carefully"]
 ROUTES_DIR: str = load_local().get("routes_dir", "")
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
+DEFAULT_TEST_GLOBS: list[str] = ["**/test/**", "**/tests/**", "**/*Test.*", "**/*Tests.*", "**/*.test.*", "**/*_test.*"]
+TEST_GLOBS: list[str] = load_local().get("test_globs", DEFAULT_TEST_GLOBS)
+TEST_DIRS: list[str] = load_local().get("test_dirs", [])
 
 
 class AnswerError(Exception):
@@ -202,6 +205,12 @@ def glob_to_regex(glob: str) -> re.Pattern[str]:
 
 def matches(globs: list[str], path: str) -> bool:
     return any(glob_to_regex(g).match(path) for g in globs)
+
+
+def is_test_path(path: str, globs: list[str] | None = None, dirs: list[str] | None = None) -> bool:
+    """Whether the path is a test file: it matches a test glob (`test_globs` in local.toml, else the generic
+    folder and name patterns) or contains one of the repository's `test_dirs` markers."""
+    return matches(TEST_GLOBS if globs is None else globs, path) or any(d in path for d in (TEST_DIRS if dirs is None else dirs))
 
 
 def breaking_change_counts(rule: dict[str, Any], path: str, deletions: int, contract: dict[str, Any] | None) -> bool:
@@ -403,6 +412,13 @@ def clean_nodes(raw: Any) -> list[str]:
 UNCHUNKED = "Unchunked"
 
 
+def order_files(files: list[str], start: dict[str, Any] | None) -> list[str]:
+    """The chunk's start file first, then the other files in the model's order, test files last."""
+    first: list[str] = [start["path"]] if start else []
+    rest: list[str] = [path for path in files if path not in first]
+    return first + [p for p in rest if not is_test_path(p)] + [p for p in rest if is_test_path(p)]
+
+
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
                  notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None,
                  flow_order: bool = False) -> list[Chunk]:
@@ -430,12 +446,13 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
         step: str | None = clean_step(item.get("step"), name, notes)
         if flow_order and step is None and "step" not in item:
             notes.append(f"chunk '{name}': no step")
-        chunks.append(Chunk(name, review, str(item.get("why", "")).strip(), files, clean_nodes(item.get("nodes")),
-                            start=resolve_start(item.get("start"), name, files, diff_lines, notes), step=step))
+        start: dict[str, Any] | None = resolve_start(item.get("start"), name, files, diff_lines, notes)
+        chunks.append(Chunk(name, review, str(item.get("why", "")).strip(), order_files(files, start),
+                            clean_nodes(item.get("nodes")), start=start, step=step))
     missing: list[str] = [p for p in paths if p not in seen]
     if missing:
         notes.append("files the model left out of every chunk: " + ", ".join(missing))
-        chunks.append(Chunk(UNCHUNKED, "read", "Not assigned to a chunk by the model", missing))
+        chunks.append(Chunk(UNCHUNKED, "read", "Not assigned to a chunk by the model", order_files(missing, None)))
     for chunk in chunks:
         apply_floor(chunk, counts, floor_cfg, contract)
     if flow_order:
