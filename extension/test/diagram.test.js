@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor, wheelPanDelta } = require("../diagram.js");
+const { clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor } = require("../diagram.js");
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
 
@@ -79,17 +79,4 @@ test("wheelZoomFactor zooms in on a negative delta, out on a positive one, and i
   assert.equal(wheelZoomFactor({ deltaY: 0, deltaMode: 0 }), 1);
   assert.equal(wheelZoomFactor({ deltaY: -100, deltaMode: 0 }), wheelZoomFactor({ deltaY: -5000, deltaMode: 0 }));
   close(wheelZoomFactor({ deltaY: -4, deltaMode: 0 }) * wheelZoomFactor({ deltaY: 4, deltaMode: 0 }), 1);
-});
-
-test("wheelPanDelta moves the diagram opposite to the wheel on both axes", () => {
-  assert.deepEqual(wheelPanDelta({ deltaX: 10, deltaY: 30, deltaMode: 0, shiftKey: false }), { dx: -10, dy: -30 });
-});
-
-test("wheelPanDelta turns a shifted vertical wheel into a horizontal pan", () => {
-  assert.deepEqual(wheelPanDelta({ deltaX: 0, deltaY: 40, deltaMode: 0, shiftKey: true }), { dx: -40, dy: -0 });
-  assert.deepEqual(wheelPanDelta({ deltaX: 25, deltaY: 40, deltaMode: 0, shiftKey: true }), { dx: -25, dy: -40 });
-});
-
-test("wheelPanDelta scales line-mode deltas to pixels", () => {
-  assert.deepEqual(wheelPanDelta({ deltaX: 0, deltaY: 2, deltaMode: 1, shiftKey: false }), { dx: -0, dy: -32 });
 });

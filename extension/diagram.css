@@ -161,15 +161,8 @@
 }
 
 .prd-panning,
-.prd-panning g.node,
-.prd-space .prd-viewport,
-.prd-space .prd-viewport g.node {
+.prd-panning g.node {
   cursor: grabbing !important;
-}
-
-.prd-space .prd-viewport:not(.prd-panning),
-.prd-space .prd-viewport:not(.prd-panning) g.node {
-  cursor: grab !important;
 }
 
 .prd-collapsed .prd-card {

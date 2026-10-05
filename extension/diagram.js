@@ -82,14 +82,6 @@
     return Math.exp(-delta * WHEEL_ZOOM_RATE);
   }
 
-  // How a plain wheel event moves the diagram. Shift turns a vertical wheel into a horizontal pan.
-  function wheelPanDelta(event) {
-    const unit = wheelUnit(event);
-    const horizontal = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
-    const vertical = event.shiftKey && !event.deltaX ? 0 : event.deltaY;
-    return { dx: -horizontal * unit, dy: -vertical * unit };
-  }
-
   // Mermaid names a node's group `<svg id>-flowchart-<nodeId>-<index>`.
   function nodeIdOf(elementId) {
     return NODE_ID.exec(elementId ?? "")?.[1] ?? null;
@@ -329,25 +321,16 @@
     return element;
   }
 
-  function isTypingTarget(target) {
-    return Boolean(target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) || target?.isContentEditable === true;
-  }
-
-  function isControlTarget(target) {
-    return isTypingTarget(target) || Boolean(target?.closest?.("button, a[href], summary, [role='button']"));
-  }
-
   // The pan-and-zoom canvas: `svg` is absolutely positioned in `viewport` and moved by a translate + scale
   // transform. The view is a { scale, x, y } in viewport pixels; `fitted` keeps it matched to the viewport width
-  // until the user zooms or pans. `panel` scopes the keyboard shortcuts to when the pointer is over it.
-  function createCanvas(panel, viewport, svg, { onNode, onView }) {
+  // until the user zooms or pans. A pinch (ctrl/cmd + wheel) zooms around the pointer, a drag anywhere pans, and a
+  // press that stays under DRAG_THRESHOLD is a click on the box under it. A plain wheel is left to the page.
+  function createCanvas(viewport, svg, { onNode, onView }) {
     const content = contentSize(svg.getAttribute("viewBox"), svg.getAttribute("width"), svg.getAttribute("height"));
     svg.style.width = `${content.w}px`;
     svg.style.height = `${content.h}px`;
     let view = { scale: 1, x: 0, y: 0 };
     let fitted = true;
-    let hovering = false;
-    let spaceDown = false;
     let drag = null;
 
     const size = () => ({ w: viewport.clientWidth, h: viewport.clientHeight });
@@ -378,14 +361,10 @@
     }
 
     function onWheel(event) {
+      if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      if (event.ctrlKey || event.metaKey) {
-        const { x, y } = pointInViewport(event);
-        zoomTo(view.scale * wheelZoomFactor(event), x, y);
-      } else {
-        const { dx, dy } = wheelPanDelta(event);
-        show({ ...view, x: view.x + dx, y: view.y + dy }, false);
-      }
+      const { x, y } = pointInViewport(event);
+      zoomTo(view.scale * wheelZoomFactor(event), x, y);
     }
 
     function endDrag(event, activate) {
@@ -405,47 +384,19 @@
       } catch {
         // Without capture the drag still works while the pointer stays over the viewport.
       }
-      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, from: view, moved: false, nodeId: spaceDown ? null : nodeId };
-      if (spaceDown) startPanning();
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, from: view, moved: false, nodeId };
       event.preventDefault();
-    }
-
-    function startPanning() {
-      drag.moved = true;
-      viewport.classList.add("prd-panning");
     }
 
     function onPointerMove(event) {
       if (!drag || drag.id !== event.pointerId) return;
       const dx = event.clientX - drag.x;
       const dy = event.clientY - drag.y;
-      if (!drag.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD) startPanning();
-      if (drag.moved) show({ ...drag.from, x: drag.from.x + dx, y: drag.from.y + dy }, false);
-    }
-
-    function onKeyDown(event) {
-      if (!hovering || panel.classList.contains("prd-collapsed") || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.code === "Space") {
-        if (isControlTarget(event.target)) return;
-        spaceDown = true;
-        panel.classList.add("prd-space");
-        event.preventDefault();
-        return;
+      if (!drag.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+        drag.moved = true;
+        viewport.classList.add("prd-panning");
       }
-      if (!event.shiftKey || isTypingTarget(event.target)) return;
-      if (event.code === "Digit1") fit();
-      else if (event.code === "Digit0") zoomTo(1);
-      else return;
-      event.preventDefault();
-    }
-
-    function releaseSpace() {
-      spaceDown = false;
-      panel.classList.remove("prd-space");
-    }
-
-    function onKeyUp(event) {
-      if (event.code === "Space") releaseSpace();
+      if (drag.moved) show({ ...drag.from, x: drag.from.x + dx, y: drag.from.y + dy }, false);
     }
 
     const resizeObserver = globalThis.ResizeObserver
@@ -462,11 +413,6 @@
     viewport.addEventListener("pointermove", onPointerMove);
     viewport.addEventListener("pointerup", (event) => endDrag(event, true));
     viewport.addEventListener("pointercancel", (event) => endDrag(event, false));
-    panel.addEventListener("pointerenter", () => (hovering = true));
-    panel.addEventListener("pointerleave", () => (hovering = false));
-    document.addEventListener("keydown", onKeyDown, true);
-    document.addEventListener("keyup", onKeyUp, true);
-    addEventListener("blur", releaseSpace);
     paint();
 
     return {
@@ -476,9 +422,6 @@
       zoomOut: () => zoomTo(stepScale(view.scale, -1)),
       destroy() {
         resizeObserver?.disconnect();
-        document.removeEventListener("keydown", onKeyDown, true);
-        document.removeEventListener("keyup", onKeyUp, true);
-        removeEventListener("blur", releaseSpace);
       },
     };
   }
@@ -523,7 +466,7 @@
 
     const cardElement = make("div", "prd-card prd-viewport");
     cardElement.append(svg);
-    canvas = createCanvas(panel, cardElement, svg, {
+    canvas = createCanvas(cardElement, svg, {
       onNode: handlers.onNode,
       onView: ({ scale }) => {
         zoom.percent.textContent = `${Math.round(scale * 100)}%`;
@@ -617,7 +560,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { render, emphasize, setActive, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor, wheelPanDelta };
+  ns.diagram = { render, emphasize, setActive, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, wheelZoomFactor };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

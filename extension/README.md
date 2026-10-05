@@ -126,13 +126,13 @@ that expands it.
   dims the rest to 0.25 opacity. A chunk with no nodes dims the whole diagram slightly. "GitHub tree" mode or no
   selection restores it.
 - Clicking a box selects its chunk and jumps to its start line (see "Boxes and files").
-- The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Pinch, or Cmd/Ctrl + scroll,
-  zooms around the pointer (25% to 400%); scroll or a two-finger swipe pans, Shift + scroll pans sideways, and a drag (or
-  Space + drag) pans too. A drag that starts on a box pans once it moves more than 4px; a shorter press is a box click.
-  The header has −, the current zoom (click it for 100%), + and Fit. While the pointer is over the panel and focus is
-  not in a text field, Shift + 1 fits the diagram to the panel's width and Shift + 0 sets 100%. Panning stops when a
-  diagram edge reaches the middle of the canvas. Each new diagram opens fitted; resizing the panel keeps the zoom and
-  position, and a fitted diagram stays fitted. Zoom and position are not saved.
+- The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Pinch (Chrome reports a trackpad
+  pinch as Ctrl + wheel), or Cmd/Ctrl + scroll, zooms around the pointer (25% to 400%). Pressing and dragging anywhere on
+  the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click. A
+  plain scroll or two-finger swipe over the diagram is not captured and scrolls the page as usual. The header has −, the
+  current zoom (click it for 100%), + and Fit. Panning stops when a diagram edge reaches the middle of the canvas. Each
+  new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
+  position are not saved.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.
   GitHub's CSP allows the SVG's own `<style>` and inline `style` attributes, so no restyling is needed.
 - Mermaid 11 ids: a node is `<g class="node" id="pr-diagram-flowchart-<nodeId>-<n>">`; an edge is a `path` with
