@@ -102,7 +102,7 @@ and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane 
 diagram, chunk list, code, and the other two columns narrow by the panel's width (280px by default) instead of being
 covered. The panel is sticky at the file tree pane's offset and as tall as the pane. Its header's `‹` button collapses it
 (remembered in `sessionStorage`) into a 30px rail in the same spot, with "Diagram" written vertically under a `›` button
-that expands it. Clicking the card opens a larger overlay; Esc or a click outside closes it.
+that expands it.
 - The diagram, the chunk list and the code are separated by single dividers: the panel's right border, then GitHub's own
   rule down the pane's right edge.
 
@@ -112,13 +112,20 @@ that expands it. Clicking the card opens a larger overlay; Esc or a click outsid
   styles, so no glow is needed. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
   the viewport, 280px by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
-- A legend under the card, and under the large overlay's diagram, lists only the styles the SVG uses (changed step,
+- A legend under the card lists only the styles the SVG uses (changed step,
   writes data, unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected
   chunk" (the emphasis outline) and, when the diagram has lanes, a note that columns are code layers.
 - Selecting a chunk (header click, box click or the jump button) highlights its `nodes` and the edges between two of them, and
   dims the rest to 0.25 opacity. A chunk with no nodes dims the whole diagram slightly. "GitHub tree" mode or no
   selection restores it.
 - Clicking a box selects its chunk and jumps to its start line (see "Boxes and files").
+- The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Pinch, or Cmd/Ctrl + scroll,
+  zooms around the pointer (25% to 400%); scroll or a two-finger swipe pans, Shift + scroll pans sideways, and a drag (or
+  Space + drag) pans too. A drag that starts on a box pans once it moves more than 4px; a shorter press is a box click.
+  The header has −, the current zoom (click it for 100%), + and Fit. While the pointer is over the panel and focus is
+  not in a text field, Shift + 1 fits the diagram to the panel's width and Shift + 0 sets 100%. Panning stops when a
+  diagram edge reaches the middle of the canvas. Each new diagram opens fitted; resizing the panel keeps the zoom and
+  position, and a fitted diagram stays fitted. Zoom and position are not saved.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.
   GitHub's CSP allows the SVG's own `<style>` and inline `style` attributes, so no restyling is needed.
 - Mermaid 11 ids: a node is `<g class="node" id="pr-diagram-flowchart-<nodeId>-<n>">`; an edge is a `path` with
