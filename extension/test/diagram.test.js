@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas } = require("../diagram.js");
+const { resetAction, zoomControls, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas } = require("../diagram.js");
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
 
@@ -328,4 +328,33 @@ test("centerOn glides to the target over about 200ms and a wheel interrupts it",
     globalThis.requestAnimationFrame = originalRaf;
     globalThis.cancelAnimationFrame = originalCancel;
   }
+});
+
+test("the zoom controls end with a Reset button, titled and labelled Reset, beside the zoom buttons", () => {
+  const element = (tag) => ({ tag, className: "", textContent: "", attributes: {}, children: [], setAttribute(name, value) { this.attributes[name] = value; }, append(...nodes) { this.children.push(...nodes); } });
+  globalThis.document = { createElement: element };
+  try {
+    const { group, reset } = zoomControls();
+    assert.deepEqual(group.children.map((child) => child.textContent), ["−", "100%", "+", "Fit", "↺"]);
+    assert.equal(group.children.at(-1), reset);
+    assert.deepEqual([reset.className, reset.title, reset.attributes["aria-label"], reset.type], ["prd-zoom-reset", "Reset", "Reset", "button"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("Reset refits a zoomed and panned canvas to the pane, then calls the host's reset", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.fit();
+  const fitted = views.at(-1);
+  canvas.zoomIn();
+  canvas.zoomIn();
+  assert.notEqual(views.at(-1).scale, fitted.scale);
+  const order = [];
+  const refit = { fit: () => (canvas.fit(), order.push("fit")) };
+  resetAction(() => refit, { onReset: () => order.push("onReset") })();
+  assert.deepEqual(order, ["fit", "onReset"]);
+  assert.deepEqual(views.at(-1), fitted);
+  resetAction(() => refit, {})();
+  assert.deepEqual(order, ["fit", "onReset", "fit"]);
 });

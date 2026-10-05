@@ -181,7 +181,7 @@
       diagram.remove();
       return;
     }
-    diagram.render(session.review.diagramSvg, { onNode: (nodeId) => selectNode(session, nodeId) });
+    diagram.render(session.review.diagramSvg, { onNode: (nodeId) => selectNode(session, nodeId), onReset: () => resetReview(session) });
     diagram.emphasize(chunk ? (chunk.nodes ?? null) : null);
     diagram.setActive(session.activeBox?.id ?? null);
   }
@@ -277,6 +277,23 @@
     if (chunk.start) await jumpToStart(session, chunk, jump);
     else if (path) await landOnFile(session, path);
     if (boxId && current === session && live() && session.activeBox?.id === boxId) diagram.pulse(boxId);
+  }
+
+  // Puts the review back as it was when it loaded: no chunk selected, every row collapsed, every file shown, and no
+  // line or box marked. The saved selection is cleared with it.
+  function resetReview(session) {
+    return change(
+      session,
+      () => {
+        leaveLine();
+        deactivate(session);
+        session.mode = "review";
+        session.selectedN = null;
+        session.expanded = new Set();
+        session.reveal = null;
+      },
+      { scroll: false },
+    );
   }
 
   // Pans the diagram so the boxes of the chunk that was just focused are centred; a chunk with no boxes leaves it be.

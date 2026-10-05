@@ -130,7 +130,7 @@ that expands it.
   scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
   Ctrl + wheel); the page does not scroll while the pointer is over the canvas. Pressing and dragging anywhere on
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
-  The header has −, the current zoom (click it for 100%), + and Fit. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
+  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no chunk selected, every chunk row collapsed, every file shown, no line, box or start-line callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The review's start callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
   a chunk, whether from the list, a file or contract line in its row, its Start here button, a callout's Previous/Next or a click on
   its box, pans the canvas, over about 200ms (at once under reduced motion), so the
   chunk's box, or the bounding box of its boxes, is centred in the pane at the current zoom; a box larger than the pane zooms out just

@@ -526,8 +526,17 @@
     const percent = button("prd-zoom-percent", "100%", "Reset to 100%");
     const zoomIn = button("prd-zoom-in", "+", "Zoom in");
     const fit = button("prd-zoom-fit", "Fit", "Fit the diagram to the pane width");
-    group.append(out, percent, zoomIn, fit);
-    return { group, out, percent, zoomIn, fit };
+    const reset = button("prd-zoom-reset", "↺", "Reset");
+    group.append(out, percent, zoomIn, fit, reset);
+    return { group, out, percent, zoomIn, fit, reset };
+  }
+
+  // The Reset button's click: fits the canvas to the pane, then lets the host put the rest of the review back.
+  function resetAction(canvasOf, handlers) {
+    return () => {
+      canvasOf().fit();
+      handlers.onReset?.();
+    };
   }
 
   function build(svg, handlers, collapsed) {
@@ -565,6 +574,7 @@
     zoom.zoomIn.addEventListener("click", () => canvas.zoomIn());
     zoom.percent.addEventListener("click", () => canvas.actualSize());
     zoom.fit.addEventListener("click", () => canvas.fit());
+    zoom.reset.addEventListener("click", resetAction(() => canvas, handlers));
     panel.classList.toggle("prd-collapsed", collapsed);
     panel.append(resizeHandle(panel), header, cardElement, buildLegend(legend));
     setWidth(panel, panelWidth);
@@ -573,7 +583,7 @@
 
   // Docks the diagram as the leftmost pane, right before the host's file pane in its own flex row, so the file
   // pane and the diff column narrow to make room. Safe to call repeatedly: it re-mounts only when the panel is
-  // gone. handlers: { onNode(nodeId) }.
+  // gone. handlers: { onNode(nodeId), onReset() }; the Reset button refits the canvas and then calls onReset.
   function render(svgText, handlers) {
     const host = ns.page.diagramHost();
     if (!host) return;
@@ -652,7 +662,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas };
+  ns.diagram = { resetAction, zoomControls, render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

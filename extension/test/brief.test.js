@@ -285,6 +285,9 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const pulses = [];
   const centered = [];
   const applied = [];
+  const active = [];
+  const lineEvents = [];
+  const stored = {};
   const diagramHandlers = [];
   const prFocus = {
     page: {
@@ -297,8 +300,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       descriptionHost: () => (hostPresent ? description : null),
       onNavigate: (callback) => (navigations.push(callback), () => {}),
       onChange: () => () => {},
-      cancelJump() {},
-      clearLineTarget() {},
+      cancelJump: () => lineEvents.push("cancelJump"),
+      clearLineTarget: () => lineEvents.push("clearLineTarget"),
       fileBlocks: () => new Map(),
       headSha: () => null,
       restoreLineTarget() {},
@@ -341,7 +344,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     diagram: {
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
-      setActive() {},
+      setActive: (nodeId) => active.push(nodeId),
       titleOf: (nodeId) => `title of ${nodeId}`,
       pulse: (nodeId) => pulses.push(nodeId),
       centerOn: (nodeIds) => centered.push(nodeIds),
@@ -357,10 +360,11 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     timer.unref?.();
     return timer;
   };
-  const context = { prFocus, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
+  const sessionStorage = { getItem: (key) => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
+  const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, centered, applied, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, centered, applied, active, lineEvents, stored, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -1021,4 +1025,45 @@ test("a line in a chunk's row selects the chunk, shows its file and jumps to its
   assert.deepEqual(plain(applied.at(-1)), [2, { scroll: false, extra: ["api/openapi.json"] }]);
   await renders.at(-1).handlers.onSelectChunk(3);
   assert.deepEqual(plain(applied.at(-1)), [3, { scroll: false, extra: [] }]);
+});
+
+test("the diagram's Reset restores the load-time state: nothing selected or open, every file shown, no box marked, nothing saved", async () => {
+  const { renders, callouts, applied, active, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  const loaded = plain(renders.at(-1).state);
+  diagramHandlers.at(-1).onNode("c");
+  await settle();
+  await renders.at(-1).handlers.onSelectFile(2, "src/api.js");
+  await renders.at(-1).handlers.onExpandAll();
+  const picked = renders.at(-1).state;
+  assert.deepEqual([picked.selectedN, picked.activeFiles.size, picked.expanded.size], [2, 1, 4]);
+  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: 2, variant: "v16" });
+
+  lineEvents.length = 0;
+  const shownBefore = callouts.length;
+  diagramHandlers.at(-1).onReset();
+  await settle();
+  const { state } = renders.at(-1);
+  assert.deepEqual([state.mode, state.selectedN, [...state.expanded], [...state.activeFiles]], ["review", null, [], []]);
+  assert.equal(state.order, loaded.order);
+  assert.deepEqual(plain(applied.at(-1)), [null, { scroll: false, extra: [] }]);
+  assert.equal(emphasized.at(-1), null);
+  assert.equal(active.at(-1), null);
+  assert.deepEqual(lineEvents.slice(0, 2), ["cancelJump", "clearLineTarget"]);
+  assert.equal(callouts.length > shownBefore, true);
+  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: null, variant: "v16" });
+});
+
+test("Reset also clears a mode of GitHub's own tree and the files a line click revealed", async () => {
+  const lined = { ...STEP_REVIEW, chunks: STEP_REVIEW.chunks.map((chunk) => (chunk.n === 2 ? { ...chunk, contract: [{ impact: "additive", text: "t", path: "api/openapi.json", side: "R", line: 40 }] } : chunk)) };
+  const { renders, applied, diagramHandlers } = loadContent({ run: null, view: "files", review: lined });
+  await settle();
+  await renders.at(-1).handlers.onJumpToLine(2, lined.chunks[1].contract[0]);
+  await renders.at(-1).handlers.onMode("github");
+  assert.equal(renders.at(-1).state.mode, "github");
+  diagramHandlers.at(-1).onReset();
+  await settle();
+  assert.equal(renders.at(-1).state.mode, "review");
+  await renders.at(-1).handlers.onSelectChunk(2);
+  assert.deepEqual(plain(applied.at(-1)), [2, { scroll: false, extra: [] }]);
 });
