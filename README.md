@@ -148,6 +148,7 @@ breaking change (a removal or a newly required field) the run's `contract.json` 
 | `one_path_risk_chunked_v15_nocontext` | v15 without a context pack, for repositories with no `local.toml` |
 | `one_path_risk_chunked_v16` | v15's prompt plus a `step` of one or two words on each chunk, chunks returned in the order the change flows through the system, and a "Contract and data" block after the description |
 | `one_path_risk_chunked_v17` | v16 with a different `start` rule: the line where this step of the flow begins for a reviewer (the entry point or the method the previous step calls into), with a `why` saying what it sets up, instead of the line where the risk is decided |
+| `one_path_risk_chunked_v18` | v17 with the diagram's main path capped at 10 nodes instead of 7 |
 
 A variant with `render_from = "<variant name>"` is render-only. `run.py` makes no model call for it: it
 copies `prompt.txt`, `answer.yaml` and `pr.json` from `runs/<pr>/<that variant>/`, writes `run.json` with the
