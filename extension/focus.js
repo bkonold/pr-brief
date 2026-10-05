@@ -48,15 +48,9 @@
 
   const ACTIVE = "prf-box-active";
   const FLASH = "prf-box-flash";
-  const CHIP = "prf-box-chip";
-  const CHIP_MS = 2500;
 
   let boxGeneration = 0;
   let announceGeneration = 0;
-  let chip = null;
-  let chipTimer = null;
-  let chipHost = null;
-  let chipHostPosition = "";
 
   function reducedMotion() {
     return Boolean(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
@@ -88,50 +82,20 @@
     header.addEventListener("animationend", () => header.classList.remove(FLASH), { once: true });
   }
 
-  function clearChip() {
-    clearTimeout(chipTimer);
-    chipTimer = null;
-    chip?.remove();
-    chip = null;
-    if (chipHost) chipHost.style.position = chipHostPosition;
-    chipHost = null;
-  }
-
-  function showChip(header, text) {
-    clearChip();
-    if (getComputedStyle(header).position === "static") {
-      chipHostPosition = header.style.position;
-      chipHost = header;
-      header.style.position = "relative";
-    }
-    chip = document.createElement("div");
-    chip.className = CHIP;
-    chip.textContent = text;
-    header.append(chip);
-    chipTimer = setTimeout(clearChip, CHIP_MS);
-  }
-
-  // Flashes the active files' headers and, given a label, labels the first one, once, after the scroll has
-  // landed. Under reduced motion the headers keep only their bar and the label just appears and goes.
-  async function announceBox(paths, label) {
+  // Flashes the active files' headers once, after the scroll has landed. Under reduced motion the headers keep only
+  // their bar.
+  async function announceBox(paths) {
     const mine = ++announceGeneration;
     const headers = await headersOf(paths);
     if (mine !== announceGeneration || !ns.alive?.() || headers.length === 0) return;
     if (!reducedMotion()) for (const header of headers) flash(header);
-    if (label) showChip(headers[0], label);
   }
 
   function clearBox() {
     boxGeneration += 1;
     announceGeneration += 1;
-    clearChip();
     for (const header of document.querySelectorAll(`.${ACTIVE}, .${FLASH}`)) header.classList.remove(ACTIVE, FLASH);
   }
 
-  function owns(node) {
-    const element = node?.nodeType === 1 ? node : node?.parentElement;
-    return Boolean(element?.closest(`.${CHIP}`));
-  }
-
-  ns.focus = { apply, scrollTo, markBox, announceBox, clearBox, owns };
+  ns.focus = { apply, scrollTo, markBox, announceBox, clearBox };
 })();

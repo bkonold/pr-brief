@@ -269,6 +269,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const renders = [];
   const jumps = [];
   const emphasized = [];
+  const diagramHandlers = [];
   const prFocus = {
     page: {
       name: "Fake",
@@ -286,9 +287,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       headSha: () => null,
       restoreLineTarget() {},
       ownsLine: () => false,
-      jumpToLine: async (...args) => jumps.push(args.slice(0, 3)),
+      jumpToLine: async (...args) => jumps.push(args.slice(0, 4)),
     },
-    boxes: require("../boxes.js"),
     source: {
       loadBrief: async () => run,
       loadReview: async () => review,
@@ -307,6 +307,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     tree: {
       orderChunks: require("../tree.js").orderChunks,
       defaultOrder: require("../tree.js").defaultOrder,
+      chunkOfNode: require("../tree.js").chunkOfNode,
       EXTRA_KEY: "extra",
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
@@ -316,13 +317,11 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       remove() {},
       owns: () => false,
     },
-    focus: { apply: async () => ({}), clearBox() {}, markBox() {}, scrollTo: async () => {}, announceBox() {}, owns: () => false },
+    focus: { apply: async () => ({}), clearBox() {}, markBox() {}, scrollTo: async () => {}, announceBox() {} },
     diagram: {
-      render() {},
+      render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
       setActive() {},
-      titleOf: () => "",
-      pulse() {},
       remove() {},
       owns: () => false,
     },
@@ -338,7 +337,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, location: { href: "x", hash: "" }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, emphasized };
+  return { log, built, navigations, output, calls, lines, renders, jumps, emphasized, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -749,11 +748,43 @@ test("a chunk's start jump and the diagram highlight work in both orders", async
     const { handlers } = renders.at(-1);
     jumps.length = 0;
     await handlers.onJumpToStart(3);
-    assert.deepEqual(jumps, [["db/V1.sql", "R", 2]]);
+    assert.deepEqual(jumps, [["db/V1.sql", "R", 2, "w"]]);
     await handlers.onSelectChunk(2);
     assert.deepEqual(emphasized.at(-1), ["b"]);
     assert.equal(renders.at(-1).state.order, order);
-    await renders.at(-1).handlers.onSelectChunk(2);
-    assert.deepEqual(emphasized.at(-1), null);
   }
+});
+
+test("clicking a chunk opens it and jumps to its start line, again on every click", async () => {
+  const { renders, jumps } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  for (const click of [1, 2]) {
+    jumps.length = 0;
+    await renders.at(-1).handlers.onSelectChunk(2);
+    assert.deepEqual(jumps, [["src/api.js", "R", 9, "w"]], `click ${click}`);
+    const { state } = renders.at(-1);
+    assert.deepEqual([state.selectedN, [...state.expanded]], [2, [2]]);
+  }
+});
+
+test("a chunk with no start line opens without a jump", async () => {
+  const noStart = { ...STEP_REVIEW, chunks: STEP_REVIEW.chunks.map(({ start, ...chunk }) => chunk) };
+  const { renders, jumps } = loadContent({ run: null, view: "files", review: noStart });
+  await settle();
+  await renders.at(-1).handlers.onSelectChunk(2);
+  assert.deepEqual(jumps, []);
+  assert.equal(renders.at(-1).state.selectedN, 2);
+});
+
+test("clicking a diagram box does what clicking its chunk does, and a box no chunk lists does nothing", async () => {
+  const { renders, jumps, emphasized, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  jumps.length = 0;
+  diagramHandlers.at(-1).onNode("zzz");
+  await settle();
+  assert.deepEqual([jumps, renders.at(-1).state.selectedN], [[], null]);
+  diagramHandlers.at(-1).onNode("c");
+  await settle();
+  assert.deepEqual(jumps, [["db/V1.sql", "R", 2, "w"]]);
+  assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded], emphasized.at(-1)], [3, [3], ["c"]]);
 });

@@ -1,5 +1,5 @@
 (() => {
-  const { page, source, runControl, boxes, focus, tree, diagram, brief, alive } = globalThis.prFocus;
+  const { page, source, runControl, focus, tree, diagram, brief, alive } = globalThis.prFocus;
   if (!page) return;
 
   const SETTLE_MS = 150;
@@ -175,7 +175,7 @@
       diagram.remove();
       return;
     }
-    diagram.render(session.review.diagramSvg, { onNode: (nodeId) => (session.review.nodes ? selectBox(session, nodeId) : selectNode(session, nodeId)) });
+    diagram.render(session.review.diagramSvg, { onNode: (nodeId) => selectNode(session, nodeId) });
     diagram.emphasize(chunk ? (chunk.nodes ?? null) : null);
     diagram.setActive(session.activeBox?.id ?? null);
   }
@@ -187,9 +187,9 @@
     page.clearLineTarget();
   }
 
-  // The active state of a single file: no box id, number or title, so no label is shown for it.
-  function fileActivation(path) {
-    return { id: null, number: null, paths: [path], title: "" };
+  // The active state: the file whose row and header are marked, and the diagram box clicked to get there, if any.
+  function activation(path, boxId = null) {
+    return { id: boxId, paths: [path] };
   }
 
   // Lands the file's header below the sticky chrome and then, together, flashes its list row and its header.
@@ -198,61 +198,51 @@
     await focus.scrollTo(path);
     if (current !== session || !live() || session.activeBox?.paths[0] !== path) return;
     tree.flashRows();
-    focus.announceBox([path], null);
+    focus.announceBox([path]);
   }
 
-  // Forgets the active box and everything shown for it: the diagram tint, the diff header bars and the label.
+  // Forgets the active selection and everything shown for it: the diagram tint and the diff header bars.
   function deactivate(session) {
     session.activeBox = null;
     focus.clearBox();
     diagram.setActive(null);
   }
 
-  // With the box-to-file mapping, a box selects the chunk that holds its first file, makes the box the active
-  // one and scrolls to that file's header. Once the scroll has landed, the box, its files' headers and its
-  // list rows pulse once and the first header is labelled. A box that covers no file does nothing.
-  async function selectBox(session, nodeId) {
-    const target = boxes.targetOfNode(session.review, nodeId);
-    if (!target) return;
-    const box = session.review.nodes.find((node) => node.id === nodeId);
+  // Runs the jump to `chunk`'s start line: its diff scrolls into view, the line is highlighted and the reason shows above it.
+  async function jumpToStart(session, chunk) {
+    if (current !== session || !live()) return;
+    const { path, side, line } = chunk.start;
+    await page.jumpToLine(path, side, line, tree.readFirstReason(chunk));
+  }
+
+  // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
+  // jumps to its start line; a chunk with no start line lands on that file's header instead. `boxId` is the diagram
+  // box the selection came from. Selecting the open chunk again jumps again.
+  async function selectChunk(session, chunk, boxId = null) {
+    const path = chunk.start?.path ?? chunk.files[0]?.path;
     await change(
       session,
       () => {
-        session.mode = "review";
-        if (session.selectedN !== target.n) session.expanded = new Set([target.n]);
-        session.expanded.add(target.n);
-        session.selectedN = target.n;
         leaveLine();
         deactivate(session);
-        session.activeBox = { id: nodeId, number: box.number, paths: box.files, title: diagram.titleOf(nodeId) };
+        session.mode = "review";
+        session.selectedN = chunk.n;
+        session.expanded = new Set([chunk.n]);
+        if (path) session.activeBox = activation(path, boxId);
       },
       { scroll: false },
     );
-    if (current !== session) return;
-    tree.revealGroup(target.n);
-    await focus.scrollTo(target.path);
-    if (current !== session || !live() || session.activeBox?.id !== nodeId) return;
-    const { number, title, paths } = session.activeBox;
-    diagram.pulse(nodeId);
-    focus.announceBox(paths, number == null ? title : `Box ${number} · ${title}`);
+    if (current !== session || !live()) return;
+    tree.revealGroup(chunk.n);
+    if (chunk.start) await jumpToStart(session, chunk);
+    else if (path) await landOnFile(session, path);
   }
 
-  // Without it, a box selects the first chunk, in list order, that touches it; the diff doesn't scroll.
+  // A box selects the first chunk, in list order, that lists it, as a click on that chunk would. A box no chunk lists
+  // does nothing.
   function selectNode(session, nodeId) {
-    const owner = tree.orderChunks(session.review.chunks, session.order).find((chunk) => chunk.nodes?.includes(nodeId));
-    if (!owner || (session.mode === "review" && session.selectedN === owner.n)) return;
-    change(
-      session,
-      () => {
-        leaveLine();
-        session.mode = "review";
-        session.selectedN = owner.n;
-        session.expanded = new Set([owner.n]);
-      },
-      { scroll: false },
-    ).then(() => {
-      if (current === session && live()) tree.revealGroup(owner.n);
-    });
+    const chunk = tree.chunkOfNode(session.review.chunks, session.order, nodeId);
+    if (chunk) selectChunk(session, chunk, nodeId);
   }
 
   function change(session, update, options) {
@@ -277,30 +267,12 @@
         ),
       onToggleGroup: (key) =>
         change(session, () => (session.expanded.has(key) ? session.expanded.delete(key) : session.expanded.add(key)), { scroll: false }),
-      // Selecting a chunk lands its first listed file and makes it the active file, as a click on its row would.
-      onSelectChunk: async (n) => {
-        const unselect = session.selectedN === n;
-        const first = unselect ? undefined : session.review.chunks.find((chunk) => chunk.n === n)?.files[0]?.path;
-        await change(
-          session,
-          () => {
-            leaveLine();
-            deactivate(session);
-            session.selectedN = unselect ? null : n;
-            if (unselect) session.expanded.add(n);
-            else session.expanded = new Set([n]);
-            if (first) session.activeBox = fileActivation(first);
-          },
-          { scroll: false },
-        );
-        if (first) await landOnFile(session, first);
-      },
+      onSelectChunk: (n) => selectChunk(session, session.review.chunks.find((chunk) => chunk.n === n)),
       // The start file's diff is hidden while another chunk is focused, so that chunk is focused first. The chunk is
       // also opened in the list, where its start button is.
       onJumpToStart: async (n) => {
         const chunk = session.review.chunks.find((candidate) => candidate.n === n);
-        const start = chunk?.start;
-        if (!start) return;
+        if (!chunk?.start) return;
         const refocus = session.selectedN !== null && session.selectedN !== n;
         if (refocus || !session.expanded.has(n)) {
           await change(
@@ -315,10 +287,10 @@
             { scroll: false },
           );
         }
-        if (current === session) await page.jumpToLine(start.path, start.side, start.line, tree.readFirstReason(chunk));
+        await jumpToStart(session, chunk);
       },
       // A file row selects its chunk without the chunk's own scroll, lands that file's header below the sticky chrome
-      // and makes the file active: its row and header get the box bar and the header flashes, without a label.
+      // and makes the file active: its row and header get the box bar and the header flashes.
       onSelectFile: async (n, path) => {
         await change(
           session,
@@ -327,7 +299,7 @@
             deactivate(session);
             session.selectedN = n;
             if (n !== null) session.expanded.add(n);
-            session.activeBox = fileActivation(path);
+            session.activeBox = activation(path);
           },
           { scroll: false },
         );
@@ -340,7 +312,7 @@
   }
 
   function owned(node) {
-    return tree.owns(node) || diagram.owns(node) || focus.owns(node) || page.ownsLine(node);
+    return tree.owns(node) || diagram.owns(node) || page.ownsLine(node);
   }
 
   // A link to a chunk's start line, such as the PR brief card's, carries that line's anchor in the URL fragment.

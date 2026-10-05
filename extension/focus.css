@@ -14,40 +14,9 @@
   animation: prf-box-flash 1.2s ease-in-out;
 }
 
-.prf-box-chip {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 12px;
-  z-index: 5;
-  max-width: 60%;
-  padding: 2px 8px;
-  overflow: hidden;
-  color: #26215c;
-  font-size: 12px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  pointer-events: none;
-  background: #f0eefb;
-  border: 1px solid #534ab7;
-  border-radius: 10px;
-  animation: prf-box-chip 2.5s ease-out forwards;
-}
-
 @keyframes prf-box-flash {
   30% {
     background-color: rgba(83, 74, 183, 0.18);
-  }
-}
-
-@keyframes prf-box-chip {
-  0%,
-  80% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0;
   }
 }
 
@@ -59,8 +28,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .prf-fade-in,
-  .prf-box-flash,
-  .prf-box-chip {
+  .prf-box-flash {
     animation: none;
   }
 }

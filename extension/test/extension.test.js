@@ -7,9 +7,8 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, ambiguousNames, levelLabel, orderChunks, revealTarget, readFirstReason } = require("../tree.js");
+const { staleMessage, ambiguousNames, levelLabel, orderChunks, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
-const { targetOfNode, boxTitle } = require("../boxes.js");
 
 test("prFromUrl matches the changes and files pages", () => {
   const expected = { owner: "example-org", repo: "example-repo", pr: 42, view: "files" };
@@ -204,26 +203,17 @@ test("the switcher lists only variants that are active and present, in the PR's 
   assert.deepEqual(switcherVariants(OLD_AND_NEW, config).map((entry) => entry.variant), ["v15", "v16"]);
 });
 
-const BOX_REVIEW = {
-  chunks: [
-    { n: 1, name: "API", files: [{ path: "a/Controller.java" }, { path: "a/Service.java" }] },
-    { n: 2, name: "Screen", files: [{ path: "web/route.tsx" }] },
-  ],
-  nodes: [
-    { id: "ctl", number: 1, files: ["a/Controller.java"] },
-    { id: "svc", number: 2, files: ["a/Service.java", "a/Controller.java"] },
-    { id: "ui", number: 3, files: ["web/route.tsx"] },
-    { id: "repo", number: 4, files: [] },
-    { id: "lane", number: null, files: ["web/route.tsx"] },
-  ],
-};
+const NODE_CHUNKS = [
+  { n: 1, name: "Screen", step: "UI", review: "skim", nodes: ["ui", "shared"] },
+  { n: 2, name: "Endpoint", step: "API", review: "read carefully", nodes: ["api", "shared"] },
+  { n: 3, name: "Notes", review: "read" },
+];
 
-test("targetOfNode names a box's first file and its chunk, and nothing for context boxes", () => {
-  assert.deepEqual(targetOfNode(BOX_REVIEW, "svc"), { path: "a/Service.java", n: 1 });
-  assert.deepEqual(targetOfNode(BOX_REVIEW, "ui"), { path: "web/route.tsx", n: 2 });
-  assert.equal(targetOfNode(BOX_REVIEW, "repo"), null);
-  assert.equal(targetOfNode(BOX_REVIEW, "missing"), null);
-  assert.equal(targetOfNode({ chunks: BOX_REVIEW.chunks }, "ctl"), null);
+test("chunkOfNode picks the first chunk in the displayed order that lists the box", () => {
+  assert.equal(chunkOfNode(NODE_CHUNKS, "flow", "shared").n, 1);
+  assert.equal(chunkOfNode(NODE_CHUNKS, "risk", "shared").n, 2);
+  assert.equal(chunkOfNode(NODE_CHUNKS, "risk", "ui").n, 1);
+  assert.equal(chunkOfNode(NODE_CHUNKS, "risk", "missing"), null);
 });
 
 test("legendKinds lists only the styles a diagram uses, then the selection state and the lanes note", () => {
@@ -238,15 +228,6 @@ test("classifyFetch tells a down server from a missing review", async () => {
   assert.equal(classifyFetch(undefined, new TypeError("Failed to fetch")), "server");
   assert.equal(classifyFetch({ ok: false, status: 404 }, undefined), "none");
   assert.equal(classifyFetch({ ok: true, status: 200 }, undefined), "ok");
-});
-
-test("boxTitle takes the first line of a label without its box number", () => {
-  assert.equal(boxTitle("3 · Call item API\nApi: new item client methods"), "Call item API");
-  assert.equal(boxTitle("12 · Regenerated SDK<br/>client.ts"), "Regenerated SDK");
-  assert.equal(boxTitle("  \n 4 · Contributor guide \nCONTRIBUTING.md"), "Contributor guide");
-  assert.equal(boxTitle("Open form or list\nroute"), "Open form or list");
-  assert.equal(boxTitle(""), "");
-  assert.equal(boxTitle(undefined), "");
 });
 
 test("stickyOffset is the lowest stuck edge over the diff column", () => {

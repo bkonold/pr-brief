@@ -20,8 +20,9 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - Files show only their basename, in small monospace; the chunk's start file is in the primary text colour and the rest are
   muted. A basename shared by two files of the list gets its folder as a dim suffix; the full path is the row's tooltip. The
   file order is the chunk's own.
-- Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and scrolls to the
-  chunk's first file; clicking it again shows all diffs and leaves it open.
+- Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and does what its "Start here"
+  button does (below); clicking the open chunk jumps again. A chunk with no start line scrolls to its first file
+  instead. "GitHub tree" mode shows every diff again.
   Clicking a file focuses its chunk and scrolls to its diff. A chunk opened with "Expand all" closes again with "Collapse all" or when another chunk is clicked.
 - A "Start here" button under the open chunk's files, when the chunk has a start line (the `start` field of `review.json`, the
   one line the model says to read first), jumps to that line and centres it. If another chunk is
@@ -58,22 +59,15 @@ control; the PR brief card on the conversation page names the variant it shows.
 
 ## Boxes and files
 
-When `review.json` has `nodes` (`[{id, number, files}]`, written for `v11*` runs), clicking a box selects the chunk holding its first file, as a header click
-does, and smooth-scrolls to that file. A context box (no files) is dashed, has a default cursor and does nothing when clicked.
-The scroll lands the file's header just below GitHub's sticky chrome: the offset is measured when the click happens, as
-the lowest stuck edge of the page's sticky or fixed elements that span the diff column (the file-row click and a chunk's
-first-file scroll use the same code). The clicked box becomes the active box:
+Clicking a diagram box selects the first chunk, in the order the list shows, whose `nodes` include it and does what
+clicking that chunk does: focus, open, jump to its start line. The clicked box keeps a light accent fill tint, stronger
+than the chunk highlight, and the chunk's start file is the active file: its list row is bold and its diff header gets a
+3px accent bar. A box no chunk lists, and a context box (dashed, default cursor), do nothing when clicked.
 
-- Diagram: the box pulses once (stroke 2px to 3px to 2px with an accent tint, 600ms) after the scroll lands, then keeps a light
-  accent fill tint, stronger than the chunk highlight.
-- Diff: every loaded file the box covers gets a 3px accent bar on its header, which stays while the box is active, and a header
-  background flash of about 1.2s. The first file's header also carries a chip, `Box 3 · <box title>` (the title is the first line
-  of the box's SVG label), that fades out after 2.5s.
-- List: the box's file rows get an accent background and its chunk opens.
-
-The active state clears when another box, a chunk's line (including unselecting it), a file row, the mode toggle or the "Start here"
-button is used. Under `prefers-reduced-motion` only the end states show: no pulse, flash or fade; the
-chip appears and is removed after 2.5s. Without `nodes` (V10) a box selects the first chunk, in list order, that lists it, without scrolling.
+The active state clears when another box, a chunk's line, a file row or the mode toggle is used. A file row lands its
+file's header just below GitHub's sticky chrome (the offset is measured when the click happens, as the lowest stuck edge
+of the page's sticky or fixed elements that span the diff column), then flashes the row and the header for about 1.2s;
+under `prefers-reduced-motion` the flash is skipped.
 
 ## The change diagram
 
@@ -95,10 +89,10 @@ that expands it. Clicking the card opens a larger overlay; Esc or a click outsid
 - A legend under the card, and under the large overlay's diagram, lists only the styles the SVG uses (changed step,
   writes data, unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected
   chunk" (the emphasis outline) and, when the diagram has lanes, a note that columns are code layers.
-- Selecting a chunk (header click or the jump button) highlights its `nodes` and the edges between two of them, and
+- Selecting a chunk (header click, box click or the jump button) highlights its `nodes` and the edges between two of them, and
   dims the rest to 0.25 opacity. A chunk with no nodes dims the whole diagram slightly. "GitHub tree" mode or no
   selection restores it.
-- Clicking a box selects the first chunk, in list order, whose `nodes` include it, without scrolling the diff.
+- Clicking a box selects its chunk and jumps to its start line (see "Boxes and files").
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.
   GitHub's CSP allows the SVG's own `<style>` and inline `style` attributes, so no restyling is needed.
 - Mermaid 11 ids: a node is `<g class="node" id="pr-diagram-flowchart-<nodeId>-<n>">`; an edge is a `path` with
@@ -199,7 +193,6 @@ Run the pure tests with `node --test test/*.test.js`.
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
-| `boxes.js` | A box's target file and title |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
 | `source.js` | Content-script side of the fetch |
 | `brief_text.js` | Turns a run's `body.html` into the card's safe HTML, and reorders the review-order rows by flow or risk (pure string work, tested without a DOM) |

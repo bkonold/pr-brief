@@ -44,6 +44,11 @@
       .map(({ chunk }) => chunk);
   }
 
+  // The first chunk, in the order the list shows them, that lists the diagram box `nodeId`; null when none does.
+  function chunkOfNode(chunks, order, nodeId) {
+    return orderChunks(chunks, order).find((chunk) => chunk.nodes?.includes(nodeId)) ?? null;
+  }
+
   function folderOf(path) {
     const slash = path.lastIndexOf("/");
     return slash === -1 ? "" : path.slice(0, slash);
@@ -151,7 +156,7 @@
     return chunk.start?.why?.trim() || chunk.why || "";
   }
 
-  // The button under an open chunk's files that jumps to the line the model says to read first.
+  // The button under an open chunk's files that jumps again to the line the model says to read first.
   function startHere(chunk, handlers) {
     const element = button("prf-start-here", undefined, () => handlers.onJumpToStart(chunk.n));
     element.append(outlineIcon(JUMP_ICON, 14, "prf-start-icon"), "Start here");
@@ -376,7 +381,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, remove, owns, orderChunks, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
+  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

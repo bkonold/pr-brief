@@ -81,9 +81,7 @@
     for (const { element, ends } of found.edges) mark(element, ends.every((end) => active.has(end)));
   }
 
-  const SVG_NS = "http://www.w3.org/2000/svg";
   const ACTIVE = "prd-active";
-  const GEOMETRY = ["x", "y", "width", "height", "rx", "ry"];
 
   let root = null;
   let card = null;
@@ -341,31 +339,6 @@
     applyActive();
   }
 
-  function labelText(group) {
-    const label = group.querySelector("foreignObject")?.cloneNode(true) ?? group.cloneNode(true);
-    for (const br of label.querySelectorAll("br")) br.replaceWith("\n");
-    return label.textContent;
-  }
-
-  // The box's title line from its SVG label, without the box number; "" for an unknown box.
-  function titleOf(nodeId) {
-    const group = found?.nodes.get(nodeId);
-    return group ? ns.boxes.boxTitle(labelText(group)) : "";
-  }
-
-  // A short stroke-width swell with an accent tint over the box, drawn as a transient copy of its outline so it
-  // isn't overridden by the highlight's own stroke. Skipped under reduced motion.
-  function pulse(nodeId) {
-    const group = found?.nodes.get(nodeId);
-    const shape = group?.querySelector(":scope > rect");
-    if (!shape || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const copy = document.createElementNS(SVG_NS, "rect");
-    copy.setAttribute("class", "prd-pulse");
-    for (const name of GEOMETRY) if (shape.hasAttribute(name)) copy.setAttribute(name, shape.getAttribute(name));
-    copy.addEventListener("animationend", () => copy.remove(), { once: true });
-    shape.after(copy);
-  }
-
   function remove() {
     closeOverlay();
     root?.remove();
@@ -381,7 +354,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { render, emphasize, setActive, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds };
+  ns.diagram = { render, emphasize, setActive, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;
