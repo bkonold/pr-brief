@@ -469,11 +469,12 @@
   background: var(--bgColor-muted, #f6f8fa);
   border: 1px solid var(--prf-guide-soft);
   border-radius: 8px;
+  box-shadow: 0 0 0 var(--prf-pulse) var(--prf-guide);
 }
 
 .prf-callout-row:has(+ .prf-line-target) .prf-callout {
   border-color: var(--prf-guide);
-  box-shadow: 0 0 0 1px var(--prf-guide);
+  box-shadow: 0 0 0 calc(1px + var(--prf-pulse)) var(--prf-guide);
 }
 
 .prf-callout-head {

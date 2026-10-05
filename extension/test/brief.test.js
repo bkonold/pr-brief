@@ -270,6 +270,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const jumps = [];
   const callouts = [];
   const emphasized = [];
+  const pulses = [];
   const diagramHandlers = [];
   const prFocus = {
     page: {
@@ -325,6 +326,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
       setActive() {},
+      pulse: (nodeId) => pulses.push(nodeId),
       remove() {},
       owns: () => false,
     },
@@ -340,7 +342,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, location: { href: "x", hash: "" }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, callouts, emphasized, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, callouts, emphasized, pulses, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -837,4 +839,20 @@ test("a callout's button for a chunk with no start line opens it without a jump"
   await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
   assert.deepEqual(jumps, []);
   assert.equal(renders.at(-1).state.selectedN, 2);
+});
+
+test("a diagram box click pulses that box after the jump, and a chunk click or a callout button pulses none", async () => {
+  const { renders, callouts, pulses, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  diagramHandlers.at(-1).onNode("zzz");
+  await settle();
+  assert.deepEqual(pulses, []);
+  diagramHandlers.at(-1).onNode("b");
+  await settle();
+  assert.deepEqual(pulses, ["b"]);
+  await renders.at(-1).handlers.onSelectChunk(3);
+  await renders.at(-1).handlers.onJumpToStart(1);
+  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
+  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  assert.deepEqual(pulses, ["b"]);
 });

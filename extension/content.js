@@ -228,7 +228,7 @@
 
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
   // jumps to its start line; a chunk with no start line lands on that file's header instead. `boxId` is the diagram
-  // box the selection came from. Selecting the open chunk again jumps again.
+  // box the selection came from, which pulses once the jump has landed. Selecting the open chunk again jumps again.
   async function selectChunk(session, chunk, boxId = null) {
     const path = chunk.start?.path ?? chunk.files[0]?.path;
     await change(
@@ -247,6 +247,7 @@
     tree.revealGroup(chunk.n);
     if (chunk.start) await jumpToStart(session, chunk);
     else if (path) await landOnFile(session, path);
+    if (boxId && current === session && live() && session.activeBox?.id === boxId) diagram.pulse(boxId);
   }
 
   // A box selects the first chunk, in list order, that lists it, as a click on that chunk would. A box no chunk lists

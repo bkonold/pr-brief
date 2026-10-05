@@ -48,7 +48,10 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   is the full purple where the other callouts' is purple at 45%. The jump centres the callout and the line together.
   The file, line number and code are not repeated, since the diff row shows them. Only one start line is highlighted; it
   goes whenever the line target clears (another selection, a new jump or teardown) and comes back if the host re-renders the
-  row. There is no animation.
+  row. When a jump lands, the start line and its callout pulse together, once: a purple ring that swells from its resting
+  width to 3px wider and back, three times over about two seconds (666ms each), started at the same moment on both. It fires on
+  every jump (a chunk or box click, "Start here", the callout's buttons, a link to a start line), only for the jumped-to chunk,
+  and not when the host re-renders the row. Under `prefers-reduced-motion` only the static highlight shows.
 - A banner appears when the review was generated for an older head commit than the page's.
 
 The mode and selected chunk are remembered per PR in `sessionStorage`.
@@ -73,7 +76,8 @@ control; the PR brief card on the conversation page names the variant it shows.
 ## Boxes and files
 
 Clicking a diagram box selects the first chunk, in the order the list shows, whose `nodes` include it and does what
-clicking that chunk does: focus, open, jump to its start line. The clicked box keeps a light accent fill tint, stronger
+clicking that chunk does: focus, open, jump to its start line. Once the jump has landed the clicked box pulses once (its outline swells from 2px to 3px with an accent tint over
+600ms; skipped under `prefers-reduced-motion`). A jump from the list, "Start here" or a callout does not pulse a box. The clicked box keeps a light accent fill tint, stronger
 than the chunk highlight, and the chunk's start file is the active file: its list row is bold and its diff header gets a
 3px accent bar. A box no chunk lists, and a context box (dashed, default cursor), do nothing when clicked.
 

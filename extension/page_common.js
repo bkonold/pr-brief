@@ -31,6 +31,7 @@
 
   const LINE_TARGET = "prf-line-target";
   const CALLOUT_ROW = "prf-callout-row";
+  const PULSE = "prf-pulse";
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
   const JUMP_TIMEOUT_MS = 10000;
@@ -226,7 +227,18 @@
 
     function clearLineTarget() {
       lineTarget = null;
-      for (const row of document.querySelectorAll(`.${LINE_TARGET}`)) row.classList.remove(LINE_TARGET);
+      for (const row of document.querySelectorAll(`.${LINE_TARGET}, .${PULSE}`)) row.classList.remove(LINE_TARGET, PULSE);
+    }
+
+    // Pulses the start line and its callout together, once the jump has landed: the same animation, started at the same
+    // moment. Skipped under reduced motion.
+    function pulseTarget(row) {
+      if (reducedMotion()) return;
+      for (const element of [row, calloutRowOf(row)]) {
+        if (!element) continue;
+        element.classList.add(PULSE);
+        element.addEventListener("animationend", () => element.classList.remove(PULSE), { once: true });
+      }
     }
 
     // The host re-renders diff rows, which drops our class; the target row gets it back.
@@ -376,6 +388,7 @@
         return false;
       }
       row.classList.add(LINE_TARGET);
+      pulseTarget(row);
       return landed;
     }
 
