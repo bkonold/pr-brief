@@ -191,12 +191,14 @@
   function startCallout(chunk, chunks, onGo) {
     const card = make("div", "prf-callout");
     const head = make("div", "prf-callout-head");
-    head.append(outlineIcon(ROUTE_ICON, 14, "prf-callout-icon"), make("strong", "prf-callout-chunk", chunkLabel(chunk)), make("span", "prf-callout-label", "why the model starts here"));
+    head.append(outlineIcon(ROUTE_ICON, 16, "prf-callout-icon"), make("strong", "prf-callout-chunk", chunkLabel(chunk)), make("span", "prf-callout-label", "why the model starts here"));
     card.append(head);
     const reason = readFirstReason(chunk);
     if (reason) card.append(make("div", "prf-callout-reason", reason));
 
     const nav = make("div", "prf-callout-nav");
+    const previous = prevOf(chunks, chunk);
+    if (previous) nav.append(button("prf-callout-prev", `↑ ${chunkLabel(previous)}`, () => onGo(previous)));
     const targets = nextOf(chunks, chunk);
     if (targets.length) {
       nav.append(make("span", "prf-callout-nav-label", "Next"));
@@ -204,8 +206,6 @@
     } else {
       nav.append(make("span", "prf-callout-nav-label", "Last step"));
     }
-    const previous = prevOf(chunks, chunk);
-    if (previous) nav.append(button("prf-callout-prev", `↑ ${chunkLabel(previous)}`, () => onGo(previous)));
     card.append(nav);
     return card;
   }

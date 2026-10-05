@@ -33,11 +33,11 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   a link to a chunk's start line (the PR brief card's links) does the same.
 - Every chunk's start line that has loaded gets a callout above it, as soon as the review shows and as GitHub or Forgejo
   load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
-  (the host's muted surface, a 1px purple border, rounded, inset from the line-number columns) with a route icon, the
-  chunk as `<n> · <name>` in purple, "why the model starts here" in secondary text, and the reason, wrapping if it is long:
-  the chunk's `start.why`, else the chunk's own `why`. A last row reads "Next" followed by one small button per chunk
-  to read next, `<n> · <name> ↓`, or the quiet text "Last step" when there is none, and, at the right, a quiet
-  `↑ <n> · <name>` button for the chunk numbered one lower when there is one. A button does what a click on that
+  (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text) with a route icon,
+  the chunk as `<n> · <name>` in purple, "why the model starts here" in secondary text, and the reason, wrapping if it is
+  long: the chunk's `start.why`, else the chunk's own `why`. A last row starts with a `↑ <n> · <name>` button for the
+  chunk numbered one lower when there is one, then "Next" followed by one small button per chunk to read next,
+  `<n> · <name> ↓`, or the quiet text "Last step" when there is none. A button does what a click on that
   chunk in the list does: it focuses, opens and jumps to its start line (a chunk with no start line scrolls to its
   first file). The chunks to read next are the `next` field of each chunk in `review.json`, the same in flow and risk
   order; a run without `next` goes to the chunk with the next higher number. A callout is placed once per chunk, so a

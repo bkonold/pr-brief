@@ -461,8 +461,8 @@
   box-sizing: border-box;
   padding: 8px 12px;
   font-family: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 1.45;
   color: var(--fgColor-default, #1f2328);
   overflow-wrap: anywhere;
   background: var(--bgColor-muted, #f6f8fa);
@@ -520,24 +520,18 @@
   border-radius: 6px;
 }
 
-.prf-callout-go {
+.prf-callout-go,
+.prf-callout-prev {
   color: var(--fgColor-default, #1f2328);
   background: var(--bgColor-default, #ffffff);
   border: 1px solid var(--borderColor-default, #d0d7de);
 }
 
-.prf-callout-go:hover {
+.prf-callout-go:hover,
+.prf-callout-prev:hover {
   background: var(--bgColor-neutral-muted, #818b981f);
 }
 
 .prf-callout-prev {
-  margin-left: auto;
-  color: var(--fgColor-muted, #59636e);
-  background: none;
-  border: 0;
-}
-
-.prf-callout-prev:hover {
-  color: var(--fgColor-default, #1f2328);
-  background: var(--bgColor-neutral-muted, #818b981f);
+  margin-right: 6px;
 }
