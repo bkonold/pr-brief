@@ -133,7 +133,7 @@ One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own)
 `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
-`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `chunk_box_fallback`, `one_box_per_chunk` and `contract_block`. `review_floor.toml` sets the minimum review level per
+`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `file_start`, `chunk_box_fallback`, `one_box_per_chunk` and `contract_block`. `review_floor.toml` sets the minimum review level per
 path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
 breaking change (a removal or a newly required field) the run's `contract.json` lists (see `review_floor.example.toml`).
 
@@ -150,6 +150,7 @@ breaking change (a removal or a newly required field) the run's `contract.json` 
 | `one_path_risk_chunked_v17` | v16 with a different `start` rule: the line where this step of the flow begins for a reviewer (the entry point or the method the previous step calls into), with a `why` saying what it sets up, instead of the line where the risk is decided |
 | `one_path_risk_chunked_v18` | v17 with the diagram's main path capped at 10 nodes instead of 7 |
 | `one_path_risk_chunked_v19` | v18 with one diagram box per chunk: each chunk's `nodes` is exactly one box, each changed box is exactly one chunk, and one file's changes that serve two steps are merged into one box |
+| `one_path_risk_chunked_v20` | v19 with a start that is a line when one clearly anchors the chunk, else a file and why to open it first (`line_text` is optional; the renderer's `file_start` option keeps a file-only start) |
 
 A variant with `render_from = "<variant name>"` is render-only. `run.py` makes no model call for it: it
 copies `prompt.txt`, `answer.yaml` and `pr.json` from `runs/<pr>/<that variant>/`, writes `run.json` with the
@@ -173,6 +174,9 @@ sha256 of the variant file that produced each run.
   the old-file number for a removed one. A start that is missing, ambiguous or names a file outside the
   chunk is dropped, with a note in `error.txt`. v15 adds `why`; the renderer keeps it only when it is one to
   15 words.
+  With `file_start = true` (v20), `line_text` is optional: a start that quotes no line, or whose line is not found exactly once,
+  is kept as the file alone, with `side` and `line` null in `review.json` (a note records an unresolved line). Its review-order
+  cell links the file's diff and shows the `why`.
 - With `node_files` in the answer (`{node id: [paths]}`), the renderer drops paths that are not in the PR and
   node ids that are not on the diagram, gives every box with no files a dashed `context` style, and writes
   `review.json`'s top-level `nodes`: `[{id, number, files}]`.
