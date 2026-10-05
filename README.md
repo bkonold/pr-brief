@@ -133,7 +133,7 @@ One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own)
 `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
-`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `file_start`, `chunk_box_fallback`, `one_box_per_chunk`, `contract_block` and `review_labels`. `review_floor.toml` sets the minimum review level per
+`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `file_start`, `chunk_box_fallback`, `one_box_per_chunk`, `contract_block`, `contract_layout` and `review_labels`. `review_floor.toml` sets the minimum review level per
 path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
 breaking change (a removal or a newly required field) the run's `contract.json` lists (see `review_floor.example.toml`).
 
@@ -152,6 +152,7 @@ breaking change (a removal or a newly required field) the run's `contract.json` 
 | `one_path_risk_chunked_v19` | v18 with one diagram box per chunk: each chunk's `nodes` is exactly one box, each changed box is exactly one chunk, and one file's changes that serve two steps are merged into one box |
 | `one_path_risk_chunked_v20` | v19 with a start that is a line when one clearly anchors the chunk, else a file and why to open it first (`line_text` is optional; the renderer's `file_start` option keeps a file-only start) |
 | `one_path_risk_chunked_v21` | v20 with effort levels (`verify`, `read`, `skim`) and check labels on each chunk: the model gives each chunk one level and up to three of `logic`, `contract`, `data`, `access`; the renderer adds `breaking`, `destructive` and `generated` (the `review_labels` render option) |
+| `one_path_risk_chunked_v22` | v21's prompt with the "Contract and data" block replaced by a Contract section and a Data section grouped by chunk (the `contract_layout = "by_chunk"` render option); a chunk is `breaking` or `destructive` by the lines it owns |
 
 A variant with `render_from = "<variant name>"` is render-only. `run.py` makes no model call for it: it
 copies `prompt.txt`, `answer.yaml` and `pr.json` from `runs/<pr>/<that variant>/`, writes `run.json` with the
@@ -191,6 +192,66 @@ sha256 of the variant file that produced each run.
   side and `migration_globs` in `local.toml` for the database side. `contract.json` lists `removals` and
   `newly_required` (the only entries that raise a review floor) and, for this block, `added`, `changed` and
   `schema_operations`.
+- `contract_layout = "by_chunk"` (v22; needs `contract_block` and `files = "chunks"`) replaces the single block with two
+  sections, **Contract** and **Data**, each a glance line, one closed `<details>` group per chunk that owns lines, and a
+  last group, "Not in any chunk", for the lines no chunk owns. The glance line counts the lines at each level, worst
+  first, zeros left out: `Contract: 2 callers must change · 1 consumer may break · 2 additive · 1 deprecated`. A group's
+  summary is `<chunk number> · <chunk name>`, a chip for its worst level and its first line (`+N more` when it has others);
+  inside, every line has its chip and links to its diff line. Groups are sorted by worst level, then chunk number. With
+  no lines a section says "No API changes" or "No database changes", or that its side was not checked. The chips are
+  `<span class="pill p0|p1|p2">`: the top level is a filled inverted chip, the second a bold outlined chip and the rest
+  plain outlined chips. In `body.md`, where GitHub drops `class`, the top level is bold and the others plain. Colour is
+  not used.
+
+  Contract levels, worst first. Every change records the side it reaches, request (a body or a parameter) or response; a
+  schema used on both sides counts as both and takes the worse level, and a schema no operation reaches counts as both.
+  `contract_impact` in `contract_lines.py` holds the full table (every kind of change, per side) in its docstring and is
+  the only place that classifies. In short:
+
+  | Level | Changes |
+  | --- | --- |
+  | callers must change | endpoint removed or moved; parameter or request property added as required, or an existing one made required; request enum value removed; request type changed |
+  | consumers may break | response property, schema or enum value removed; response type changed; a constraint changed; a property no longer required (on a response); a request body or security change on an operation |
+  | additive | endpoint, schema, parameter or property added (a required property is additive on a response); enum value added; responses changed |
+  | deprecated | an operation or property marked `deprecated` |
+
+  Repeated changes collapse into one line, with no cap on the number of lines:
+
+  | Pattern | Line |
+  | --- | --- |
+  | One property added, removed or changed on 3 or more schemas | `visibility` added on 9 schemas, with its side and the first names |
+  | Three or more moves that change only a path prefix | `/old/*` → `/new/*`, 12 endpoints |
+  | Operations removed, added or deprecated under one base path | `new /api/base GET POST PATCH`, with the number of new schemas |
+  | A pagination parameter (`page`, `size`, `sort`, ...) added to 3 or more endpoints | `pagination added to 12 endpoints` |
+  | Another parameter change on 3 or more endpoints | one line with the endpoint count |
+  | Enum values added to one enum | `Enum` + `A`, `B` |
+  | Anything else | one line per change |
+
+  Data levels, per migration statement (comments dropped; `;` inside strings and `$$` bodies does not split):
+
+  | Level | Statements |
+  | --- | --- |
+  | destructive | `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, `DELETE`, `ALTER COLUMN ... TYPE` to a size-limited or small fixed type |
+  | rewrites rows | `UPDATE`; `SET NOT NULL`; any other `ALTER COLUMN ... TYPE`; `ADD CONSTRAINT` (check, unique, primary or foreign key); `ADD COLUMN ... NOT NULL` with no default |
+  | additive | `CREATE TABLE`, `CREATE INDEX`, `CREATE VIEW`; `ADD COLUMN` that is nullable or has a default; `INSERT` |
+  | none | anything else (a `DO` block, a rename, `DROP INDEX`, `DROP CONSTRAINT`, `SET DEFAULT`): one `other statement in <file>` line with no chip |
+
+  The same statement on one table is one line with its count; one column added or dropped on 3 or more tables is one line.
+
+  Placement: an operation goes to the chunk holding the file named for its OpenAPI tag (the tag `item-list-controller`
+  is `ItemListController`; `tag_file_templates` in `local.toml` lists other templates), a schema or property to the chunk
+  holding a file named for the schema, and a migration statement to the chunk holding its migration file. File names match
+  on the part before the first dot, ignoring case; test files and files of a chunk that holds only generated files never
+  match. A subject with no such file goes to the chunk whose hand-written code names it (the probes of the breaking-change
+  placement below). A line about several subjects goes where most of them do, so a sweep over schemas that sit in several
+  chunks is shown in one. A line that nothing places goes under "Not in any chunk", in sub-groups by controller tag (data:
+  by table), with a gist such as `4 changes in 3 controllers`.
+
+  With this layout `breaking` is set on a chunk that owns a "callers must change" or "consumers may break" line and
+  `destructive` on a chunk that owns a destructive data line, instead of the rule below; both still raise the chunk to
+  `verify`. `review.json` gains, on each chunk, `contract` and `data` (`[{impact, text, path, side, line}]`; `impact` is
+  null for an `other statement` line and `side` and `line` are null when the diff does not settle the line) and, at the
+  top level, `unchunked: {contract, data}`. Both layouts' older variants render exactly as before; the schema stays 2.
 - `chunk_order = "flow"` keeps the chunks in the model's order instead of sorting them by review level, so a
   floor raises a chunk's level without moving it; `numbering = "flow"` numbers the diagram's boxes with the flow
   step of the chunk that owns them. A chunk's optional `step` (one or two words, such as `UI`, `API`, `Database`)
@@ -217,7 +278,7 @@ sha256 of the variant file that produced each run.
   | `access` | model | changes permissions, tenant scoping or authentication |
   | `generated` | renderer | every file of the chunk matches a `[[tag]] name = "generated"` glob; a chunk that mixes generated and hand-written files gets a note instead |
 
-  `breaking` and `destructive` raise the chunk to `verify` (the floors still apply; the highest level wins) and are
+  `breaking` and `destructive` (v21; v22 sets them from the Contract and Data lines it owns, see `contract_layout`) raise the chunk to `verify` (the floors still apply; the highest level wins) and are
   named in `raised_by`. A breaking change is listed against the generated spec, so it is placed on the hand-written
   chunk that makes it, never on a chunk that holds only generated files. A schema's name in a changed file's name or
   diff, or the last literal segment of an operation's path in a changed line (test files left out), picks the

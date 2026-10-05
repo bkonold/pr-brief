@@ -26,6 +26,14 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   file order is the chunk's own. Each row ends with the file's `+<additions> −<deletions>` in 11px tabular numbers, green and
   red from the host's success and danger colours, a zero side left out and none for a file with no lines; the counts are
   right-aligned to the same edge as the chunk rows' level words, and the name truncates before them.
+- A run with `contract` and `data` on its chunks (v22) shows them in the open chunk's row, above its files: a "Contract"
+  block and a "Data" block, each a list of lines worst impact first. A line is a button with its impact as a chip
+  (the top level filled, the second bold outlined, the rest outlined; no chip for an `other statement` line) and its
+  text, which is the line's `text` from `review.json`. Clicking one focuses the chunk if another is open, jumps to the
+  line's diff row and centres it, without the pulse of a start jump. A line whose spec or migration file belongs to
+  another chunk shows that file's diff while it is the target, since the focus would hide it otherwise; the file hides
+  again when another chunk or file is chosen. A line with no row (`line` null) scrolls to its file. The lines are not in the start callouts, and the
+  lines no chunk owns (`unchunked`) have no row; they are in the PR brief card.
 - Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and does what its "Start here"
   button does (below); clicking the open chunk jumps again. A chunk with no start scrolls to its first file
   instead. "GitHub tree" mode shows every diff again.
@@ -190,6 +198,11 @@ the page's data, and its header links to the files view. Without a run it is the
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - A "Contract and data" section, when the run has one (v16), is a list of API operations and tables with badges; each
   line and badge is a link to the diff line it names, rewritten to this host's files view like the other links.
+- A v22 run has two sections instead, "Contract" and "Data". Each starts with a glance line (`Contract: 2 callers must
+  change · 1 additive`), then one closed `<details>` group per chunk, headed `<n> · <chunk name>`, the chunk's worst
+  impact as a chip and its first line, and last a "Not in any chunk" group. Inside a group each line has its chip and
+  links to its diff line. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a filled
+  chip, the second a bold outlined one and the rest outlined, drawn by the card's own style.
 - The review order of a run with steps carries the same "Order: by flow | by risk" switch under its heading. It reorders
   the rows in place (their numbers stay the flow numbers, which are the diagram's labels), keeps the review order open,
   and is not remembered. The rows carry `data-flow` and `data-risk`; a body with none shows no switch.
