@@ -210,8 +210,8 @@ sha256 of the variant file that produced each run.
   `position` default 0, constraint `uq_x` dropped, `backfill (UPDATE)`); On is the endpoint, schema or family, or for a
   sweep `9 schemas: A, B, C +6`; Table is the table, or for a statement with none the migration file. ↗ is the row's
   only link, to its diff line or its file's diff; names are code, never links. In the "Not in any chunk" group a row
-  naming the controller tag (Data: the table) precedes that tag's lines. A name longer than 36 characters is cut in its
-  middle with the whole name as the element's `title`, and each table sits in an `overflow-x: auto` container. The chips
+  naming the controller tag (Data: the table) precedes that tag's lines. A schema, table or controller name longer than 40
+  characters is cut in its middle with the whole name as the element's `title` (an endpoint wraps instead), and each table sits in an `overflow-x: auto` container. The chips
   are `<span class="pill p0|p1|p2">`: the top level is a filled inverted chip, the second a bold outlined chip and the
   rest plain outlined chips. In `body.md`, where GitHub drops `class`, the top level is bold and the others plain.
   Colour is not used.

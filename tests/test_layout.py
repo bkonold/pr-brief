@@ -197,6 +197,11 @@ class Drawing(unittest.TestCase):
         self.assertTrue(shown.startswith("HomeCenter") and shown.endswith("Response") and "…" in shown)
         self.assertIn(f'<code title="{name}">{shown}</code>', text)
 
+    def test_an_endpoint_is_never_cut(self) -> None:
+        endpoint = "GET /api/home-center-report/deck/hidden-slides/with/a/very/long/path"
+        text = self.draw([(1, "A", [line("x", ADDITIVE, change="c", on=f"`{endpoint}`"), *self.lines(1)])])
+        self.assertIn(f"<code>{endpoint}</code>", text)
+
     def test_a_short_name_has_no_title(self) -> None:
         self.assertNotIn("title=", self.draw([(1, "A", self.lines(2))]))
 

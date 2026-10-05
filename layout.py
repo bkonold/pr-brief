@@ -29,8 +29,9 @@ DEFAULT_TAG_TEMPLATES: list[str] = ["{pascal}"]
 LOOSE_NAME = "Not in any chunk"
 CONTRACT_COLUMNS: tuple[str, ...] = ("Impact", "Side", "Change", "On", "↗")
 DATA_COLUMNS: tuple[str, ...] = ("Impact", "Change", "Table", "↗")
-# A name longer than this is cut in its middle on screen, with the whole name as the element's title.
-NAME_LIMIT = 36
+# A schema, table or controller name longer than this is cut in its middle on screen, with the whole name as the
+# element's title. An endpoint (`GET /path`) is never cut: it wraps in its cell.
+NAME_LIMIT = 40
 GLANCE_WORDS: dict[str, tuple[str, str]] = {
     "callers must change": ("caller must change", "callers must change"),
     "consumers may break": ("consumer may break", "consumers may break"),
@@ -154,8 +155,8 @@ def middle(name: str) -> str:
 
 
 def code_element(name: str) -> str:
-    """A name as a code element; one that is too long is cut in its middle and carries the whole name as its title."""
-    shown: str = middle(name)
+    """A name as a code element; a name that is too long is cut in its middle and carries the whole name as its title."""
+    shown: str = name if " " in name else middle(name)
     title: str = f' title="{html.escape(name)}"' if shown != name else ""
     return f"<code{title}>{html.escape(shown, quote=False)}</code>"
 
