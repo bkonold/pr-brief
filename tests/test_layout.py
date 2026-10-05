@@ -122,7 +122,7 @@ class Drawing(unittest.TestCase):
                                  '<span class="pill p2">additive</span> <a href="https://example.test/9">later</a>'])
 
     def test_a_line_with_no_level_has_no_pill(self) -> None:
-        self.assertIn("<li><a href=", self.draw([(1, "A", [line("other statement in V9.sql", None)])]))
+        self.assertIn("<li><a href=", self.draw([(1, "A", [line("DO block in V9.sql", None)])]))
 
     def test_the_loose_group_is_split_by_key(self) -> None:
         loose = [line("one", ADDITIVE, Member(tag="a-controller")), line("two", ADDITIVE, Member(tag="b-controller")),

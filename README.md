@@ -234,9 +234,9 @@ sha256 of the variant file that produced each run.
   | Level | Statements |
   | --- | --- |
   | destructive | `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, `DELETE`, `ALTER COLUMN ... TYPE` to a size-limited or small fixed type |
-  | rewrites rows | `UPDATE`; `SET NOT NULL`; any other `ALTER COLUMN ... TYPE`; `ADD CONSTRAINT` (check, unique, primary or foreign key); `ADD COLUMN ... NOT NULL` with no default |
-  | additive | `CREATE TABLE`, `CREATE INDEX`, `CREATE VIEW`; `ADD COLUMN` that is nullable or has a default; `INSERT` |
-  | none | anything else (a `DO` block, a rename, `DROP INDEX`, `DROP CONSTRAINT`, `SET DEFAULT`): one `other statement in <file>` line with no chip |
+  | rewrites rows | `UPDATE`; `SET NOT NULL`; any other `ALTER COLUMN ... TYPE`; `ADD CONSTRAINT` (check, unique, primary or foreign key); `ADD COLUMN ... NOT NULL` with no default; `DROP CONSTRAINT`; `DROP INDEX`; any rename (table, column, constraint, index) |
+  | additive | `CREATE TABLE`, `CREATE INDEX`, `CREATE VIEW`; `ADD COLUMN` that is nullable or has a default; `SET DEFAULT`; `DROP DEFAULT`; `INSERT` |
+  | none | anything else (a `DO` block, a grant): one line naming the kind and the file, such as `DO block in V9.sql`, with no chip |
 
   The same statement on one table is one line with its count; one column added or dropped on 3 or more tables is one line.
 
@@ -252,7 +252,7 @@ sha256 of the variant file that produced each run.
   With this layout `breaking` is set on a chunk that owns a "callers must change" or "consumers may break" line and
   `destructive` on a chunk that owns a destructive data line, instead of the rule below; both still raise the chunk to
   `verify`. `review.json` gains, on each chunk, `contract` and `data` (`[{impact, text, path, side, line}]`; `impact` is
-  null for an `other statement` line and `side` and `line` are null when the diff does not settle the line) and, at the
+  null for a line with no impact and `side` and `line` are null when the diff does not settle the line) and, at the
   top level, `unchunked: {contract, data}`. Both layouts' older variants render exactly as before; the schema stays 2.
 - `review_order = false` (v22; needs `files = "chunks"`) leaves the Review order table out of `body.md` and `body.html`,
   so the brief holds the PR type, the description, Contract, Data and the diagram. The chunks, their order, steps, starts

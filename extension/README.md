@@ -28,7 +28,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   right-aligned to the same edge as the chunk rows' level words, and the name truncates before them.
 - A run with `contract` and `data` on its chunks (v22) shows them in the open chunk's row, above its files: a "Contract"
   block and a "Data" block, each a list of lines worst impact first. A line is a button with its impact as a chip
-  (the top level filled, the second bold outlined, the rest outlined; no chip for an `other statement` line) and its
+  (the top level filled, the second bold outlined, the rest outlined; no chip for a line with no impact) and its
   text, which is the line's `text` from `review.json`. Clicking one focuses the chunk if another is open, jumps to the
   line's diff row and centres it, without the pulse of a start jump. A line whose spec or migration file belongs to
   another chunk shows that file's diff while it is the target, since the focus would hide it otherwise; the file hides

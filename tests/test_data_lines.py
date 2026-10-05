@@ -96,8 +96,7 @@ class Levels(unittest.TestCase):
         self.assertEqual(levels("WITH x AS (SELECT 1) UPDATE widget SET a = 1")[0][0], REWRITES)
 
     def test_unknown_statements_have_no_level(self) -> None:
-        for sql in ("DO $$ BEGIN NULL; END $$", "ALTER TABLE w RENAME COLUMN a TO b", "ALTER TABLE w DROP CONSTRAINT c",
-                    "DROP INDEX i", "CREATE PUBLICATION p FOR ALL TABLES", "ALTER TABLE w ALTER COLUMN a SET DEFAULT 1"):
+        for sql in ("DO $$ BEGIN NULL; END $$", "CREATE PUBLICATION p FOR ALL TABLES", "GRANT SELECT ON w TO r"):
             self.assertEqual([action.level for action in classify_statement(sql)], [None], sql)
 
 
@@ -125,10 +124,43 @@ class Lines(unittest.TestCase):
         sql = "ALTER TABLE a ADD COLUMN n int;\nALTER TABLE b ADD COLUMN n int;\n"
         self.assertEqual(lines_for(sql), [(ADDITIVE, "add column `a.n`"), (ADDITIVE, "add column `b.n`")])
 
-    def test_unclassified_statements_become_one_other_line_per_file_without_a_level(self) -> None:
-        sql = "DO $$ BEGIN NULL; END $$;\nDROP INDEX i;\nCREATE TABLE a (id bigint);\n"
-        self.assertEqual(lines_for(sql), [(ADDITIVE, "create table `a`"), (None, "2 other statements in V9__widgets.sql")])
-        self.assertEqual(lines_for("DROP INDEX i;\n"), [(None, "other statement in V9__widgets.sql")])
+    def test_unclassified_statements_are_named_by_kind_and_file_without_a_level(self) -> None:
+        sql = "DO $$ BEGIN NULL; END $$;\nGRANT SELECT ON a TO reader;\nCREATE TABLE a (id bigint);\n"
+        self.assertEqual(lines_for(sql), [(ADDITIVE, "create table `a`"), (None, "DO block in V9__widgets.sql"),
+                                          (None, "GRANT SELECT statement in V9__widgets.sql")])
+
+    def test_repeated_unclassified_kind_in_one_file_is_one_line_with_its_count(self) -> None:
+        sql = "DO $$ BEGIN NULL; END $$;\nDO $$ BEGIN NULL; END $$;\n"
+        self.assertEqual(lines_for(sql), [(None, "DO block in V9__widgets.sql (2 statements)")])
+
+    def test_default_changes_are_additive_and_name_the_column_and_value(self) -> None:
+        self.assertEqual(levels("ALTER TABLE slides ALTER COLUMN position SET DEFAULT 0;"),
+                         [(ADDITIVE, "`slides.position` default set to 0")])
+        self.assertEqual(levels("ALTER TABLE slides ALTER COLUMN position DROP DEFAULT;"),
+                         [(ADDITIVE, "`slides.position` default dropped")])
+
+    def test_long_default_expression_is_cut(self) -> None:
+        text = levels("ALTER TABLE a ALTER COLUMN c SET DEFAULT " + "x" * 80 + ";")[0][1]
+        self.assertTrue(text.endswith("…"))
+        self.assertLess(len(text), 70)
+
+    def test_dropped_constraint_and_index_rewrite_rows_and_are_named(self) -> None:
+        self.assertEqual(levels("ALTER TABLE widgets DROP CONSTRAINT uq_widgets_name;"),
+                         [(REWRITES, "constraint `uq_widgets_name` dropped on `widgets`")])
+        self.assertEqual(levels("DROP INDEX IF EXISTS idx_a, idx_b;"),
+                         [(REWRITES, "index `idx_a` dropped"), (REWRITES, "index `idx_b` dropped")])
+
+    def test_renames_rewrite_rows_and_say_what_became_what(self) -> None:
+        self.assertEqual(levels("ALTER TABLE widgets RENAME COLUMN old_name TO new_name;"),
+                         [(REWRITES, "column `widgets.old_name` renamed to `new_name`")])
+        self.assertEqual(levels("ALTER TABLE widgets RENAME TO gadgets;"), [(REWRITES, "`widgets` renamed to `gadgets`")])
+        self.assertEqual(levels("ALTER TABLE widgets RENAME CONSTRAINT a TO b;"),
+                         [(REWRITES, "constraint `a` renamed to `b` on `widgets`")])
+        self.assertEqual(levels("ALTER INDEX idx_a RENAME TO idx_b;"), [(REWRITES, "index `idx_a` renamed to `idx_b`")])
+
+    def test_two_constraints_dropped_on_one_table_stay_two_lines(self) -> None:
+        sql = "ALTER TABLE a DROP CONSTRAINT c1;\nALTER TABLE a DROP CONSTRAINT c2;\n"
+        self.assertEqual(lines_for(sql), [(REWRITES, "constraint `c1` dropped on `a`"), (REWRITES, "constraint `c2` dropped on `a`")])
 
     def test_each_file_is_its_own_source(self) -> None:
         other = "db/migration/V10__more.sql"

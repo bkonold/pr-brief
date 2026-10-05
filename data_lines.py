@@ -5,8 +5,8 @@ impact level.
 dollar-quoted bodies whole. `classify_statement` turns one statement into its changes with a data impact each, and
 `data_lines` runs both over the PR's migration files and collapses repeats: the same statement on the same table is one
 line with a count, and one column added or dropped on three or more tables is one line. A statement the classifier does
-not know (a DO block, a publication, a rename) becomes `other statement in <file>`, with no impact, so a migration never
-renders nothing.
+not know (a DO block, a publication, a grant) becomes a line naming its kind and file, such as `DO block in <file>`, with no
+impact, so a migration never renders nothing.
 """
 import re
 from dataclasses import dataclass
@@ -30,12 +30,22 @@ NO_DEFAULT_TYPES = re.compile(r"\b(?:small|big)?serial\b", re.I)
 @dataclass
 class Action:
     """One thing a statement does: its impact (None when it is not classified), a verb that groups like actions, the
-    table, the column it concerns and the sentence that describes it."""
+    table, the column it concerns, the sentence that describes it and, for an action on something other than a table or
+    column (an index, a constraint), its name."""
     level: str | None
     verb: str
     table: str
     column: str | None
     text: str
+    subject: str = ""
+
+DEFAULT_EXPRESSION_LIMIT = 40
+
+
+def expression_text(expression: str) -> str:
+    """A default's expression on one line, cut to a readable length."""
+    text: str = " ".join(expression.split()).rstrip(";").strip()
+    return text if len(text) <= DEFAULT_EXPRESSION_LIMIT else text[:DEFAULT_EXPRESSION_LIMIT - 1] + "…"
 
 
 def split_statements(lines: list[DiffLine]) -> list[tuple[str, int]]:
@@ -159,6 +169,26 @@ def alter_actions(table: str, rest: str) -> list[Action]:
                 actions.append(Action(REWRITES, "add column", table, column, f"add column {subject} NOT NULL without a default"))
             else:
                 actions.append(Action(ADDITIVE, "add column", table, column, f"add column {subject}"))
+        elif found := re.match(rf"DROP\s+CONSTRAINT\s+(?:IF\s+EXISTS\s+)?({SQL_NAME})", part, re.I):
+            name: str = sql_name(found.group(1))
+            actions.append(Action(REWRITES, "drop constraint", table, None, f"constraint {code(name)} dropped on {code(table)}", name))
+        elif found := re.match(rf"RENAME\s+CONSTRAINT\s+({SQL_NAME})\s+TO\s+({SQL_NAME})", part, re.I):
+            actions.append(Action(REWRITES, "rename constraint", table, None,
+                                  f"constraint {code(sql_name(found.group(1)))} renamed to {code(sql_name(found.group(2)))} on {code(table)}",
+                                  sql_name(found.group(1))))
+        elif found := re.match(rf"RENAME\s+(?:COLUMN\s+)?({SQL_NAME})\s+TO\s+({SQL_NAME})", part, re.I):
+            old: str = sql_name(found.group(1))
+            actions.append(Action(REWRITES, "rename column", table, None,
+                                  f"column {code(f'{table}.{old}')} renamed to {code(sql_name(found.group(2)))}", old))
+        elif found := re.match(rf"RENAME\s+TO\s+({SQL_NAME})", part, re.I):
+            actions.append(Action(REWRITES, "rename table", table, None, f"{code(table)} renamed to {code(sql_name(found.group(1)))}"))
+        elif found := re.match(rf"ALTER\s+(?:COLUMN\s+)?({SQL_NAME})\s+SET\s+DEFAULT\s+(.*)$", part, re.I):
+            column = sql_name(found.group(1))
+            actions.append(Action(ADDITIVE, "set default", table, column,
+                                  f"{code(f'{table}.{column}')} default set to {expression_text(found.group(2))}"))
+        elif found := re.match(rf"ALTER\s+(?:COLUMN\s+)?({SQL_NAME})\s+DROP\s+DEFAULT\b", part, re.I):
+            column = sql_name(found.group(1))
+            actions.append(Action(ADDITIVE, "drop default", table, column, f"{code(f'{table}.{column}')} default dropped"))
         elif found := re.match(rf"DROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(?!CONSTRAINT\b)({SQL_NAME})", part, re.I):
             column = sql_name(found.group(1))
             actions.append(Action(DESTRUCTIVE, "drop column", table, column, f"drop column {code(f'{table}.{column}')}"))
@@ -174,7 +204,7 @@ def alter_actions(table: str, rest: str) -> list[Action]:
             column = sql_name(found.group(1))
             actions.append(Action(REWRITES, "set not null", table, column, f"set {code(f'{table}.{column}')} NOT NULL"))
         else:
-            actions.append(Action(None, "other", table, None, ""))
+            actions.append(Action(None, "other", table, None, f"other change to {code(table)}"))
     return actions
 
 
@@ -191,10 +221,13 @@ def classify_statement(statement: str) -> list[Action]:
     | ALTER COLUMN ... TYPE to any other type | rewrites rows |
     | ADD CONSTRAINT (CHECK, UNIQUE, PRIMARY KEY, FOREIGN KEY) | rewrites rows |
     | ADD COLUMN ... NOT NULL without a DEFAULT | rewrites rows |
+    | DROP CONSTRAINT, DROP INDEX | rewrites rows (integrity relaxed or reads slower: worth a look, not data loss) |
+    | RENAME (table, column, constraint, index) | rewrites rows |
     | CREATE TABLE, CREATE INDEX, CREATE VIEW | additive |
     | ADD COLUMN that is nullable or has a DEFAULT | additive |
+    | SET DEFAULT, DROP DEFAULT | additive |
     | INSERT (seed data) | additive |
-    | anything else: DO blocks, publications, renames, DROP INDEX or CONSTRAINT, SET DEFAULT, ... | none |
+    | anything else: DO blocks, publications, grants, ... | none: a line naming its kind and file (`DO block in V9.sql`) |
     """
     text: str = " ".join(statement.split())
     found: re.Match[str] | None
@@ -214,6 +247,14 @@ def classify_statement(statement: str) -> list[Action]:
     if found := re.match(r"TRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?(.*?)(?:\s+(?:RESTART|CONTINUE)\s+IDENTITY)?(?:\s+(?:CASCADE|RESTRICT))?$", text, re.I):
         return [Action(DESTRUCTIVE, "truncate", sql_name(n), None, f"truncate {code(sql_name(n))}")
                 for n in re.findall(SQL_NAME, found.group(1))]
+    if found := re.match(r"DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?(.*?)(?:\s+(?:CASCADE|RESTRICT))?$", text, re.I):
+        return [Action(REWRITES, "drop index", "", None, f"index {code(sql_name(n))} dropped", sql_name(n))
+                for n in re.findall(SQL_NAME, found.group(1))]
+    if found := re.match(rf"ALTER\s+INDEX\s+(?:IF\s+EXISTS\s+)?({SQL_NAME})\s+RENAME\s+TO\s+({SQL_NAME})", text, re.I):
+        old: str = sql_name(found.group(1))
+        return [Action(REWRITES, "rename index", "", None, f"index {code(old)} renamed to {code(sql_name(found.group(2)))}", old)]
+    if re.match(r"DO\b", text, re.I):
+        return [Action(None, "do", "", None, "DO block")]
     cte: str = "WITH" if re.match(r"WITH\b", text, re.I) else ""
     verbs: tuple[tuple[str, str, str, str], ...] = (
         (r"INSERT\s+INTO\s+", ADDITIVE, "insert", "insert rows into"),
@@ -227,33 +268,36 @@ def classify_statement(statement: str) -> list[Action]:
             return [Action(level, verb, name, None, f"{words} {code(name)}")]
     if found := re.match(rf"ALTER\s+TABLE\s+(?:ONLY\s+|IF\s+EXISTS\s+)*({SQL_NAME})\s+(.*)$", text, re.I):
         return alter_actions(sql_name(found.group(1)), found.group(2))
-    return [Action(None, "other", "", None, "")]
+    head: str = " ".join(re.findall(r"[A-Za-z]+", text)[:2]).upper()
+    return [Action(None, "other", "", None, f"{head} statement" if head else "other statement")]
+
+
+SWEEP_VERBS: dict[str, str] = {"add column": "add", "drop column": "drop", "set not null": "set NOT NULL on",
+                               "narrow column": "narrow", "change column type": "change type of"}
 
 
 def collapse(actions: list[tuple[Action, str, int]]) -> list[Line]:
     """One line per change. The same statement on the same table is one line with its count; the same column change on
-    three or more tables is one line; actions with no level are one `other statement` line per file."""
+    three or more tables is one line; actions with no level are one line per file and kind, such as `DO block in V9.sql`."""
     lines: list[Line] = []
-    other: dict[str, tuple[int, int]] = {}
-    grouped: dict[tuple[str, str, str, str | None], list[tuple[Action, str, int]]] = {}
+    other: dict[tuple[str, str], tuple[int, int]] = {}
+    grouped: dict[tuple[str, str, str, str | None, str], list[tuple[Action, str, int]]] = {}
     for action, path, number in actions:
         if action.level is None:
-            count, first = other.get(path, (0, number))
-            other[path] = (count + 1, first)
+            count, first = other.get((path, action.text), (0, number))
+            other[(path, action.text)] = (count + 1, first)
             continue
-        grouped.setdefault((action.level, action.verb, action.table, action.column), []).append((action, path, number))
+        grouped.setdefault((action.level, action.verb, action.table, action.column, action.subject), []).append((action, path, number))
     swept: dict[tuple[str, str, str], list[tuple[Action, str, int]]] = {}
-    for (level, verb, table, column), group in grouped.items():
-        if column is not None:
+    for (level, verb, table, column, _), group in grouped.items():
+        if column is not None and verb in SWEEP_VERBS:
             swept.setdefault((level, verb, column), []).append(group[0])
-    done: set[tuple[str, str, str, str | None]] = set()
+    done: set[tuple[str, str, str, str | None, str]] = set()
     for (level, verb, column), members in swept.items():
         tables: list[str] = [action.table for action, _, _ in members]
         if len(set(tables)) >= SWEEP_MINIMUM:
             action, path, number = members[0]
-            sentence: str = {"add column": "add", "drop column": "drop", "set not null": "set NOT NULL on",
-                             "narrow column": "narrow", "change column type": "change type of"}[verb]
-            text: str = f"{sentence} column {code(column)} on {len(set(tables))} tables · {names_text(list(dict.fromkeys(tables)))}"
+            text: str = f"{SWEEP_VERBS[verb]} column {code(column)} on {len(set(tables))} tables · {names_text(list(dict.fromkeys(tables)))}"
             lines.append(Line(level, text, path, ("R", number), [Member(file=p, table=a.table) for a, p, _ in members],
                               group=tables[0]))
             done.update(key for key in grouped if key[:2] == (level, verb) and key[3] == column)
@@ -263,9 +307,9 @@ def collapse(actions: list[tuple[Action, str, int]]) -> list[Line]:
         action, path, number = group[0]
         text = action.text if len(group) == 1 else f"{action.text} ({plural(len(group), 'statement')})"
         lines.append(Line(action.level, text, path, ("R", number), [Member(file=path, table=action.table)], group=action.table))
-    for path, (count, number) in other.items():
+    for (path, kind), (count, number) in other.items():
         name: str = PurePosixPath(path).name
-        text = f"other statement in {name}" if count == 1 else f"{count} other statements in {name}"
+        text = f"{kind} in {name}" if count == 1 else f"{kind} in {name} ({plural(count, 'statement')})"
         lines.append(Line(None, text, path, ("R", number), [Member(file=path)]))
     return sorted(lines, key=lambda line: DATA_LEVELS.index(line.impact) if line.impact in DATA_LEVELS else len(DATA_LEVELS))
 
