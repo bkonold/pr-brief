@@ -456,3 +456,88 @@
     animation: none;
   }
 }
+
+.prf-callout {
+  box-sizing: border-box;
+  margin-left: var(--prf-callout-inset, 96px);
+  padding: 8px 12px;
+  font-family: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fgColor-default, #1f2328);
+  overflow-wrap: anywhere;
+  background: var(--bgColor-muted, #f6f8fa);
+  border: 1px solid var(--prf-guide-soft);
+  border-radius: 8px;
+}
+
+.prf-callout-row:has(+ .prf-line-target) .prf-callout {
+  border-color: var(--prf-guide);
+  box-shadow: 0 0 0 1px var(--prf-guide);
+}
+
+.prf-callout-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.prf-callout-icon {
+  flex: none;
+  color: var(--prf-guide);
+}
+
+.prf-callout-chunk {
+  color: var(--prf-guide);
+}
+
+.prf-callout-label {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-callout-reason {
+  margin-top: 4px;
+}
+
+.prf-callout-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.prf-callout-nav-label {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-callout-go,
+.prf-callout-prev {
+  padding: 1px 8px;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.prf-callout-go {
+  color: var(--fgColor-default, #1f2328);
+  background: var(--bgColor-default, #ffffff);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+}
+
+.prf-callout-go:hover {
+  background: var(--bgColor-neutral-muted, #818b981f);
+}
+
+.prf-callout-prev {
+  margin-left: auto;
+  color: var(--fgColor-muted, #59636e);
+  background: none;
+  border: 0;
+}
+
+.prf-callout-prev:hover {
+  color: var(--fgColor-default, #1f2328);
+  background: var(--bgColor-neutral-muted, #818b981f);
+}

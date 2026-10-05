@@ -149,6 +149,7 @@
     renderDiagram(session, chunk);
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
+    page.showCallouts(session.mode === "review" ? session.callouts : []);
 
     const waited = Date.now() - session.startedAt;
     const noBlocks = page.fileBlocks().size === 0;
@@ -208,11 +209,21 @@
     diagram.setActive(null);
   }
 
-  // Runs the jump to `chunk`'s start line: its diff scrolls into view, the line is highlighted and the reason shows above it.
+  // Runs the jump to `chunk`'s start line: its diff scrolls into view and the line is highlighted with its callout.
   async function jumpToStart(session, chunk) {
     if (current !== session || !live()) return;
     const { path, side, line } = chunk.start;
-    await page.jumpToLine(path, side, line, tree.readFirstReason(chunk));
+    await page.jumpToLine(path, side, line);
+  }
+
+  // The callouts of the review's start lines, one per chunk that has one: each is built when its row is placed, and
+  // its buttons select a chunk as a click on that chunk in the list would.
+  async function calloutsFor(session) {
+    const { chunks } = session.review;
+    const anchors = await Promise.all(chunks.map((chunk) => (chunk.start ? page.lineAnchor(chunk.start.path, chunk.start.side, chunk.start.line) : null)));
+    return chunks.flatMap((chunk, index) =>
+      anchors[index] ? [{ key: chunk.n, anchor: anchors[index], render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target)) }] : [],
+    );
   }
 
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
@@ -457,7 +468,11 @@
       order: tree.defaultOrder(review),
       expanded: new Set([selectedN ?? tree.orderChunks(review.chunks, tree.defaultOrder(review))[0]?.n]),
       startedAt: Date.now(),
+      callouts: [],
     };
+    const session = current;
+    session.callouts = await calloutsFor(session);
+    if (current !== session || !live()) return;
     stopObserving = page.onChange(onMutations);
     refresh({ scroll: selectedN !== null }).then(() => jumpToLinkedStart(current));
   }

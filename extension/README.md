@@ -31,12 +31,24 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   it, measuring the row again after each scroll and nudging until it sits mid-window (GitHub's layout shifts while diffs
   load); on a timeout the view stays at the file's header. The button's tooltip is `file:line`. Opening the files page on
   a link to a chunk's start line (the PR brief card's links) does the same.
-- The start line is highlighted with a warning-tinted background and a 4px warning-coloured bar on its left edge, and its
-  reason sits on its own full-width row directly above it, with the same bar and a fainter tint, so the two read as one
-  callout: a bold "Why the model starts here" label, then the reason, wrapping if it is long: the chunk's `start.why`,
-  else the chunk's own `why`. The jump centres the reason row and the line together. The file, line number and code are not repeated, since the diff row shows them.
-  Only one start line exists; it goes whenever the line target clears (another selection, a new jump or teardown) and
-  comes back if GitHub re-renders the row. There is no animation.
+- Every chunk's start line that has loaded gets a callout above it, as soon as the review shows and as GitHub or Forgejo
+  load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
+  (the host's muted surface, a 1px purple border, rounded, inset from the line-number columns) with a route icon, the
+  chunk as `<n> · <name>` in purple, "why the model starts here" in secondary text, and the reason, wrapping if it is long:
+  the chunk's `start.why`, else the chunk's own `why`. A last row reads "Next" followed by one small button per chunk
+  to read next, `<n> · <name> ↓`, or the quiet text "Last step" when there is none, and, at the right, a quiet
+  `↑ <n> · <name>` button for the chunk numbered one lower when there is one. A button does what a click on that
+  chunk in the list does: it focuses, opens and jumps to its start line (a chunk with no start line scrolls to its
+  first file). The chunks to read next are the `next` field of each chunk in `review.json`, the same in flow and risk
+  order; a run without `next` goes to the chunk with the next higher number. A callout is placed once per chunk, so a
+  re-render or a lazy load never doubles it. The callouts show only in "By review" mode, and a focused chunk shows only
+  its own, since the other diffs are hidden.
+- The jumped-to start line keeps the host's own added, removed or context colours: it gets a 2px purple outline drawn
+  inside its cells and a 4px purple bar on its left edge, across the whole row in a split diff, and its callout card's border
+  is the full purple where the other callouts' is purple at 45%. The jump centres the callout and the line together.
+  The file, line number and code are not repeated, since the diff row shows them. Only one start line is highlighted; it
+  goes whenever the line target clears (another selection, a new jump or teardown) and comes back if the host re-renders the
+  row. There is no animation.
 - A banner appears when the review was generated for an older head commit than the page's.
 
 The mode and selected chunk are remembered per PR in `sessionStorage`.
@@ -185,12 +197,12 @@ Run the pure tests with `node --test test/*.test.js`.
 | `background.js` | Fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers |
 | `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
 | `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
-| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the reason row, change watching. `createPage(spec)` builds an adapter from a host's spec |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the start-line callouts, change watching. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Hides diffs outside a chunk and scrolls to a diff |
-| `tree.js`, `tree.css`, `focus.css` | The grouped list and the class `focus.js` toggles |
+| `tree.js`, `tree.css`, `focus.css` | The grouped list, the start-line callout card and the next and previous chunk it links to, and the classes `focus.js` and the line jump toggle |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |

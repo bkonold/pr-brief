@@ -128,7 +128,7 @@
 .prd-overlay g.node.prd-on > polygon,
 .prd-overlay g.node.prd-on > path,
 .prd-overlay g.node.prd-active > rect {
-  stroke: #534ab7 !important;
+  stroke: var(--prf-guide, #534ab7) !important;
   stroke-width: 2px !important;
 }
 
@@ -151,7 +151,7 @@
 
 .prd-card path.prd-on,
 .prd-overlay path.prd-on {
-  stroke: #534ab7 !important;
+  stroke: var(--prf-guide, #534ab7) !important;
   stroke-width: 2px !important;
 }
 
@@ -252,7 +252,7 @@
 
 .prd-swatch-selected {
   background: none;
-  border: 2px solid #534ab7;
+  border: 2px solid var(--prf-guide, #534ab7);
 }
 
 .prd-collapsed .prd-legend {

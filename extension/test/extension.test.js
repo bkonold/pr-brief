@@ -336,7 +336,7 @@ test("each adapter names itself and its tree for the interface", () => {
   assert.deepEqual([githubPage.name, githubPage.treeLabel], ["GitHub", "GitHub tree"]);
   assert.deepEqual([forgejoPage.name, forgejoPage.treeLabel], ["Forgejo", "Forgejo tree"]);
   for (const page of [githubPage, forgejoPage]) {
-    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "diffEntries", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
+    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "diffEntries", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
       assert.equal(typeof page[member], "function", `${page.name}.${member}`);
     }
   }
@@ -475,4 +475,182 @@ test("a run opens in flow order only when its chunks have steps", () => {
   assert.equal(hasSteps([{ name: "A" }]), false);
   assert.equal(defaultOrder({ chunks: [{ name: "A", step: "UI" }] }), "flow");
   assert.equal(defaultOrder({ chunks: [{ name: "A" }] }), "risk");
+});
+
+const { nextOf, prevOf, startCallout } = require("../tree.js");
+
+const FLOW_CHUNKS = [
+  { n: 1, name: "Screen", next: [2, 3], why: "Every user's reports.", start: { path: "a.js", side: "R", line: 1, why: "Where the list is built." } },
+  { n: 2, name: "Endpoint", next: [3], why: "w" },
+  { n: 3, name: "Table", next: [], why: "w" },
+];
+
+test("nextOf names the chunks in next, and prevOf the chunk numbered one lower", () => {
+  assert.deepEqual(nextOf(FLOW_CHUNKS, FLOW_CHUNKS[0]).map((chunk) => chunk.n), [2, 3]);
+  assert.deepEqual(nextOf(FLOW_CHUNKS, FLOW_CHUNKS[2]), []);
+  assert.equal(prevOf(FLOW_CHUNKS, FLOW_CHUNKS[1]).n, 1);
+  assert.equal(prevOf(FLOW_CHUNKS, FLOW_CHUNKS[0]), null);
+});
+
+test("without next, nextOf falls back to the chunk with the next higher number", () => {
+  const old = FLOW_CHUNKS.map(({ next, ...chunk }) => chunk);
+  assert.deepEqual(nextOf(old, old[0]).map((chunk) => chunk.n), [2]);
+  assert.deepEqual(nextOf([old[2], old[0]], old[0]).map((chunk) => chunk.n), [3]);
+  assert.deepEqual(nextOf(old, old[2]), []);
+});
+
+test("nextOf skips a number no chunk has", () => {
+  assert.deepEqual(nextOf(FLOW_CHUNKS, { n: 1, next: [9, 2] }).map((chunk) => chunk.n), [2]);
+});
+
+function fakeDom() {
+  class Element {
+    constructor(tag) {
+      Object.assign(this, { tag, className: "", textContent: "", children: [], listeners: {}, attributes: {} });
+      this.classList = { add: (name) => (this.className = `${this.className} ${name}`.trim()) };
+    }
+    get firstChild() {
+      return this.children[0];
+    }
+    append(...nodes) {
+      this.children.push(...nodes);
+    }
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    }
+    addEventListener(name, listener) {
+      this.listeners[name] = listener;
+    }
+  }
+  return { createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };
+}
+
+const walk = (element) => [element, ...(element.children ?? []).filter((child) => typeof child === "object").flatMap(walk)];
+const byClass = (root, name) => walk(root).filter((element) => element.className.split(" ").includes(name));
+
+test("a start callout shows the chunk, the reason, its next buttons and the previous one, which jump", () => {
+  globalThis.document = fakeDom();
+  try {
+    const gone = [];
+    const card = startCallout(FLOW_CHUNKS[1], FLOW_CHUNKS, (chunk) => gone.push(chunk.n));
+    assert.equal(byClass(card, "prf-callout-chunk")[0].textContent, "2 · Endpoint");
+    assert.equal(byClass(card, "prf-callout-label")[0].textContent, "why the model starts here");
+    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
+    assert.equal(byClass(card, "prf-callout-prev")[0].textContent, "↑ 1 · Screen");
+    for (const button of [...byClass(card, "prf-callout-go"), ...byClass(card, "prf-callout-prev")]) button.listeners.click();
+    assert.deepEqual(gone, [3, 1]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a start callout uses the start line's reason, lists every next chunk and has no previous button on the first chunk", () => {
+  globalThis.document = fakeDom();
+  try {
+    const card = startCallout(FLOW_CHUNKS[0], FLOW_CHUNKS, () => {});
+    assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Where the list is built.");
+    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["2 · Endpoint ↓", "3 · Table ↓"]);
+    assert.deepEqual(byClass(card, "prf-callout-prev"), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("the last chunk's callout says Last step and offers no next button", () => {
+  globalThis.document = fakeDom();
+  try {
+    const card = startCallout(FLOW_CHUNKS[2], FLOW_CHUNKS, () => {});
+    assert.equal(byClass(card, "prf-callout-nav-label")[0].textContent, "Last step");
+    assert.deepEqual(byClass(card, "prf-callout-go"), []);
+    assert.equal(byClass(card, "prf-callout-prev")[0].textContent, "↑ 2 · Endpoint");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+function fakeTable(anchors) {
+  const rows = [];
+  class Row {
+    constructor(className = "") {
+      Object.assign(this, { className, dataset: {}, children: [], colSpan: 1 });
+      this.classList = { contains: (name) => this.className.split(" ").includes(name) };
+    }
+    get previousElementSibling() {
+      return rows[rows.indexOf(this) - 1] ?? null;
+    }
+    get nextElementSibling() {
+      return rows[rows.indexOf(this) + 1] ?? null;
+    }
+    append(...nodes) {
+      this.children.push(...nodes);
+    }
+    before(node) {
+      rows.splice(rows.indexOf(this), 0, node);
+    }
+    remove() {
+      if (rows.includes(this)) rows.splice(rows.indexOf(this), 1);
+    }
+  }
+  const lines = new Map(anchors.map((anchor) => [anchor, new Row("line")]));
+  rows.push(...lines.values());
+  const classes = (selector) => rows.filter((row) => row.className.split(" ").includes(selector.slice(1)));
+  globalThis.document = { createElement: () => new Row(), querySelectorAll: classes };
+  const addLine = (anchor) => {
+    lines.set(anchor, new Row("line"));
+    rows.push(lines.get(anchor));
+  };
+  return { rows, lines, addLine, findRow: (anchor) => lines.get(anchor) ?? null, callouts: () => classes(".prf-callout-row") };
+}
+
+function calloutPage(table) {
+  return require("../page_common.js").createPage({ findRow: table.findRow });
+}
+
+test("showCallouts puts one callout row directly above each start line and changes nothing when called again", () => {
+  const table = fakeTable(["a", "b"]);
+  try {
+    const page = calloutPage(table);
+    const built = [];
+    const entries = ["a", "b"].map((anchor) => ({ key: anchor, anchor, render: () => (built.push(anchor), { anchor }) }));
+    page.showCallouts(entries);
+    page.showCallouts(entries);
+    assert.deepEqual(table.rows.map((row) => row.dataset.key ?? "line"), ["a", "line", "b", "line"]);
+    assert.deepEqual(built, ["a", "b"]);
+    assert.equal(table.callouts()[0].nextElementSibling, table.lines.get("a"));
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("showCallouts skips a start line that has not loaded and adds its callout once the row appears", () => {
+  const table = fakeTable(["a"]);
+  try {
+    const page = calloutPage(table);
+    const entries = [{ key: 1, anchor: "a", render: () => ({}) }, { key: 2, anchor: "late", render: () => ({}) }];
+    page.showCallouts(entries);
+    assert.equal(table.callouts().length, 1);
+    table.addLine("late");
+    page.showCallouts(entries);
+    assert.deepEqual(table.rows.map((row) => row.dataset.key ?? "line"), ["1", "line", "2", "line"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("showCallouts replaces a callout the host dropped and removes callouts that are no longer wanted", () => {
+  const table = fakeTable(["a", "b"]);
+  try {
+    const page = calloutPage(table);
+    const entries = ["a", "b"].map((anchor) => ({ key: anchor, anchor, render: () => ({}) }));
+    page.showCallouts(entries);
+    table.callouts()[0].remove();
+    page.showCallouts(entries);
+    assert.deepEqual(table.rows.map((row) => row.dataset.key ?? "line"), ["a", "line", "b", "line"]);
+    page.showCallouts(entries.slice(1));
+    assert.deepEqual(table.rows.map((row) => row.dataset.key ?? "line"), ["line", "b", "line"]);
+    page.showCallouts([]);
+    assert.deepEqual(table.callouts(), []);
+  } finally {
+    delete globalThis.document;
+  }
 });

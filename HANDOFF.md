@@ -79,11 +79,12 @@ What it does (see `extension/README.md`):
   chunk's boxes, and has a legend and motion.
 - A chunk click lands its first file flush under the pinned toolbar.
 - The "Start here" button under the open chunk jumps to the start line: it waits up to 10 seconds for GitHub to render the
-  row, re-centres, highlights it and shows the reason on a row beneath it. Clicking a diagram box selects its chunk.
+  row, re-centres and outlines it in purple. Every chunk's start line has a callout card above it (reason, Next buttons
+  from `next` in `review.json`, a `↑` button to the previous chunk). Clicking a diagram box selects its chunk.
 - A "server down" note offers Retry. `variants.json` tells the extension which variants a PR has.
 
 Verified only by injecting code into the page, never through a real extension reload: the start-line highlight and
-reason row, the panel move, the light theme, and the saved width and collapsed state. Reload
+callouts, the panel move, the light theme, and the saved width and collapsed state. Reload
 the unpacked extension on a real PR and check each of them first.
 
 Brittleness: every GitHub selector lives in `extension/github_page.js`. The CSS-module class prefixes

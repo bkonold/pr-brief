@@ -33,54 +33,50 @@
   }
 }
 
-.prf-line-target,
-.prf-reason-row {
-  --prf-attn-bg: var(--bgColor-attention-muted, #fff8c5);
-  --prf-attn-edge: var(--borderColor-attention-emphasis, #9a6700);
+/* The purple of the guide layer, the same as the diagram's selected-chunk outline. */
+:root {
+  --prf-guide: #534ab7;
+  --prf-guide-soft: color-mix(in srgb, var(--prf-guide) 45%, transparent);
 }
 
-html[data-color-mode="dark"] .prf-line-target,
-html[data-color-mode="dark"] .prf-reason-row {
-  --prf-attn-bg: var(--bgColor-attention-muted, #bb800926);
-  --prf-attn-edge: var(--borderColor-attention-emphasis, #9e6a03);
+html[data-color-mode="dark"],
+html[data-theme*="dark"] {
+  --prf-guide: #9d94f5;
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-color-mode="auto"] .prf-line-target,
-  html[data-color-mode="auto"] .prf-reason-row {
-    --prf-attn-bg: var(--bgColor-attention-muted, #bb800926);
-    --prf-attn-edge: var(--borderColor-attention-emphasis, #9e6a03);
+  html[data-color-mode="auto"],
+  html[data-theme*="auto"] {
+    --prf-guide: #9d94f5;
   }
 }
 
+/* The start line keeps the host's own colours: a 2px outline and a 4px bar on the left, drawn inside the cells. */
 .prf-line-target > td {
-  background-color: var(--prf-attn-bg) !important;
+  box-shadow:
+    inset 0 2px 0 var(--prf-guide),
+    inset 0 -2px 0 var(--prf-guide);
 }
 
-.prf-line-target > td:first-child,
-.prf-reason-row > td {
-  box-shadow: inset 4px 0 0 var(--prf-attn-edge);
+.prf-line-target > td:first-child {
+  box-shadow:
+    inset 4px 0 0 var(--prf-guide),
+    inset 0 2px 0 var(--prf-guide),
+    inset 0 -2px 0 var(--prf-guide);
 }
 
-.prf-reason-row > td {
-  padding: 6px 12px 6px 16px;
+.prf-line-target > td:last-child {
+  box-shadow:
+    inset -2px 0 0 var(--prf-guide),
+    inset 0 2px 0 var(--prf-guide),
+    inset 0 -2px 0 var(--prf-guide);
+}
+
+.prf-callout-row > td {
+  padding: 8px 16px 8px 0;
   overflow: visible;
-  font-family: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--fgColor-default, #1f2328);
   text-overflow: clip;
   white-space: normal;
-  overflow-wrap: anywhere;
-  background-color: color-mix(in srgb, var(--prf-attn-bg) 60%, transparent) !important;
+  background-color: var(--bgColor-default, #ffffff);
   border: 0;
-}
-
-.prf-reason-label {
-  margin-right: 6px;
-  font-weight: 600;
-}
-
-.prf-reason-label::after {
-  content: ":";
 }

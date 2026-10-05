@@ -268,6 +268,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const lines = [];
   const renders = [];
   const jumps = [];
+  const callouts = [];
   const emphasized = [];
   const diagramHandlers = [];
   const prFocus = {
@@ -287,7 +288,9 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       headSha: () => null,
       restoreLineTarget() {},
       ownsLine: () => false,
-      jumpToLine: async (...args) => jumps.push(args.slice(0, 4)),
+      lineAnchor: async (path, side, line) => `${path}${side}${line}`,
+      showCallouts: (entries) => callouts.push(entries),
+      jumpToLine: async (...args) => jumps.push(args),
     },
     source: {
       loadBrief: async () => run,
@@ -311,7 +314,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       EXTRA_KEY: "extra",
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
-      readFirstReason: require("../tree.js").readFirstReason,
+      startCallout: (chunk, chunks, onGo) => ({ chunk, chunks, onGo }),
       flashRows() {},
       revealGroup() {},
       remove() {},
@@ -337,7 +340,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, location: { href: "x", hash: "" }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, emphasized, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, callouts, emphasized, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -748,7 +751,7 @@ test("a chunk's start jump and the diagram highlight work in both orders", async
     const { handlers } = renders.at(-1);
     jumps.length = 0;
     await handlers.onJumpToStart(3);
-    assert.deepEqual(jumps, [["db/V1.sql", "R", 2, "w"]]);
+    assert.deepEqual(jumps, [["db/V1.sql", "R", 2]]);
     await handlers.onSelectChunk(2);
     assert.deepEqual(emphasized.at(-1), ["b"]);
     assert.equal(renders.at(-1).state.order, order);
@@ -761,7 +764,7 @@ test("clicking a chunk opens it and jumps to its start line, again on every clic
   for (const click of [1, 2]) {
     jumps.length = 0;
     await renders.at(-1).handlers.onSelectChunk(2);
-    assert.deepEqual(jumps, [["src/api.js", "R", 9, "w"]], `click ${click}`);
+    assert.deepEqual(jumps, [["src/api.js", "R", 9]], `click ${click}`);
     const { state } = renders.at(-1);
     assert.deepEqual([state.selectedN, [...state.expanded]], [2, [2]]);
   }
@@ -785,6 +788,53 @@ test("clicking a diagram box does what clicking its chunk does, and a box no chu
   assert.deepEqual([jumps, renders.at(-1).state.selectedN], [[], null]);
   diagramHandlers.at(-1).onNode("c");
   await settle();
-  assert.deepEqual(jumps, [["db/V1.sql", "R", 2, "w"]]);
+  assert.deepEqual(jumps, [["db/V1.sql", "R", 2]]);
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded], emphasized.at(-1)], [3, [3], ["c"]]);
+});
+
+test("a review opens with a callout entry for every chunk that has a start line, anchored at that line", async () => {
+  const { callouts } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor]), [[1, "src/ui.jsR4"], [2, "src/api.jsR9"], [3, "db/V1.sqlR2"]]);
+});
+
+test("a chunk without a start line gets no callout", async () => {
+  const [first, ...rest] = STEP_REVIEW.chunks;
+  const { start, ...unstarted } = first;
+  const { callouts } = loadContent({ run: null, view: "files", review: { ...STEP_REVIEW, chunks: [unstarted, ...rest] } });
+  await settle();
+  assert.deepEqual(callouts.at(-1).map((entry) => entry.key), [2, 3]);
+});
+
+test("the callouts are shown in the review and removed in the host's own tree view, in either order", async () => {
+  const { renders, callouts } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onMode("github");
+  assert.deepEqual(plain(callouts.at(-1)), []);
+  await renders.at(-1).handlers.onMode("review");
+  assert.equal(callouts.at(-1).length, 3);
+  await renders.at(-1).handlers.onOrder("risk");
+  assert.equal(callouts.at(-1).length, 3);
+});
+
+test("a callout's next and previous buttons open that chunk and jump to its start line", async () => {
+  const { callouts, jumps, renders } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  jumps.length = 0;
+  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
+  assert.equal(chunk.n, 1);
+  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  assert.deepEqual(jumps, [["src/api.js", "R", 9]]);
+  assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [2, [2]]);
+});
+
+test("a callout's button for a chunk with no start line opens it without a jump", async () => {
+  const [first, second, ...rest] = STEP_REVIEW.chunks;
+  const { start, ...unstarted } = second;
+  const { callouts, jumps, renders } = loadContent({ run: null, view: "files", review: { ...STEP_REVIEW, chunks: [first, unstarted, ...rest] } });
+  await settle();
+  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
+  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  assert.deepEqual(jumps, []);
+  assert.equal(renders.at(-1).state.selectedN, 2);
 });

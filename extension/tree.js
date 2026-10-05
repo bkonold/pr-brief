@@ -11,6 +11,7 @@
   const LIST_TREE_ICON = "M2.5 3h11M5.5 8h8M5.5 13h8M3 3.5v9.5M3 8h2.5M3 13h2.5";
   const FOLDER_ICON = "M1.75 3.5h4.25l1.5 1.75h6.75v7.5h-12.5z";
   const JUMP_ICON = "M2.5 3v10M5.5 8h8M10 4.5L13.5 8 10 11.5";
+  const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
   const LEVEL_ORDER = ["read carefully", "read", "skim"];
 
   function groupRank(chunk) {
@@ -47,6 +48,23 @@
   // The first chunk, in the order the list shows them, that lists the diagram box `nodeId`; null when none does.
   function chunkOfNode(chunks, order, nodeId) {
     return orderChunks(chunks, order).find((chunk) => chunk.nodes?.includes(nodeId)) ?? null;
+  }
+
+  function chunkByNumber(chunks, n) {
+    return chunks.find((chunk) => chunk.n === n) ?? null;
+  }
+
+  // The chunks to read after `chunk`: the ones its `next` names, else, for a run that has no `next`, the chunk with the
+  // next higher number. Empty for the last chunk.
+  function nextOf(chunks, chunk) {
+    if (Array.isArray(chunk.next)) return chunk.next.map((n) => chunkByNumber(chunks, n)).filter(Boolean);
+    const following = chunks.filter((other) => other.n > chunk.n).sort((a, b) => a.n - b.n)[0];
+    return following ? [following] : [];
+  }
+
+  // The chunk numbered one below `chunk`; null for the first.
+  function prevOf(chunks, chunk) {
+    return chunkByNumber(chunks, chunk.n - 1);
   }
 
   function folderOf(path) {
@@ -162,6 +180,34 @@
     element.append(outlineIcon(JUMP_ICON, 14, "prf-start-icon"), "Start here");
     element.title = `${baseNameOf(chunk.start.path)}:${chunk.start.line}`;
     return element;
+  }
+
+  function chunkLabel(chunk) {
+    return `${chunk.n} · ${chunk.name}`;
+  }
+
+  // The card shown above a chunk's start line, in the diff: where the chunk is, why the model starts at that line, and
+  // buttons to the chunks to read next and to the previous one. `onGo(chunk)` opens a chunk and jumps to its start.
+  function startCallout(chunk, chunks, onGo) {
+    const card = make("div", "prf-callout");
+    const head = make("div", "prf-callout-head");
+    head.append(outlineIcon(ROUTE_ICON, 14, "prf-callout-icon"), make("strong", "prf-callout-chunk", chunkLabel(chunk)), make("span", "prf-callout-label", "why the model starts here"));
+    card.append(head);
+    const reason = readFirstReason(chunk);
+    if (reason) card.append(make("div", "prf-callout-reason", reason));
+
+    const nav = make("div", "prf-callout-nav");
+    const targets = nextOf(chunks, chunk);
+    if (targets.length) {
+      nav.append(make("span", "prf-callout-nav-label", "Next"));
+      for (const target of targets) nav.append(button("prf-callout-go", `${chunkLabel(target)} ↓`, () => onGo(target)));
+    } else {
+      nav.append(make("span", "prf-callout-nav-label", "Last step"));
+    }
+    const previous = prevOf(chunks, chunk);
+    if (previous) nav.append(button("prf-callout-prev", `↑ ${chunkLabel(previous)}`, () => onGo(previous)));
+    card.append(nav);
+    return card;
   }
 
   function chunkGroup(chunk, state, handlers) {
@@ -381,7 +427,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
+  ns.tree = { render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;
