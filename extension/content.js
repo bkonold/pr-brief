@@ -127,6 +127,11 @@
     return session.mode === "review" ? (session.review.chunks.find((c) => c.n === session.selectedN) ?? null) : null;
   }
 
+  // The paths outside the selected chunk whose diffs are shown with it because a line in its row was clicked.
+  function revealedPaths(session) {
+    return session.reveal?.n === session.selectedN ? [...session.reveal.paths] : [];
+  }
+
   function extraFiles(session) {
     const listed = new Set(session.review.chunks.flatMap((chunk) => chunk.files.map((file) => file.path)));
     return [...page.fileBlocks().keys()].filter((path) => !listed.has(path)).map((path) => ({ path }));
@@ -144,7 +149,7 @@
     }
     if (!session?.review || !live()) return;
     const chunk = selectedChunk(session);
-    const result = await focus.apply(chunk, { scroll });
+    const result = await focus.apply(chunk, { scroll, extra: revealedPaths(session) });
     if (result.stale || current !== session) return;
     renderDiagram(session, chunk);
     focus.markBox(session.activeBox?.paths ?? []);
@@ -325,6 +330,35 @@
           );
         }
         await jumpToStart(session, chunk);
+      },
+      // A contract or data line in a chunk's row selects that chunk and jumps to the line's place in the diff, without the
+      // pulse. The line may be in the spec, which belongs to another chunk, so its file is shown with this one.
+      onJumpToLine: async (n, line) => {
+        const chunk = session.review.chunks.find((candidate) => candidate.n === n);
+        if (!chunk) return;
+        const outside = !chunk.files.some((file) => file.path === line.path);
+        await change(
+          session,
+          () => {
+            leaveLine();
+            if (session.selectedN === n) {
+              session.expanded.add(n);
+            } else {
+              deactivate(session);
+              session.mode = "review";
+              session.selectedN = n;
+              session.expanded = new Set([n]);
+            }
+            if (outside) {
+              if (session.reveal?.n !== n) session.reveal = { n, paths: new Set() };
+              session.reveal.paths.add(line.path);
+            }
+          },
+          { scroll: false },
+        );
+        if (current !== session || !live()) return;
+        if (line.line == null) await page.jumpToFile(line.path, { pulse: false });
+        else await page.jumpToLine(line.path, line.side, line.line, { pulse: false });
       },
       // A file row selects its chunk without the chunk's own scroll, lands that file's header below the sticky chrome
       // and makes the file active: its row and header get the box bar and the header flashes.

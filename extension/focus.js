@@ -23,15 +23,22 @@
     return (await ns.page.entryFor(path)) ?? ns.page.entryOf(scanned.get(path));
   }
 
-  // Hides every diff outside `chunk` and scrolls to the chunk's first loaded diff. apply(null) shows all.
-  async function apply(chunk, { scroll = true } = {}) {
+  // The paths whose diffs stay visible for `chunk`: its files, then `extra`, files outside it that something in its row
+  // points at (a contract line in the spec's diff).
+  function visiblePaths(chunk, extra) {
+    const own = chunk.files.map(({ path }) => path);
+    return [...own, ...extra.filter((path) => !own.includes(path))];
+  }
+
+  // Hides every diff outside `chunk` and `extra` and scrolls to the chunk's first loaded diff. apply(null) shows all.
+  async function apply(chunk, { scroll = true, extra = [] } = {}) {
     const mine = ++generation;
     if (!chunk) {
       clear();
       return {};
     }
     const scanned = ns.page.fileBlocks();
-    const found = await Promise.all(chunk.files.map(({ path }) => entryOfPath(path, scanned)));
+    const found = await Promise.all(visiblePaths(chunk, extra).map((path) => entryOfPath(path, scanned)));
     if (mine !== generation) return { stale: true };
 
     const keep = new Set(found.filter(Boolean));
@@ -97,5 +104,7 @@
     for (const header of document.querySelectorAll(`.${ACTIVE}, .${FLASH}`)) header.classList.remove(ACTIVE, FLASH);
   }
 
-  ns.focus = { apply, scrollTo, markBox, announceBox, clearBox };
+  ns.focus = { visiblePaths, apply, scrollTo, markBox, announceBox, clearBox };
 })();
+
+if (typeof module !== "undefined") module.exports = globalThis.prFocus.focus;

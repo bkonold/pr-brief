@@ -284,6 +284,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const emphasized = [];
   const pulses = [];
   const centered = [];
+  const applied = [];
   const diagramHandlers = [];
   const prFocus = {
     page: {
@@ -336,7 +337,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       remove() {},
       owns: () => false,
     },
-    focus: { apply: async () => ({}), clearBox() {}, markBox() {}, scrollTo: async () => {}, announceBox() {} },
+    focus: { apply: async (chunk, options) => (applied.push([chunk?.n ?? null, options]), {}), clearBox() {}, markBox() {}, scrollTo: async () => {}, announceBox() {} },
     diagram: {
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
@@ -359,7 +360,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, centered, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, centered, applied, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -945,4 +946,65 @@ test("a chunk with no boxes is centred on an empty list", async () => {
   await settle();
   await renders.at(-1).handlers.onSelectChunk(2);
   assert.equal(JSON.stringify(centered), "[[]]");
+});
+
+const SECTION_MARKDOWN = [
+  "# T",
+  "",
+  "### **Description**",
+  "text",
+  "",
+  "___",
+  "",
+  "### **Contract**",
+  "Contract: 1 callers must change · 1 additive",
+  "",
+  "<details>",
+  '<summary>2 · Item endpoints <span class="pill p0"><strong>callers must change</strong></span> <code>size</code> now required</summary>',
+  "",
+  "<ul>",
+  '<li><span class="pill p0"><strong>callers must change</strong></span> <a href="https://github.com/acme/widgets/pull/7/files#diff-abcR40"><code>size</code> now required</a></li>',
+  '<li><span class="pill p2">additive</span> <a href="https://github.com/acme/widgets/pull/7/files#diff-abcR41">new <code>GET /items</code></a></li>',
+  "</ul>",
+  "",
+  "</details>",
+  "",
+  "___",
+  "",
+  "<details open> <summary><h3> Review order</h3></summary>",
+  "",
+  `<table class="review-order"><thead><tr><th>#</th><th>Chunk</th></tr></thead><tbody>${ORDER_ROWS.join("")}</tbody></table>`,
+  "",
+  "</details>",
+  "",
+].join("\n");
+
+test("the Contract section's groups and chips stay in the description, apart from the review order", () => {
+  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(SECTION_MARKDOWN), diagramSvg: null }, CARD);
+  const { text, order } = require("../brief.js").splitOrder(briefText.renderBody(bodyHtml(SECTION_MARKDOWN), FILES_URL).html);
+  assert.match(text, /<details>\s*<summary>2 · Item endpoints <span class="pill p0"><strong>callers must change<\/strong><\/span>/);
+  assert.match(text, /<span class="pill p2">additive<\/span> <a href="[^"]+#diff-abcR41">new <code>GET \/items<\/code><\/a>/);
+  assert.doesNotMatch(order, /pill/);
+  assert.match(order, /^<details>[\s\S]*class="review-order"/);
+  assert.equal(html.match(/<details/g).length >= 3, true);
+});
+
+test("a line in a chunk's row selects the chunk, shows its file and jumps to its line without the pulse", async () => {
+  const lined = {
+    ...STEP_REVIEW,
+    chunks: STEP_REVIEW.chunks.map((chunk) => (chunk.n === 2 ? { ...chunk, contract: [{ impact: "callers must change", text: "t", path: "api/openapi.json", side: "R", line: 40 }] } : chunk)),
+  };
+  const { renders, jumps, fileJumps, applied } = loadContent({ run: null, view: "files", review: lined });
+  await settle();
+  jumps.length = 0;
+  await renders.at(-1).handlers.onJumpToLine(2, lined.chunks[1].contract[0]);
+  assert.deepEqual(plain(jumps), [["api/openapi.json", "R", 40, { pulse: false }]]);
+  const { state } = renders.at(-1);
+  assert.deepEqual([state.selectedN, [...state.expanded]], [2, [2]]);
+  assert.deepEqual(plain(applied.at(-1)), [2, { scroll: false, extra: ["api/openapi.json"] }]);
+  await renders.at(-1).handlers.onJumpToLine(2, { impact: null, text: "t", path: "src/api.js", side: null, line: null });
+  assert.deepEqual(plain(fileJumps), [["src/api.js", { pulse: false }]]);
+  assert.deepEqual(plain(applied.at(-1)), [2, { scroll: false, extra: ["api/openapi.json"] }]);
+  await renders.at(-1).handlers.onSelectChunk(3);
+  assert.deepEqual(plain(applied.at(-1)), [3, { scroll: false, extra: [] }]);
 });

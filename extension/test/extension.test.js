@@ -941,3 +941,44 @@ test("a file row ends with its added and removed line counts, a zero side left o
     delete globalThis.document;
   }
 });
+
+test("a chunk's Contract and Data blocks list each line with its impact chip above its files, and a click reports the line", () => {
+  const { changeBlocks, impactChip } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const chunk = {
+      n: 2,
+      contract: [
+        { impact: "callers must change", text: "`size` now required", path: "api/openapi.json", side: "R", line: 40 },
+        { impact: "additive", text: "new `GET /items`", path: "api/openapi.json", side: "R", line: 52 },
+      ],
+      data: [{ impact: null, text: "other statement in V9.sql", path: "db/V9.sql", side: "R", line: 3 }],
+    };
+    const clicked = [];
+    const blocks = changeBlocks(chunk, (line) => clicked.push(line.line));
+    assert.deepEqual(blocks.map((block) => block.className), ["prf-lines prf-lines-contract", "prf-lines prf-lines-data"]);
+    assert.deepEqual(blocks.map((block) => byClass(block, "prf-lines-title")[0].textContent), ["Contract", "Data"]);
+    const chips = byClass(blocks[0], "prf-impact");
+    assert.deepEqual(chips.map((chip) => [chip.className, chip.textContent]), [["prf-impact prf-impact-0", "callers must change"], ["prf-impact prf-impact-2", "additive"]]);
+    assert.deepEqual(byClass(blocks[1], "prf-impact"), []);
+    assert.deepEqual(byClass(blocks[0], "prf-line-text")[0].children.map((part) => part.tag ?? part), ["code", " now required"]);
+    const rows = byClass(blocks[0], "prf-line");
+    assert.equal(rows[0].title, "openapi.json:40");
+    rows[1].listeners.click();
+    assert.deepEqual(clicked, [52]);
+    assert.equal(impactChip("consumers may break", ["callers must change", "consumers may break"]).className, "prf-impact prf-impact-1");
+    assert.equal(impactChip("rewrites rows", ["destructive", "rewrites rows", "additive"]).className, "prf-impact prf-impact-1");
+    assert.equal(impactChip("x", ["a"]), null);
+    assert.deepEqual(changeBlocks({ n: 1 }, () => {}), []);
+    assert.deepEqual(changeBlocks({ n: 1, contract: [] }, () => {}), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("visiblePaths lists a chunk's files then the extra paths it does not already hold", () => {
+  const { visiblePaths } = require("../focus.js");
+  const chunk = { files: [{ path: "a.js" }, { path: "b.js" }] };
+  assert.deepEqual(visiblePaths(chunk, ["spec.json", "a.js"]), ["a.js", "b.js", "spec.json"]);
+  assert.deepEqual(visiblePaths(chunk, []), ["a.js", "b.js"]);
+});

@@ -96,6 +96,13 @@
     .paper { padding: 8px; overflow: auto; color: #1f2328; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; }
     .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
     .legend { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+    .pill.p0 { font-weight: 600; color: var(--surface); background: var(--fg); border-color: var(--fg); }
+    .pill.p1 { font-weight: 600; color: var(--fg); border-color: var(--fg); }
+    .text details { margin: 0 0 6px; }
+    .text details > summary { line-height: 22px; }
+    .text details > summary .pill { margin: 0 4px; font-size: 11px; line-height: 16px; padding: 0 7px; }
+    .text details > ul { margin: 4px 0 8px; padding-left: 20px; }
+    .text details li { margin-bottom: 4px; }
     ul.contract { margin: 0 0 12px; padding-left: 20px; }
     .text > ul.contract > li { margin-bottom: 4px; }
     .order-switch { margin: 4px 0 8px; font-size: 12px; color: var(--muted); }
@@ -122,9 +129,10 @@
   }
 
   // The description and the review order are split at the review order's <details>, so the diagram's own <details>
-  // can sit between them.
+  // can sit between them. The <details> groups of the Contract and Data sections stay in the description.
   function splitOrder(html) {
-    const at = html.indexOf("<details");
+    const table = html.indexOf('class="review-order"');
+    const at = table === -1 ? html.indexOf("<details") : html.lastIndexOf("<details", table);
     return at === -1 ? { text: html, order: "" } : { text: html.slice(0, at), order: html.slice(at) };
   }
 
@@ -262,7 +270,7 @@
     return host;
   }
 
-  ns.brief = { HOST_ID, buildCard, buildBrief, cardHtml, isStale, orderBlock };
+  ns.brief = { splitOrder, HOST_ID, buildCard, buildBrief, cardHtml, isStale, orderBlock };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.brief;

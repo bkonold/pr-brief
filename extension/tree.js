@@ -17,6 +17,12 @@
   const LEGACY_LEVELS = { "read carefully": "verify" };
   const CHECK_ORDER = ["logic", "contract", "breaking", "data", "destructive", "access", "generated"];
   const FILLED_CHECKS = new Set(["breaking", "destructive"]);
+  const CONTRACT_LEVELS = ["callers must change", "consumers may break", "additive", "deprecated"];
+  const DATA_LEVELS = ["destructive", "rewrites rows", "additive"];
+  const LINE_SECTIONS = [
+    ["contract", "Contract", CONTRACT_LEVELS],
+    ["data", "Data", DATA_LEVELS],
+  ];
 
   // The effort level a review.json word names: verify, read or skim; the older "read carefully" is verify and an
   // unknown word is read.
@@ -116,6 +122,45 @@
     const row = make("span", className);
     for (const label of labels) row.append(make("span", `prf-chip prf-chip-${label}${FILLED_CHECKS.has(label) ? " prf-chip-filled" : ""}`, label));
     return row;
+  }
+
+  // The chip for a line's impact: filled for the worst level, bold and outlined for the second, plain for the rest.
+  // null for a line with no level (an unclassified migration statement).
+  function impactChip(impact, levels) {
+    const rank = levels.indexOf(impact);
+    if (rank === -1) return null;
+    return make("span", `prf-impact prf-impact-${Math.min(rank, 2)}`, impact);
+  }
+
+  // One line of a chunk's Contract or Data block: its impact chip, then its text with `code` spans, a button that
+  // jumps to the line's place in the diff. A line the diff could not place jumps to its file.
+  function changeLine(line, levels, onJump) {
+    const item = make("li", "prf-line-item");
+    const row = button("prf-line", undefined, () => onJump(line));
+    row.title = line.line == null ? line.path : `${baseNameOf(line.path)}:${line.line}`;
+    const chip = impactChip(line.impact, levels);
+    if (chip) row.append(chip);
+    const text = make("span", "prf-line-text");
+    text.append(...messageNodes(line.text));
+    row.append(text);
+    item.append(row);
+    return item;
+  }
+
+  // The "Contract" and "Data" blocks above a chunk's files, one per kind of line the chunk owns; none for a review.json
+  // that has no such lines. `onJump(line)` is called with the clicked line.
+  function changeBlocks(chunk, onJump) {
+    const blocks = [];
+    for (const [key, title, levels] of LINE_SECTIONS) {
+      const lines = Array.isArray(chunk[key]) ? chunk[key] : [];
+      if (!lines.length) continue;
+      const block = make("div", `prf-lines prf-lines-${key}`);
+      const list = make("ul", "prf-line-list");
+      list.append(...lines.map((line) => changeLine(line, levels, onJump)));
+      block.append(make("div", "prf-lines-title", title), list);
+      blocks.push(block);
+    }
+    return blocks;
   }
 
   function staleMessage(review, pageSha) {
@@ -291,7 +336,7 @@
       ),
     );
     const body = make("div", "prf-body");
-    body.append(files);
+    body.append(...changeBlocks(chunk, (line) => handlers.onJumpToLine(chunk.n, line)), files);
     if (chunk.start) body.append(startHere(chunk, handlers));
     return group({ key: chunk.n, expanded, selected: chunk.n === state.selectedN, muted: isMuted(chunk) }, header, body);
   }
@@ -368,7 +413,7 @@
   // state: { mode: "review" | "github", order: "flow" | "risk", selectedN, expanded: Set of chunk numbers and "extra",
   //          extras: [{ path }], pageSha, note, activeFiles: Set of the active box's paths }
   // handlers: onMode(mode), onToggleGroup(key), onSelectChunk(n), onSelectFile(n | null, path),
-  //           onJumpToStart(n), onExpandAll(), onCollapseAll(), onOrder(order)
+  //           onJumpToStart(n), onJumpToLine(n, line), onExpandAll(), onCollapseAll(), onOrder(order)
   function render(review, state, handlers) {
     const mount = mountPoint();
     if (!mount) return;
@@ -409,7 +454,8 @@
   function messageNodes(text) {
     return String(text)
       .split(/`([^`]+)`/)
-      .map((part, index) => (index % 2 === 1 ? make("code", undefined, part) : part));
+      .map((part, index) => (index % 2 === 1 ? make("code", undefined, part) : part))
+      .filter((node) => node !== "");
   }
 
   // The one line shown in the list's place when the PR has no brief yet, GitHub's own tree staying visible.
@@ -487,7 +533,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
+  ns.tree = { changeBlocks, impactChip, fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;
