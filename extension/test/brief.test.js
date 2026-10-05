@@ -315,7 +315,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       EXTRA_KEY: "extra",
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
-      startCallout: (chunk, chunks, onGo) => ({ chunk, chunks, onGo }),
+      startCallout: (chunk, chunks, onGo, titleOf) => ({ chunk, chunks, onGo, titleOf }),
       flashRows() {},
       revealGroup() {},
       remove() {},
@@ -326,6 +326,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
       setActive() {},
+      titleOf: (nodeId) => `title of ${nodeId}`,
       pulse: (nodeId) => pulses.push(nodeId),
       remove() {},
       owns: () => false,
@@ -828,6 +829,12 @@ test("a callout's next and previous buttons open that chunk and jump to its star
   await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["src/api.js", "R", 9, { pulse: false }]]));
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [2, [2]]);
+});
+
+test("a callout reads box titles from the diagram", async () => {
+  const { callouts } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  assert.equal(callouts.at(-1)[0].render().titleOf("b"), "title of b");
 });
 
 test("a callout's button for a chunk with no start line opens it without a jump", async () => {

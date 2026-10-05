@@ -544,6 +544,50 @@ test("a start callout shows the chunk, the reason, its next buttons and the prev
   }
 });
 
+const BOXED_CHUNKS = [
+  { n: 1, name: "Screen", next: [2], why: "w", nodes: ["a"] },
+  { n: 2, name: "Endpoint", next: [3], why: "w", nodes: ["b", "b2"] },
+  { n: 3, name: "Table", next: [], why: "w", nodes: ["c"] },
+];
+const BOX_TITLES = { a: "List items", b: "Fetch items", c: "Store items" };
+const titleOf = (nodeId) => BOX_TITLES[nodeId] ?? "";
+
+test("a start callout's header is the box title in bold, a chevron, then the chunk name, and its buttons use box titles", () => {
+  globalThis.document = fakeDom();
+  try {
+    const gone = [];
+    const card = startCallout(BOXED_CHUNKS[1], BOXED_CHUNKS, (chunk) => gone.push(chunk.n), titleOf);
+    const head = byClass(card, "prf-callout-head")[0];
+    assert.deepEqual(head.children.map((child) => child.className), ["prf-callout-icon", "prf-callout-chunk", "prf-callout-sep", "prf-callout-name"]);
+    assert.equal(head.children[1].tag, "strong");
+    assert.equal(head.children[1].textContent, "2 · Fetch items");
+    assert.equal(head.children[3].textContent, "Endpoint");
+    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Store items ↓"]);
+    const previous = byClass(card, "prf-callout-prev")[0];
+    assert.deepEqual([previous.textContent, previous.title], ["↑ Previous", "1 · List items"]);
+    for (const button of [...byClass(card, "prf-callout-go"), previous]) button.listeners.click();
+    assert.deepEqual(gone, [3, 1]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk with no box or no title for its box keeps the bold number and chunk name, with no chevron", () => {
+  globalThis.document = fakeDom();
+  try {
+    const noBox = startCallout({ ...BOXED_CHUNKS[1], nodes: [] }, BOXED_CHUNKS, () => {}, titleOf);
+    assert.deepEqual(byClass(noBox, "prf-callout-head")[0].children.map((child) => child.className), ["prf-callout-icon", "prf-callout-chunk"]);
+    assert.equal(byClass(noBox, "prf-callout-chunk")[0].textContent, "2 · Endpoint");
+    const untitled = startCallout(BOXED_CHUNKS[1], BOXED_CHUNKS, () => {}, () => "");
+    assert.equal(byClass(untitled, "prf-callout-chunk")[0].textContent, "2 · Endpoint");
+    assert.deepEqual(byClass(untitled, "prf-callout-sep"), []);
+    assert.deepEqual(byClass(untitled, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
+    assert.equal(byClass(untitled, "prf-callout-prev")[0].title, "1 · Screen");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test("a start callout uses the start line's reason, lists every next chunk and has no previous button on the first chunk", () => {
   globalThis.document = fakeDom();
   try {

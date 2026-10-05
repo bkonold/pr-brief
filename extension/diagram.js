@@ -354,6 +354,12 @@
     shape.after(copy);
   }
 
+  // The title of a box: the bold first line of its label, without the box number; "" for an unknown box or one the
+  // diagram draws without a title.
+  function titleOf(nodeId) {
+    return found?.nodes.get(nodeId)?.querySelector(".nodeLabel .t")?.textContent.trim() ?? "";
+  }
+
   function remove() {
     closeOverlay();
     root?.remove();
@@ -369,7 +375,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { render, emphasize, setActive, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds };
+  ns.diagram = { render, emphasize, setActive, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

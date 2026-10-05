@@ -223,7 +223,7 @@
     const { chunks } = session.review;
     const anchors = await Promise.all(chunks.map((chunk) => (chunk.start ? page.lineAnchor(chunk.start.path, chunk.start.side, chunk.start.line) : null)));
     return chunks.flatMap((chunk, index) =>
-      anchors[index] ? [{ key: chunk.n, anchor: anchors[index], render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, null, { pulse: false })) }] : [],
+      anchors[index] ? [{ key: chunk.n, anchor: anchors[index], render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, null, { pulse: false }), diagram.titleOf) }] : [],
     );
   }
 

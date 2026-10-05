@@ -11,6 +11,7 @@
   const LIST_TREE_ICON = "M2.5 3h11M5.5 8h8M5.5 13h8M3 3.5v9.5M3 8h2.5M3 13h2.5";
   const FOLDER_ICON = "M1.75 3.5h4.25l1.5 1.75h6.75v7.5h-12.5z";
   const JUMP_ICON = "M2.5 3v10M5.5 8h8M10 4.5L13.5 8 10 11.5";
+  const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
   const LEVEL_ORDER = ["read carefully", "read", "skim"];
 
@@ -182,16 +183,34 @@
     return element;
   }
 
-  function chunkLabel(chunk) {
-    return `${chunk.n} · ${chunk.name}`;
+  // The title of the chunk's first diagram box, as `titleOf(nodeId)` gives it; "" when the chunk has no box or the
+  // diagram has no title for it.
+  function boxTitleOf(chunk, titleOf) {
+    const nodeId = chunk.nodes?.[0];
+    return (nodeId && titleOf(nodeId)) || "";
   }
 
-  // The card shown above a chunk's start line, in the diff: where the chunk is, why the model starts at that line, and
-  // buttons to the chunks to read next and to the previous one. `onGo(chunk)` opens a chunk and jumps to its start.
-  function startCallout(chunk, chunks, onGo) {
+  // `<n> · <box title>`, else `<n> · <chunk name>`.
+  function chunkLabel(chunk, titleOf) {
+    return `${chunk.n} · ${boxTitleOf(chunk, titleOf) || chunk.name}`;
+  }
+
+  // The card shown above a chunk's start line, in the diff: where the chunk is (its box title, then its name), why
+  // the model starts at that line, and buttons to the chunks to read next and to the previous one. `onGo(chunk)`
+  // opens a chunk and jumps to its start; `titleOf(nodeId)` gives a diagram box's title.
+  function startCallout(chunk, chunks, onGo, titleOf = () => "") {
     const card = make("div", "prf-callout");
     const head = make("div", "prf-callout-head");
-    head.append(outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"), make("strong", "prf-callout-chunk", chunkLabel(chunk)));
+    head.append(outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"));
+    if (boxTitleOf(chunk, titleOf)) {
+      head.append(
+        make("strong", "prf-callout-chunk", chunkLabel(chunk, titleOf)),
+        outlineIcon(CHEVRON_ICON, 14, "prf-callout-sep"),
+        make("span", "prf-callout-name", chunk.name),
+      );
+    } else {
+      head.append(make("strong", "prf-callout-chunk", chunkLabel(chunk, titleOf)));
+    }
     card.append(head);
     const reason = readFirstReason(chunk);
     if (reason) card.append(make("div", "prf-callout-label", "Why the LLM picked this"), make("div", "prf-callout-reason", reason));
@@ -200,13 +219,13 @@
     const previous = prevOf(chunks, chunk);
     if (previous) {
       const back = button("prf-callout-prev", "↑ Previous", () => onGo(previous));
-      back.title = chunkLabel(previous);
+      back.title = chunkLabel(previous, titleOf);
       nav.append(back);
     }
     const targets = nextOf(chunks, chunk);
     if (targets.length) {
       nav.append(make("span", "prf-callout-nav-label", "Next"));
-      for (const target of targets) nav.append(button("prf-callout-go", `${chunkLabel(target)} ↓`, () => onGo(target)));
+      for (const target of targets) nav.append(button("prf-callout-go", `${chunkLabel(target, titleOf)} ↓`, () => onGo(target)));
     } else {
       nav.append(make("span", "prf-callout-nav-label", "Last step"));
     }

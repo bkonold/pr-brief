@@ -494,6 +494,15 @@
   color: var(--fgColor-default, #1f2328);
 }
 
+.prf-callout-sep {
+  flex: none;
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-callout-name {
+  color: var(--fgColor-default, #1f2328);
+}
+
 .prf-callout-label {
   margin-top: 10px;
   font-size: 12px;
