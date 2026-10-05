@@ -510,6 +510,24 @@ def keep_diagram_nodes(chunks: list[Chunk], position: dict[str, int], notes: lis
     return owner
 
 
+def note_box_sharing(diagram: str, chunks: list[Chunk], notes: list[str]) -> None:
+    """Note each box claimed by more than one chunk and each chunk with no box or with several, for variants that
+    ask for exactly one box per chunk. The diagram and the chunks are left as they are."""
+    keep_diagram_nodes(chunks, declaration_positions(diagram.split("\n")), notes)
+    claimed: dict[str, list[str]] = {}
+    for chunk in chunks:
+        for node in chunk.nodes:
+            claimed.setdefault(node, []).append(chunk.name)
+    for node, names in claimed.items():
+        if len(names) > 1:
+            notes.append(f"box {node} is claimed by {len(names)} chunks: " + ", ".join(f"'{name}'" for name in names))
+    for chunk in chunks:
+        if not chunk.nodes:
+            notes.append(f"chunk '{chunk.name}': has no box")
+        elif len(chunk.nodes) > 1:
+            notes.append(f"chunk '{chunk.name}': has {len(chunk.nodes)} boxes: " + ", ".join(chunk.nodes))
+
+
 def prefix_labels(lines: list[str], number_of: Callable[[str], int | None]) -> str:
     """Prefix each labelled node declaration with `<n> · `, replacing any number the model wrote.
     A node for which `number_of` returns None keeps no number."""
@@ -895,6 +913,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
     if diagram and "node_files" in data:
         node_files = clean_node_files(data["node_files"], declaration_positions(diagram.split("\n")), paths, notes)
         diagram = add_context_style(diagram, [node for node, files in node_files.items() if not files])
+    if diagram and chunks and cfg.get("one_box_per_chunk"):
+        note_box_sharing(diagram, chunks, notes)
     if diagram and chunks and cfg.get("chunk_box_fallback"):
         diagram = add_chunk_boxes(diagram, chunks, node_files, counts, notes)
     if diagram:

@@ -133,7 +133,7 @@ One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own)
 `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), and `[render]` with `diagram` (`as_is`, `force_td` or
 `force_lr`), `wrapping_width`, `files` (`labels` or `chunks`), `numbering` (`chunks`, the default, or
-`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `chunk_box_fallback` and `contract_block`. `review_floor.toml` sets the minimum review level per
+`boxes` or `flow`), `chunk_order` (`risk`, the default, or `flow`), `start_line`, `chunk_box_fallback`, `one_box_per_chunk` and `contract_block`. `review_floor.toml` sets the minimum review level per
 path for the chunked file table; a rule's `deleted_from = "contract"` raises it to `level_if_deleted` only for a
 breaking change (a removal or a newly required field) the run's `contract.json` lists (see `review_floor.example.toml`).
 
@@ -149,6 +149,7 @@ breaking change (a removal or a newly required field) the run's `contract.json` 
 | `one_path_risk_chunked_v16` | v15's prompt plus a `step` of one or two words on each chunk, chunks returned in the order the change flows through the system, and a "Contract and data" block after the description |
 | `one_path_risk_chunked_v17` | v16 with a different `start` rule: the line where this step of the flow begins for a reviewer (the entry point or the method the previous step calls into), with a `why` saying what it sets up, instead of the line where the risk is decided |
 | `one_path_risk_chunked_v18` | v17 with the diagram's main path capped at 10 nodes instead of 7 |
+| `one_path_risk_chunked_v19` | v18 with one diagram box per chunk: each chunk's `nodes` is exactly one box, each changed box is exactly one chunk, and one file's changes that serve two steps are merged into one box |
 
 A variant with `render_from = "<variant name>"` is render-only. `run.py` makes no model call for it: it
 copies `prompt.txt`, `answer.yaml` and `pr.json` from `runs/<pr>/<that variant>/`, writes `run.json` with the
@@ -199,6 +200,8 @@ sha256 of the variant file that produced each run.
 - `chunk_box_fallback = true`: after the model's node ids are validated, each chunk still without a node gets
   a box `chunk<n>["<chunk name><br/><main file basename>"]` in the `also` subgraph. A box that only
   skim-level chunks own gets a muted grey `skim` class.
+- `one_box_per_chunk = true`: after the model's node ids are validated, a note in `error.txt` names each box claimed by
+  more than one chunk and each chunk with no box or with several. Rendering is unchanged.
 - Diagrams in `body.html` and `diagram.svg` share one minimal-outline theme (`DIAGRAM_STYLE` in
   `render.py`): rounded outlines, open-chevron arrowheads, hairline subgraphs. `body.md` is untouched.
 - `review.json` is schema 2: top-level `nodes` and `diagram`, and chunks with `n`, `name`, `review`, `why`,
