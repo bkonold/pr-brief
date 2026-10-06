@@ -228,8 +228,6 @@
   }
 
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const ACTIVE = "prd-active";
-  const GEOMETRY = ["x", "y", "width", "height", "rx", "ry"];
   const MARKER_ATTRIBUTES = ["marker-start", "marker-end"];
   const ACCENT = "var(--prf-guide, #534ab7)";
   const HALO_GAP = 6;
@@ -239,7 +237,6 @@
   let found = null;
   let shownText = null;
   let emphasis = null;
-  let activeNode = null;
   let canvas = null;
   let panelWidth = DEFAULT_WIDTH;
   let legend = [];
@@ -472,7 +469,7 @@
     }
 
     // The bounds of the listed boxes in diagram units, or null when none is drawn. A box is measured by its own shape,
-    // so its halo and pulse do not count.
+    // so its halo does not count.
     function boundsOf(ids) {
       const wanted = new Set(ids);
       const origin = svg.getBoundingClientRect();
@@ -692,7 +689,6 @@
       found = index(svg);
       shownText = svgText;
       applyEmphasis(card, found, emphasis);
-      applyActive();
     }
     root.style.top = host.top;
     root.style.setProperty("--prd-top", host.top);
@@ -704,31 +700,6 @@
   function emphasize(nodeIds) {
     emphasis = nodeIds ?? null;
     if (card && found) applyEmphasis(card, found, emphasis);
-  }
-
-  function applyActive() {
-    if (!found) return;
-    for (const [id, group] of found.nodes) group.classList.toggle(ACTIVE, id === activeNode);
-  }
-
-  // The box clicked last: it keeps a tint, stronger than the chunk highlight, until another is set or null clears it.
-  function setActive(nodeId) {
-    activeNode = nodeId ?? null;
-    applyActive();
-  }
-
-  // A short stroke-width swell with an accent tint over the box, drawn as a transient copy of its outline so it
-  // isn't overridden by the highlight's own stroke, and after the box's halo so it plays over it. Skipped under
-  // reduced motion.
-  function pulse(nodeId) {
-    const group = found?.nodes.get(nodeId);
-    const shape = group?.querySelector(":scope > rect");
-    if (!shape || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const copy = document.createElementNS(SVG_NS, "rect");
-    copy.setAttribute("class", "prd-pulse");
-    for (const name of GEOMETRY) if (shape.hasAttribute(name)) copy.setAttribute(name, shape.getAttribute(name));
-    copy.addEventListener("animationend", () => copy.remove(), { once: true });
-    (found.halos.get(nodeId) ?? shape).after(copy);
   }
 
   // Moves the canvas to follow the boxes: centred horizontally, with their neighbours kept in view (see createCanvas).
@@ -748,7 +719,6 @@
     root?.remove();
     root = card = found = shownText = canvas = null;
     emphasis = null;
-    activeNode = null;
   }
 
   function owns(node) {
@@ -758,7 +728,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, setActive, centerOn, titleOf, pulse, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

@@ -99,12 +99,11 @@ control; the PR brief card on the conversation page names the variant it shows.
 ## Boxes and files
 
 Clicking a diagram box selects the first chunk, in the order the list shows, whose `nodes` include it and does what
-clicking that chunk does: focus, open, jump to its start line. Once the jump has landed the clicked box pulses once (its outline swells from 2px to 3px with an accent tint over
-600ms; skipped under `prefers-reduced-motion`). A jump from the list, "Start here" or a callout does not pulse a box. The clicked box keeps a light accent fill tint, stronger
-than the chunk highlight, and the chunk's start file is the active file: its list row is bold and its diff header gets a
+clicking that chunk does: focus, open, jump to its start line. The box takes no stroke, tint or pulse of its own beyond the
+chunk's halo. The chunk's start file is the active file: its list row is bold and its diff header gets a
 3px accent bar. A box no chunk lists, and a context box (dashed, default cursor), do nothing when clicked.
 
-The active state clears when another box, a chunk's line, a file row or the mode toggle is used. A file row lands its
+The active file clears when another box, a chunk's line, a file row or the mode toggle is used. A file row lands its
 file's header just below GitHub's sticky chrome (the offset is measured when the click happens, as the lowest stuck edge
 of the page's sticky or fixed elements that span the diff column), then flashes the row and the header for about 1.2s;
 under `prefers-reduced-motion` the flash is skipped.
@@ -122,21 +121,20 @@ that expands it.
 
 - Motion: the line jump scrolls smoothly (a target more than 1.5 windows away is first approached instantly to one window
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
-  250ms. The emphasized box gets a 2px `#534ab7` stroke (`#b26a00` on save boxes); the diagrams carry no inline `!important`
-  styles, so no glow is needed. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
+  250ms. The emphasized box gets a halo in `#534ab7` (`#b26a00` on save boxes) and keeps its own stroke and fill. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
   the viewport, 280px by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
 - In a v21 diagram each box shows `<n> · title` in bold at its top left, its effort level as a small secondary word at its
   top right and its chips along the bottom (the same pills as the chunk list), and its border follows the level: `verify`
-  2px in the text colour, `read` 1px, `skim` dashed and muted. The selected box keeps the purple outline.
+  2px in the text colour, `read` 1px, `skim` dashed and muted. 
 - A legend under the card lists only the styles the SVG uses (changed step, verify, read, skim,
   writes data, unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected
-  chunk" (the emphasis outline) and, when the diagram has lanes, a note that columns are code layers.
+  chunk" (the halo) and, when the diagram has lanes, a note that columns are code layers.
 - Selecting a chunk (header click, box click or the jump button) highlights its `nodes` and dims nothing. Each highlighted
-  box keeps its 2px accent stroke and tint and gains a halo: a 5px ring in the accent colour at 30% opacity, 6px outside the
+  box keeps its own stroke and fill and gains a halo: a 5px ring in the accent colour at 30% opacity, 6px outside the
   box (amber on save boxes). Every edge with an end on a highlighted box, incoming or outgoing and dashed return edges
   included, is drawn 2px in the accent colour with an accent arrowhead. The halo is not part of the box's bounds, so
-  centring and following measure the box itself, and a click pulse plays over it. A chunk with no nodes dims the whole
+  centring and following measure the box itself. A chunk with no nodes dims the whole
   diagram slightly. "GitHub tree" mode or no selection restores it.
 - Clicking a box selects its chunk and jumps to its start line (see "Boxes and files").
 - The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Any scroll wheel or trackpad

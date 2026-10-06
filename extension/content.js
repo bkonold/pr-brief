@@ -183,7 +183,6 @@
     }
     diagram.render(session.review.diagramSvg, { onNode: (nodeId) => selectNode(session, nodeId), onReset: () => resetReview(session) });
     diagram.emphasize(chunk ? (chunk.nodes ?? null) : null);
-    diagram.setActive(session.activeBox?.id ?? null);
   }
 
   // Ends any line jump in progress, which would otherwise scroll to its line when the row finally loads, and
@@ -193,9 +192,9 @@
     page.clearLineTarget();
   }
 
-  // The active state: the file whose row and header are marked, and the diagram box clicked to get there, if any.
-  function activation(path, boxId = null) {
-    return { id: boxId, paths: [path] };
+  // The active state: the file whose row and header are marked.
+  function activation(path) {
+    return { paths: [path] };
   }
 
   // Lands the file's header below the sticky chrome and then, together, flashes its list row and its header.
@@ -207,11 +206,10 @@
     focus.announceBox([path]);
   }
 
-  // Forgets the active selection and everything shown for it: the diagram tint and the diff header bars.
+  // Forgets the active selection and everything shown for it: the diff header bars.
   function deactivate(session) {
     session.activeBox = null;
     focus.clearBox();
-    diagram.setActive(null);
   }
 
   // A start with no line names only a file.
@@ -246,7 +244,7 @@
               key: chunk.n,
               anchor: anchors[index],
               ...(isFileStart(chunk.start) ? { file: true } : {}),
-              render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, null, { pulse: false }), diagram.titleOf),
+              render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, { pulse: false }), diagram.titleOf),
             },
           ]
         : [],
@@ -254,10 +252,10 @@
   }
 
   // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
-  // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. `boxId` is the diagram
-  // box the selection came from, which pulses once the jump has landed. Selecting the open chunk again jumps again.
-  // `jump` passes on to the line jump, e.g. `{ pulse: false }`. Every selection moves the diagram to follow the chunk's boxes.
-  async function selectChunk(session, chunk, boxId = null, jump = undefined) {
+  // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. Selecting the
+  // open chunk again jumps again. `jump` passes on to the line jump, e.g. `{ pulse: false }`. Every selection moves the
+  // diagram to follow the chunk's boxes.
+  async function selectChunk(session, chunk, jump = undefined) {
     const path = chunk.start?.path ?? chunk.files[0]?.path;
     await change(
       session,
@@ -267,7 +265,7 @@
         session.mode = "review";
         session.selectedN = chunk.n;
         session.expanded = new Set([chunk.n]);
-        if (path) session.activeBox = activation(path, boxId);
+        if (path) session.activeBox = activation(path);
       },
       { scroll: false },
     );
@@ -276,7 +274,6 @@
     tree.revealGroup(chunk.n);
     if (chunk.start) await jumpToStart(session, chunk, jump);
     else if (path) await landOnFile(session, path);
-    if (boxId && current === session && live() && session.activeBox?.id === boxId) diagram.pulse(boxId);
   }
 
   // Puts the review back as it was when it loaded: no chunk selected, every row collapsed, every file shown, and no
@@ -306,7 +303,7 @@
   // does nothing.
   function selectNode(session, nodeId) {
     const chunk = tree.chunkOfNode(session.review.chunks, session.order, nodeId);
-    if (chunk) selectChunk(session, chunk, nodeId);
+    if (chunk) selectChunk(session, chunk);
   }
 
   function change(session, update, options) {

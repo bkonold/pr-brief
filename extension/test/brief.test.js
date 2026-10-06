@@ -283,10 +283,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const fileJumps = [];
   const callouts = [];
   const emphasized = [];
-  const pulses = [];
   const centered = [];
   const applied = [];
-  const active = [];
   const lineEvents = [];
   const stored = {};
   const diagramHandlers = [];
@@ -345,9 +343,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     diagram: {
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
-      setActive: (nodeId) => active.push(nodeId),
       titleOf: (nodeId) => `title of ${nodeId}`,
-      pulse: (nodeId) => pulses.push(nodeId),
       centerOn: (nodeIds) => centered.push(nodeIds),
       remove() {},
       owns: () => false,
@@ -365,7 +361,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, pulses, centered, applied, active, lineEvents, stored, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, applied, lineEvents, stored, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -1006,20 +1002,16 @@ test("a callout's button for a chunk with no start line opens it without a jump"
   assert.equal(renders.at(-1).state.selectedN, 2);
 });
 
-test("a diagram box click pulses that box after the jump, and a chunk click or a callout button pulses none", async () => {
-  const { renders, callouts, pulses, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+test("a diagram box click selects its chunk and jumps to its start, and a box no chunk lists does nothing", async () => {
+  const { renders, jumps, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("zzz");
   await settle();
-  assert.deepEqual(pulses, []);
+  assert.deepEqual(jumps, []);
   diagramHandlers.at(-1).onNode("b");
   await settle();
-  assert.deepEqual(pulses, ["b"]);
-  await renders.at(-1).handlers.onSelectChunk(3);
-  await renders.at(-1).handlers.onJumpToStart(1);
-  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
-  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
-  assert.deepEqual(pulses, ["b"]);
+  assert.equal(renders.at(-1).state.selectedN, 2);
+  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/api.js", "R", 9]]);
 });
 
 const FILE_START_REVIEW = {
@@ -1049,13 +1041,12 @@ test("clicking a chunk with a file start, its Start here button and a callout bu
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [2, [2]]);
 });
 
-test("a diagram box click on a file-start chunk still pulses its box after the jump", async () => {
-  const { fileJumps, pulses, diagramHandlers } = loadContent({ run: null, view: "files", review: FILE_START_REVIEW });
+test("a diagram box click on a file-start chunk jumps to its file", async () => {
+  const { fileJumps, diagramHandlers } = loadContent({ run: null, view: "files", review: FILE_START_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("b");
   await settle();
   assert.equal(fileJumps.length, 1);
-  assert.deepEqual(pulses, ["b"]);
 });
 
 test("opening the files page on a file start's diff anchor jumps to that file, and any other anchor jumps nowhere", async () => {
@@ -1165,7 +1156,7 @@ test("a line in a chunk's row selects the chunk, shows its file and jumps to its
 });
 
 test("the diagram's Reset restores the load-time state: nothing selected or open, every file shown, no box marked, nothing saved", async () => {
-  const { renders, callouts, applied, active, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  const { renders, callouts, applied, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
   const loaded = plain(renders.at(-1).state);
   diagramHandlers.at(-1).onNode("c");
@@ -1185,7 +1176,6 @@ test("the diagram's Reset restores the load-time state: nothing selected or open
   assert.equal(state.order, loaded.order);
   assert.deepEqual(plain(applied.at(-1)), [null, { scroll: false, extra: [] }]);
   assert.equal(emphasized.at(-1), null);
-  assert.equal(active.at(-1), null);
   assert.deepEqual(lineEvents.slice(0, 2), ["cancelJump", "clearLineTarget"]);
   assert.equal(callouts.length > shownBefore, true);
   assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: null, variant: "v16" });

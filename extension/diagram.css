@@ -185,27 +185,6 @@
   opacity: 0.5;
 }
 
-.prd-card g.node.prd-on > rect:not(.prd-pulse):not(.prd-halo),
-.prd-card g.node.prd-on > polygon,
-.prd-card g.node.prd-on > path,
-.prd-card g.node.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
-  stroke: var(--prf-guide, #534ab7) !important;
-  stroke-width: 2px !important;
-}
-
-.prd-card g.node.save.prd-on > rect:not(.prd-pulse):not(.prd-halo),
-.prd-card g.node.save.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
-  stroke: #b26a00 !important;
-}
-
-.prd-card g.node.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
-  fill: rgba(83, 74, 183, 0.14) !important;
-}
-
-.prd-card g.node.save.prd-active > rect:not(.prd-pulse):not(.prd-halo) {
-  fill: rgba(178, 106, 0, 0.18) !important;
-}
-
 .prd-halo {
   --prd-accent: 83, 74, 183;
   fill: none !important;
@@ -216,31 +195,6 @@
 
 g.node.save .prd-halo {
   --prd-accent: 178, 106, 0;
-}
-
-.prd-pulse {
-  --prd-accent: 83, 74, 183;
-  fill: none;
-  stroke: rgb(var(--prd-accent)) !important;
-  pointer-events: none;
-  animation: prd-pulse 600ms ease-in-out;
-}
-
-g.node.save .prd-pulse {
-  --prd-accent: 178, 106, 0;
-}
-
-@keyframes prd-pulse {
-  0%,
-  100% {
-    fill: rgba(var(--prd-accent), 0);
-    stroke-width: 2px;
-  }
-
-  40% {
-    fill: rgba(var(--prd-accent), 0.25);
-    stroke-width: 3px;
-  }
 }
 
 .prd-card path.prd-on {
@@ -325,7 +279,8 @@ g.node.save .prd-pulse {
 
 .prd-swatch-selected {
   background: none;
-  border: 2px solid var(--prf-guide, #534ab7);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  box-shadow: 0 0 0 2px rgba(83, 74, 183, 0.3);
 }
 
 .prd-collapsed .prd-legend {
