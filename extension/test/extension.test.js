@@ -556,16 +556,67 @@ test("a stop callout names the stop, its chunk and title, why to stop here, and 
   }
 });
 
-test("the first stop's callout has no previous button, and the last says Last stop and offers no next button", () => {
+function navSlots(card) {
+  const nav = byClass(card, "prf-callout-nav")[0];
+  return nav.children.map((slot) => ({
+    classes: slot.className.split(" "),
+    hidden: slot.className.split(" ").includes("prf-callout-empty"),
+    ariaHidden: slot.attributes["aria-hidden"] ?? null,
+    inert: slot.inert ?? false,
+    buttons: walk(slot).filter((element) => element.tag === "button").map((element) => ({ text: element.textContent, tabindex: element.attributes.tabindex ?? null, disabled: element.disabled ?? false })),
+    caption: byClass(slot, "prf-callout-nav-label")[0]?.textContent ?? null,
+  }));
+}
+
+test("the callout keeps a Previous slot over a Next slot on the first, a middle and the last stop, a missing one hidden and inert", () => {
   globalThis.document = fakeDom();
   try {
-    const first = stopCallout(STOPS[0], STOPS, () => {}, CHUNKS);
-    assert.deepEqual(byClass(first, "prf-callout-prev"), []);
-    assert.deepEqual(byClass(first, "prf-callout-go").map((button) => button.textContent), ["Query filters by owner \u2193"]);
-    const last = stopCallout(STOPS[2], STOPS, () => {}, CHUNKS);
-    assert.equal(byClass(last, "prf-callout-nav-label")[0].textContent, "Last stop");
-    assert.deepEqual(byClass(last, "prf-callout-go"), []);
-    assert.equal(byClass(last, "prf-callout-prev")[0].title, "Query filters by owner");
+    const gone = [];
+    const shown = STOPS.map((stop) => navSlots(stopCallout(stop, STOPS, (target) => gone.push(target.i), CHUNKS)));
+    for (const [prevSlot, nextSlot] of shown) {
+      assert.deepEqual([prevSlot.classes.includes("prf-callout-prev"), nextSlot.classes.includes("prf-callout-next")], [true, true]);
+      assert.equal(nextSlot.caption, "Next");
+    }
+    const [first, middle, last] = shown;
+    assert.deepEqual([first[0].hidden, first[1].hidden], [true, false]);
+    assert.deepEqual([middle[0].hidden, middle[1].hidden], [false, false]);
+    assert.deepEqual([last[0].hidden, last[1].hidden], [false, true]);
+    assert.deepEqual(first[0], { classes: ["prf-callout-prev", "prf-callout-empty"], hidden: true, ariaHidden: "true", inert: true, buttons: [{ text: "\u2191 Previous", tabindex: "-1", disabled: true }], caption: null });
+    assert.deepEqual([last[1].ariaHidden, last[1].inert, last[1].buttons.map((button) => [button.tabindex, button.disabled])], ["true", true, [["-1", true]]]);
+    assert.deepEqual([middle[0].ariaHidden, middle[0].inert, middle[0].buttons[0].tabindex, middle[0].buttons[0].disabled], [null, false, null, false]);
+    assert.deepEqual([middle[1].ariaHidden, middle[1].buttons.map((button) => [button.text, button.tabindex])], [null, [["Back to the screen \u2193", null]]]);
+    assert.deepEqual([first[1].buttons[0].text, last[0].buttons[0].text], [`${STOPS[1].title} \u2193`, "\u2191 Previous"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a hidden slot's placeholder goes nowhere when clicked, and the real buttons keep going", () => {
+  globalThis.document = fakeDom();
+  try {
+    const gone = [];
+    const first = stopCallout(STOPS[0], STOPS, (target) => gone.push(target.i), CHUNKS);
+    for (const button of walk(first).filter((element) => element.tag === "button")) button.listeners.click();
+    assert.deepEqual(gone, [2]);
+    gone.length = 0;
+    const last = stopCallout(STOPS[2], STOPS, (target) => gone.push(target.i), CHUNKS);
+    for (const button of walk(last).filter((element) => element.tag === "button")) button.listeners.click();
+    assert.deepEqual(gone, [2]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a single stop, and a fallback walkthrough of one, has two hidden slots and keeps the column", () => {
+  globalThis.document = fakeDom();
+  try {
+    const only = [STOPS[0]];
+    const [prevSlot, nextSlot] = navSlots(stopCallout(only[0], only, () => {}, CHUNKS));
+    assert.deepEqual([prevSlot.hidden, nextSlot.hidden, prevSlot.ariaHidden, nextSlot.ariaHidden], [true, true, "true", "true"]);
+    assert.deepEqual([prevSlot.buttons[0].text, nextSlot.caption], ["\u2191 Previous", "Next"]);
+    const [fallback] = stopsOf({ chunks: [{ n: 1, name: "A", why: "w", start: { path: "a.js", side: "R", line: 2 } }] });
+    const slots = navSlots(stopCallout(fallback, [fallback], () => {}, []));
+    assert.deepEqual(slots.map((slot) => slot.hidden), [true, true]);
   } finally {
     delete globalThis.document;
   }

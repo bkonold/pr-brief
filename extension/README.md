@@ -69,9 +69,11 @@ did. A chunk with no start gets no stop.
   column) in two columns. The left column has a route icon and a header in bold default text, `Stop <i> of <n> · <chunk
   number> <chunk name>` (without the chunk part for a stop in no chunk), a small muted chevron, then the stop's title in
   normal weight, and then on its own line a small muted "Why stop here" over the stop's `why`, wrapping within the
-  header's width. The right column is top-aligned with the header and right-aligned, with no divider before it: a
-  "↑ Previous" button (its tooltip is the previous stop's title) when there is one, over a row of the muted "Next"
-  caption and a small button with the next stop's title and ↓, or the quiet text "Last stop". On a diff too narrow for
+  header's width. The right column is top-aligned with the header and right-aligned, with no divider before it, and always has two
+  slots: a "↑ Previous" button (its tooltip is the previous stop's title) over a row of the muted "Next" caption and a
+  small button with the next stop's title and ↓. On the first stop the Previous slot, and on the last the Next slot,
+  stays in the layout hidden (`visibility: hidden`, `inert`, `aria-hidden`, no tab stop), so the other slot does not
+  move and the column keeps its height; a walkthrough of one stop hides both. On a diff too narrow for
   both columns the right column wraps below the text and stays right-aligned. A button goes to that stop, as a click on
   its row does, without the pulse. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
   once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "By review" mode.

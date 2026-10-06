@@ -715,6 +715,10 @@
   align-items: flex-end;
 }
 
+.prf-callout-empty {
+  visibility: hidden;
+}
+
 .prf-callout-nav-label {
   color: var(--fgColor-muted, #59636e);
 }

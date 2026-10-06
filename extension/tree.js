@@ -280,9 +280,18 @@
     return stops.find((stop) => stop.chunk === n) ?? null;
   }
 
+  // Keeps an empty slot of the callout's nav column in the layout so the other slot stays where it is, while the slot
+  // can't be seen, focused, clicked or announced. `control` is the button inside it, when the slot is not itself one.
+  function inertSlot(slot, control = slot) {
+    slot.setAttribute("aria-hidden", "true");
+    slot.inert = true;
+    control.setAttribute("tabindex", "-1");
+    control.disabled = true;
+  }
+
   // The card shown above a stop's line, or above its file's header, in the diff: which stop of how many this is, the
   // chunk it lies in and its title, why to stop here, and, in a column beside them, buttons to the previous and the next
-  // stop. `onGo(stop)` opens a stop; `chunks` names the chunk a stop lies in.
+  // stop, each in a slot that is kept, hidden, when there is no such stop. `onGo(stop)` opens a stop; `chunks` names the chunk a stop lies in.
   function stopCallout(stop, stops, onGo, chunks = []) {
     const card = make("div", "prf-callout");
     const main = make("div", "prf-callout-main");
@@ -301,21 +310,16 @@
     const nav = make("div", "prf-callout-nav");
     const at = stops.findIndex((other) => other.i === stop.i);
     const previous = stops[at - 1];
-    if (previous) {
-      const back = button("prf-callout-prev", "↑ Previous", () => onGo(previous));
-      back.title = previous.title;
-      nav.append(back);
-    }
-    const next = make("div", "prf-callout-next");
     const following = stops[at + 1];
-    if (following) {
-      const buttons = make("div", "prf-callout-targets");
-      buttons.append(button("prf-callout-go", `${following.title} ↓`, () => onGo(following)));
-      next.append(make("span", "prf-callout-nav-label", "Next"), buttons);
-    } else {
-      next.append(make("span", "prf-callout-nav-label", "Last stop"));
-    }
-    nav.append(next);
+    const back = button(previous ? "prf-callout-prev" : "prf-callout-prev prf-callout-empty", "↑ Previous", () => previous && onGo(previous));
+    if (previous) back.title = previous.title;
+    else inertSlot(back);
+    const next = make("div", following ? "prf-callout-next" : "prf-callout-next prf-callout-empty");
+    const buttons = make("div", "prf-callout-targets");
+    buttons.append(button("prf-callout-go", following ? `${following.title} ↓` : "↓", () => following && onGo(following)));
+    next.append(make("span", "prf-callout-nav-label", "Next"), buttons);
+    if (!following) inertSlot(next, buttons.children[0]);
+    nav.append(back, next);
     card.append(nav);
     return card;
   }
