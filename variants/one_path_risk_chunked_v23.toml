@@ -1,0 +1,106 @@
+description = "v22 without a chunk start; a walkthrough of stops, in reading order, that can cross and revisit chunks"
+context = ["callers", "reach", "contract", "migrations", "wiki"]
+extra_instructions = """
+For changes_diagram:
+- Always fill it in; never leave it empty.
+- Draw one main path, top to bottom (flowchart TD), of at most 10 nodes, in the order a user or a request moves through the change.
+- Title each box with the user's step (for example `List items`).
+- Put a second line under the title (separate lines with <br/>) in the form `<code name>: <what changed>`, where the code name is the code's own name: the class or component name (for example `ItemListRepository`), `METHOD /path` for an endpoint (for example `PATCH /items/{id}`), or the table name for a table, and what changed is what changed in that box, in five words or fewer, in plain English (for example `filters on deleted flag`).
+- Each chunk is exactly one diagram box and each changed box is exactly one chunk: list that box's id as the only id in the chunk's `nodes`. A box for unchanged context belongs to no chunk. If one file's changes serve two steps of the path, merge those steps into one box rather than splitting the file across chunks.
+- Put a chunk's box where that chunk's code sits on the path, for example a regenerated SDK goes between the web route that calls it and the endpoint it calls. The 10-box cap applies to the main path only.
+- Only when a chunk's code is truly off the path (build config, dependency bumps, docs, or tests only), put its box in a subgraph declared exactly as `subgraph also["Also in this PR"]`, placed after the path and its edges, with no edges to or from the boxes inside it. Use that subgraph for nothing else.
+- Every box, on the path or in that subgraph, keeps the box format above (step title, then `<code name>: <what changed>`) and appears in `node_files` with the changed files it covers.
+- Never add a shared node (such as one "API" or one "database" node) that several nodes link to.
+- Mark nodes that write data with `:::save`, for example: step3["..."]:::save
+- Use a dashed edge only for a return to an earlier box.
+- Label an arrow only when the two boxes alone don't say what moves along it or why it fires. Use one to four words for one of these: a user action (`pick report type`), a condition (`flag on`, `no match`, `on POST`), the data handed over (`value or null`), a write (`insert row`), or a return to an earlier box (`redirect back`). Leave the arrow unlabelled when it is a plain call to the next box and that box's name already says what happens. Never use filler labels such as "calls", "uses" or "then". Each arrow joins two boxes that are really connected in the flow.
+- Do not number the nodes or put chunk numbers in their labels.
+
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes, destructive migration statements and background from the codebase wiki. Use it to judge blast radius when you set each chunk's review level and why. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Treat wiki text as background that may be out of date, and trust the diff where they disagree. Do not summarize the Repository context in the description.
+
+For walkthrough:
+- Give a top-level `walkthrough`: 3 to 10 stops, in the order a reader should follow the change from where it enters to where it lands. It is separate from the chunks: a stop does not name a chunk, and stops may return to a file or chunk already visited.
+- Stops follow what a reviewer needs to understand, not the chunk list: give a chunk two stops when its key logic and the code that calls it are far apart, and none when earlier stops already explain it.
+- Chunks marked `skim` usually get no stop. Every `verify` chunk should have at least one stop.
+- Each stop has a `file` (the full path of one changed file), a `title` (at most 6 words on what this stop shows), a `why` (at most 20 words on what to look at here and how it follows from the previous stop; the first stop says why the reader begins there) and, only when a single line clearly anchors the stop, a `line_text`.
+- `line_text` is a line such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. A method signature or a route declaration is often right. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit `line_text` and the reader is pointed at the file instead.
+- Never stop on a generated file (an OpenAPI spec, a generated SDK). Do not stop twice on the same line, or twice on the same file without a line.
+
+For chunks:
+- Return the chunks in the order the change flows through the system, the same order as the changes_diagram path: where a user or request enters first, the data store last. Do not order them by risk; each chunk's `review` carries the risk.
+- Give each chunk a `step` of one or two words naming the layer or stage it sits at on that path (for example `UI`, `Route`, `API`, `Service`, `Database`, `Config`), and reuse the same word for chunks at the same stage.
+- Chunks that are off the path (build config, dependency bumps, docs, or tests only) go last, after the chunks on the path.
+- Give each chunk exactly one effort level in `review`, the same for every file in it:
+  - `verify`: the reviewer should convince themselves the code is correct, line by line.
+  - `read`: the reviewer should understand what the code does and why.
+  - `skim`: the reviewer only confirms the code is what it claims to be (generated files, renames, fixtures).
+  Nothing is skipped: every file is reviewed at least at `skim`.
+- If the files of a chunk would not all share one effort level, split the chunk, for example a controller's logic from the SDK regenerated from it. Put generated files (an OpenAPI spec, a generated SDK) in a chunk of their own.
+- Give each chunk `checks`, a list (it may be empty) of the kinds of change a reviewer should look for in it, drawn only from these:
+  - `logic`: behavior changes (branches, calculations, state transitions).
+  - `contract`: changes a boundary others consume (a REST shape, the SDK, a public method, an event payload).
+  - `data`: changes persisted state (a migration, a backfill, a new meaning for a column).
+  - `access`: changes permissions, tenant scoping or authentication.
+  Use one or two checks for most chunks and three at most. Leave the list empty when none applies.
+"""
+schema_additions = """
+    chunks: List[dict] = Field(description="the changed files grouped into review chunks, ordered by the flow of the change, in the same order as the changes_diagram path, not by risk. Each item is an object with the keys: name (str: a few words naming one unit of change, e.g. 'Item list screen' or 'Remove legacy export format'); step (str: one or two words naming the layer or stage the chunk sits at on the path, e.g. 'UI', 'Route', 'API', 'Service', 'Database', 'Config'); review (str: exactly one of 'verify', 'read', 'skim'; every file of the chunk shares this effort level, and nothing is skipped); checks (List[str]: zero to three of 'logic', 'contract', 'data', 'access', as the instructions define them); why (str: one short sentence, at most 20 words, on what is at stake if this chunk is wrong: who or what is affected and how widely, e.g. 'every connected calendar user', 'mobile builds already in the field', 'accounts exporting to a billing system'. Prefer the consequence over the mechanism. For 'skim', at most 12 words on why little is at stake. No second sentence); nodes (List[str]: exactly one id, the id of the changes_diagram box that is this chunk, such as ['step3']; each chunk is exactly one box and each changed box is exactly one chunk, and a box for unchanged context belongs to no chunk); files (List[str]: the full paths of the files in the chunk). Every changed file appears in exactly one chunk, and test files go in the chunk whose code they cover. Generated files go in a chunk of their own.")
+    walkthrough: List[dict] = Field(description="3 to 10 stops, in the order a reader should follow the change, separate from the chunks. Stops may return to a file or chunk already visited. Stops follow what a reviewer needs to understand, not the chunk list. Chunks marked skim usually get no stop and every verify chunk gets at least one. Each stop is an object with the keys: file (str: the full path of one changed file, never a generated file); title (str: at most 6 words on what this stop shows); why (str: at most 20 words on what to look at here and how it follows from the previous stop; for the first stop, why the reader begins there); line_text (str, optional: include it ONLY when a single line clearly anchors the stop, such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit line_text and the reader is pointed at the file instead). A stop does not name a chunk.")
+    node_files: Dict[str, List[str]] = Field(description="for every node id of changes_diagram, the full paths of the changed files that box covers, as an object from node id to a list of paths. Use an empty list for a box that is unchanged context. Use only paths that appear in the diff. A file is listed under exactly one box, the box of its chunk; test files go with the box whose code they test.")
+"""
+example_additions = """
+chunks:
+- name: |
+    ...
+  step: |
+    ...
+  review: |
+    verify
+  checks:
+  - |
+    logic
+  why: |
+    ...
+  nodes:
+  - |
+    ...
+  files:
+  - |
+    ...
+node_files:
+  step1:
+  - |
+    ...
+  step2: []
+walkthrough:
+- file: |
+    ...
+  title: |
+    ...
+  why: |
+    ...
+  line_text: |
+    ...
+"""
+
+[context_options]
+callers_code_only = true
+wiki_match = "exact"
+callers_skip_new_files = true
+callers_require_owner = true
+callers_skip_fields = true
+callers_mode = "precise"
+
+[render]
+diagram = "force_td"
+wrapping_width = 400
+files = "chunks"
+numbering = "flow"
+chunk_order = "flow"
+chunk_box_fallback = true
+one_box_per_chunk = true
+contract_block = true
+review_labels = true
+contract_layout = "by_chunk"
+review_order = false
+walkthrough = true

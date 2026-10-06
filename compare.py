@@ -42,6 +42,7 @@ VARIANT_LABELS: dict[str, str] = {
     "one_path_risk_chunked_v20": "20: file or line start",
     "one_path_risk_chunked_v21": "21: effort levels + check labels",
     "one_path_risk_chunked_v22": "22: contract and data by chunk",
+    "one_path_risk_chunked_v23": "23: walkthrough stops",
 }
 
 STYLE = """
