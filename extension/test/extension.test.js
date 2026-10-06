@@ -508,7 +508,7 @@ const STOPS = [
 function fakeDom() {
   class Element {
     constructor(tag) {
-      Object.assign(this, { tag, className: "", textContent: "", children: [], listeners: {}, attributes: {} });
+      Object.assign(this, { tag, className: "", textContent: "", children: [], listeners: {}, attributes: {}, dataset: {} });
       this.classList = {
         add: (name) => (this.className = `${this.className} ${name}`.trim()),
         toggle: (name, on) => on && this.classList.add(name),
@@ -605,6 +605,86 @@ test("firstStopOf finds the first stop in a chunk, and null for a chunk the walk
   assert.equal(firstStopOf(STOPS, 1).i, 1);
   assert.equal(firstStopOf(STOPS, 3).i, 2);
   assert.equal(firstStopOf(STOPS, 2), null);
+});
+
+const WALK_CHUNKS = [
+  { n: 1, name: "Screen", step: "UI", review: "read", why: "w", files: [] },
+  { n: 2, name: "Endpoint", review: "verify", why: "w", files: [] },
+];
+
+const WALK_STOPS = [
+  { i: 1, title: "List is built", why: "w", path: "a.js", side: "R", line: 4, chunk: 1 },
+  { i: 2, title: "Query filters", why: "w", path: "b.js", side: "R", line: 9, chunk: 2 },
+  { i: 3, title: "Docs", why: "w", path: "c.md", side: null, line: null, chunk: null },
+];
+
+test("the tabs offer Walkthrough then Chunks, mark the chosen one, and report a click", () => {
+  const { tabs } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const chosen = [];
+    for (const tab of ["walkthrough", "chunks"]) {
+      const element = tabs({ tab }, { onTab: (name) => chosen.push(name) });
+      const buttons = byClass(element, "prf-tab");
+      assert.deepEqual(buttons.map((button) => button.textContent), ["Walkthrough", "Chunks"]);
+      assert.deepEqual(buttons.map((button) => button.attributes["aria-selected"]), tab === "walkthrough" ? ["true", "false"] : ["false", "true"]);
+    }
+    const [, chunksTab] = byClass(tabs({ tab: "walkthrough" }, { onTab: (name) => chosen.push(name) }), "prf-tab");
+    chunksTab.listeners.click();
+    assert.deepEqual(chosen.slice(-1), ["chunks"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("the bar shows the tabs in the review, and the order switch and expand button only under the Chunks tab", () => {
+  const { bar } = require("../tree.js");
+  const saved = globalThis.prFocus.page;
+  globalThis.prFocus.page = { treeLabel: "GitHub tree" };
+  globalThis.document = fakeDom();
+  try {
+    const review = { chunks: WALK_CHUNKS };
+    const base = { order: "flow", extras: [], expanded: new Set() };
+    const shown = (state) => ["prf-tabs", "prf-order", "prf-expand"].map((name) => byClass(bar(review, { ...base, ...state }, {}), name).length);
+    assert.deepEqual(shown({ mode: "review", tab: "walkthrough" }), [1, 0, 0]);
+    assert.deepEqual(shown({ mode: "review", tab: "chunks" }), [1, 1, 1]);
+    assert.deepEqual(shown({ mode: "github", tab: "chunks" }), [0, 0, 0]);
+  } finally {
+    delete globalThis.document;
+    globalThis.prFocus.page = saved;
+  }
+});
+
+test("a walkthrough row shows the stop's number, its title and its chunk's step word, else its name, and marks the current stop", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const picked = [];
+    const list = stopList({ chunks: WALK_CHUNKS }, { stops: WALK_STOPS, selectedStop: 2 }, { onSelectStop: (i) => picked.push(i) });
+    const rows = byClass(list, "prf-stop");
+    assert.deepEqual(
+      rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-level")[0].textContent]),
+      [["1", "List is built", "UI"], ["2", "Query filters", "Endpoint"], ["3", "Docs", ""]],
+    );
+    assert.deepEqual(rows.map((row) => row.className.split(" ").includes("prf-selected")), [false, true, false]);
+    assert.deepEqual(rows.map((row) => byClass(row, "prf-head-main")[0].attributes["aria-current"] ?? null), [null, "step", null]);
+    for (const row of rows) byClass(row, "prf-head-main")[0].listeners.click();
+    assert.deepEqual(picked, [1, 2, 3]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a walkthrough with no stops says so instead of listing rows", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const list = stopList({ chunks: WALK_CHUNKS }, { stops: [], selectedStop: null }, {});
+    assert.deepEqual(byClass(list, "prf-stop"), []);
+    assert.match(byClass(list, "prf-banner")[0].textContent, /no walkthrough/);
+  } finally {
+    delete globalThis.document;
+  }
 });
 
 function fakeTable(anchors) {

@@ -97,6 +97,34 @@
   text-decoration: underline;
 }
 
+.prf-tabs {
+  display: flex;
+  flex: 1 1 100%;
+  gap: 4px;
+  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
+}
+
+.prf-tab {
+  margin-bottom: -1px;
+  padding: 4px 10px;
+  font: inherit;
+  color: var(--fgColor-muted, #59636e);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+}
+
+.prf-tab:hover {
+  color: var(--fgColor-default, #1f2328);
+}
+
+.prf-tab[aria-selected="true"] {
+  font-weight: 600;
+  color: var(--fgColor-default, #1f2328);
+  border-bottom-color: var(--prf-guide);
+}
+
 .prf-order {
   display: flex;
   flex: 1 1 100%;

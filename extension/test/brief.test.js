@@ -265,7 +265,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "" }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {} }) {
   const log = [];
   const description = {
     name: "description",
@@ -286,7 +286,6 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const centered = [];
   const marked = [];
   const lineEvents = [];
-  const stored = {};
   const diagramHandlers = [];
   const prFocus = {
     page: {
@@ -1079,6 +1078,69 @@ test("opening the files page on a stop's diff anchor goes to that stop", async (
   assert.equal(renders.at(-1).state.selectedN, 2);
 });
 
+test("the sidebar opens on the Walkthrough tab with every stop listed and none current", async () => {
+  const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  const { state } = renders.at(-1);
+  assert.deepEqual([state.tab, state.stops.map((stop) => stop.i), state.selectedStop], ["walkthrough", [1, 2, 3, 4], null]);
+});
+
+test("a run with no walkthrough opens on the Walkthrough tab too, listing the stops made from its chunk starts", async () => {
+  const { renders } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+  await settle();
+  const { state } = renders.at(-1);
+  assert.deepEqual([state.tab, state.stops.map((stop) => [stop.i, stop.path, stop.chunk])], ["walkthrough", [[1, "src/ui.js", 1], [2, "src/api.js", 2], [3, "db/V1.sql", 3]]]);
+});
+
+test("choosing a stop in the Walkthrough list goes to it and makes it the current stop", async () => {
+  const { renders, jumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onSelectStop(3);
+  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/ui.js", "R", 30]]);
+  const { state } = renders.at(-1);
+  assert.deepEqual([state.selectedStop, state.selectedN], [3, 1]);
+});
+
+test("the tab choice is saved with the session and comes back after a reload, for any run", async () => {
+  const first = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  await first.renders.at(-1).handlers.onTab("chunks");
+  assert.equal(first.renders.at(-1).state.tab, "chunks");
+  assert.equal(JSON.parse(first.stored["prFocus:acme/widgets#7"]).tab, "chunks");
+  const second = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, variant: "v24" }, stored: first.stored });
+  await settle();
+  assert.equal(second.renders.at(-1).state.tab, "chunks");
+  await second.renders.at(-1).handlers.onTab("walkthrough");
+  const third = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: second.stored });
+  await settle();
+  assert.equal(third.renders.at(-1).state.tab, "walkthrough");
+});
+
+test("the current stop is restored after a reload of the same run, and dropped for another run", async () => {
+  const first = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  await first.renders.at(-1).handlers.onSelectStop(2);
+  const same = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
+  await settle();
+  assert.deepEqual([same.renders.at(-1).state.selectedStop, same.renders.at(-1).state.selectedN], [2, 3]);
+  const other = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, variant: "v24" }, stored: first.stored });
+  await settle();
+  assert.deepEqual([other.renders.at(-1).state.selectedStop, other.renders.at(-1).state.selectedN], [null, null]);
+});
+
+test("choosing a chunk with no stop clears the current stop", async () => {
+  const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onSelectStop(1);
+  assert.equal(renders.at(-1).state.selectedStop, 1);
+  const without = { ...WALK_REVIEW, walkthrough: WALK_REVIEW.walkthrough.filter((stop) => stop.chunk !== 2) };
+  const second = loadContent({ run: null, view: "files", review: without });
+  await settle();
+  await second.renders.at(-1).handlers.onSelectStop(1);
+  await second.renders.at(-1).handlers.onSelectChunk(2);
+  assert.deepEqual([second.renders.at(-1).state.selectedStop, second.renders.at(-1).state.selectedN], [null, 2]);
+});
+
 test("a diagram box click selects its chunk and jumps to its start, and a box no chunk lists does nothing", async () => {
   const { renders, jumps, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
@@ -1241,7 +1303,7 @@ test("the diagram's Reset restores the load-time state: nothing selected or open
   await renders.at(-1).handlers.onExpandAll();
   const picked = renders.at(-1).state;
   assert.deepEqual([picked.selectedN, picked.activeFiles.size, picked.expanded.size], [2, 1, 4]);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: 2, variant: "v16" });
+  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", tab: "walkthrough", selectedN: 2, selectedStop: 3, variant: "v16" });
 
   lineEvents.length = 0;
   const shownBefore = callouts.length;
@@ -1254,7 +1316,7 @@ test("the diagram's Reset restores the load-time state: nothing selected or open
   assert.equal(emphasized.at(-1), null);
   assert.deepEqual(lineEvents.slice(0, 2), ["cancelJump", "clearLineTarget"]);
   assert.equal(callouts.length > shownBefore, true);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: null, variant: "v16" });
+  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", tab: "walkthrough", selectedN: null, selectedStop: null, variant: "v16" });
 });
 
 test("Reset also clears a mode of GitHub's own tree", async () => {

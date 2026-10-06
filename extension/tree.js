@@ -381,11 +381,25 @@
     return element;
   }
 
+  // The two views of a review: the walkthrough, a path of stops, and the chunks, the map of the change.
+  function tabs(state, handlers) {
+    const element = make("div", "prf-tabs");
+    element.setAttribute("role", "tablist");
+    for (const [tab, label] of [["walkthrough", "Walkthrough"], ["chunks", "Chunks"]]) {
+      const choice = button("prf-tab", label, () => handlers.onTab(tab));
+      choice.setAttribute("role", "tab");
+      choice.setAttribute("aria-selected", String(state.tab === tab));
+      element.append(choice);
+    }
+    return element;
+  }
+
   function bar(review, state, handlers) {
     const element = make("div", "prf-bar");
     element.append(modeToggle(state, handlers));
-    if (state.mode === "review" && hasSteps(review.chunks)) element.append(orderSwitch(state, handlers));
-    if (state.mode === "review") {
+    if (state.mode === "review") element.append(tabs(state, handlers));
+    if (state.mode === "review" && state.tab === "chunks") {
+      if (hasSteps(review.chunks)) element.append(orderSwitch(state, handlers));
       const allOpen = [...review.chunks.map((chunk) => chunk.n), ...(state.extras.length ? [EXTRA_KEY] : [])].every((key) =>
         state.expanded.has(key),
       );
@@ -394,6 +408,36 @@
       );
     }
     return element;
+  }
+
+  // What names the chunk a stop lies in: its step word, else its name; empty for a stop in no chunk.
+  function stopChunkWord(review, stop) {
+    const chunk = chunkByNumber(review.chunks, stop.chunk);
+    return chunk ? chunk.step || chunk.name : "";
+  }
+
+  // One row per stop: its number, its title and the chunk it lies in. The current stop is marked.
+  function stopRow(review, stop, state, handlers) {
+    const current = stop.i === state.selectedStop;
+    const main = button("prf-head-main", undefined, () => handlers.onSelectStop(stop.i));
+    if (current) main.setAttribute("aria-current", "step");
+    const title = make("span", "prf-title");
+    title.append(make("span", "prf-name", stop.title));
+    main.append(make("span", "prf-num", String(stop.i)), title, make("span", "prf-level", stopChunkWord(review, stop)));
+    const header = make("div", "prf-head");
+    header.append(main);
+    const element = make("section", "prf-group prf-stop");
+    element.classList.toggle("prf-selected", current);
+    element.dataset.stop = String(stop.i);
+    element.append(header);
+    return element;
+  }
+
+  function stopList(review, state, handlers) {
+    const list = make("div", "prf-groups");
+    if (state.stops.length === 0) list.append(make("p", "prf-banner", "This run has no walkthrough. The Chunks tab lists its chunks."));
+    for (const stop of state.stops) list.append(stopRow(review, stop, state, handlers));
+    return list;
   }
 
   function groups(review, state, handlers) {
@@ -416,10 +460,12 @@
     return { root, host };
   }
 
-  // state: { mode: "review" | "github", order: "flow" | "risk", selectedN, expanded: Set of chunk numbers and "extra",
-  //          extras: [{ path }], pageSha, note, activeFiles: Set of the active box's paths }
-  // handlers: onMode(mode), onToggleGroup(key), onSelectChunk(n), onSelectFile(n | null, path),
-  //           onJumpToStart(n), onJumpToLine(n, line), onExpandAll(), onCollapseAll(), onOrder(order)
+  // state: { mode: "review" | "github", tab: "walkthrough" | "chunks", order: "flow" | "risk", stops, selectedStop,
+  //          selectedN, expanded: Set of chunk numbers and "extra", extras: [{ path }], pageSha, note,
+  //          activeFiles: Set of the active box's paths }
+  // handlers: onMode(mode), onTab(tab), onSelectStop(i), onToggleGroup(key), onSelectChunk(n),
+  //           onSelectFile(n | null, path), onJumpToStart(n), onJumpToLine(n, line), onExpandAll(), onCollapseAll(),
+  //           onOrder(order)
   function render(review, state, handlers) {
     const mount = mountPoint();
     if (!mount) return;
@@ -434,7 +480,7 @@
     if (stale) root.append(make("p", "prf-banner", stale));
     if (state.note) root.append(make("p", "prf-banner", state.note));
     if (reviewMode) {
-      root.append(groups(review, state, handlers));
+      root.append(state.tab === "chunks" ? groups(review, state, handlers) : stopList(review, state, handlers));
       root.querySelector(".prf-groups").scrollTop = scrolled;
     }
   }
@@ -539,7 +585,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { changeBlocks, impactChip, lineText, fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, stopsOf, firstStopOf, stopCallout, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
+  ns.tree = { changeBlocks, impactChip, lineText, fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, stopsOf, firstStopOf, stopCallout, tabs, bar, stopList, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

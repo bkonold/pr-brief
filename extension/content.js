@@ -106,7 +106,10 @@
 
   function save(session) {
     try {
-      sessionStorage.setItem(storageKey(session.pr), JSON.stringify({ mode: session.mode, selectedN: session.selectedN, variant: session.review?.variant }));
+      sessionStorage.setItem(
+        storageKey(session.pr),
+        JSON.stringify({ mode: session.mode, tab: session.tab, selectedN: session.selectedN, selectedStop: session.selectedStop, variant: session.review?.variant }),
+      );
     } catch {
       // The choice just isn't remembered.
     }
@@ -157,7 +160,10 @@
       session.review,
       {
         mode: session.mode,
+        tab: session.tab,
         order: session.order,
+        stops: session.stops,
+        selectedStop: session.selectedStop,
         selectedN: session.selectedN,
         expanded: session.expanded,
         extras: extraFiles(session),
@@ -349,6 +355,8 @@
         ),
       onToggleGroup: (key) =>
         change(session, () => (session.expanded.has(key) ? session.expanded.delete(key) : session.expanded.add(key))),
+      onTab: (tab) => change(session, () => (session.tab = tab)),
+      onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
       onSelectChunk: (n) => selectChunk(session, session.review.chunks.find((chunk) => chunk.n === n)),
       // The start button of a chunk in an older run goes to the chunk's first stop, which is its start.
       onJumpToStart: async (n) => {
@@ -538,18 +546,22 @@
     }
     if (token !== loadToken || !review) return;
     const saved = readSaved(pr);
-    const selectedN = saved.variant === review.variant && review.chunks.some((c) => c.n === saved.selectedN) ? saved.selectedN : null;
+    const sameRun = saved.variant === review.variant;
+    const selectedN = sameRun && review.chunks.some((c) => c.n === saved.selectedN) ? saved.selectedN : null;
+    const stops = tree.stopsOf(review);
+    const selectedStop = sameRun && stops.some((stop) => stop.i === saved.selectedStop) ? saved.selectedStop : null;
     current = {
       key,
       pr,
       review,
       mode: saved.mode === "github" ? "github" : "review",
+      tab: saved.tab === "chunks" ? "chunks" : "walkthrough",
       selectedN,
       order: tree.defaultOrder(review),
       expanded: new Set([selectedN ?? tree.orderChunks(review.chunks, tree.defaultOrder(review))[0]?.n]),
       startedAt: Date.now(),
-      stops: tree.stopsOf(review),
-      selectedStop: null,
+      stops,
+      selectedStop,
       selection: 0,
       callouts: [],
     };
