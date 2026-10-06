@@ -8,8 +8,12 @@ where it describes the page, and the Forgejo selectors are in their own table at
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
-- A toggle, "By review" / "GitHub tree", and an "Expand all" / "Collapse all" button. "GitHub tree" brings
-  GitHub's own tree back and shows every diff; the toggle stays so you can switch again.
+- A toggle, "By review" / "GitHub tree". "GitHub tree" brings GitHub's own tree back; the toggle stays so you can
+  switch again. No mode, chunk or stop ever hides a diff: every file's diff is always in the page, so the host's find
+  and page-down work across chunks.
+- Two tabs under the toggle in "By review" mode, **Walkthrough** (the default) and **Chunks**. The Walkthrough is a path
+  of stops in reading order (see "The walkthrough"); Chunks is the map of the change, the list below, with its order
+  switch and an "Expand all" / "Collapse all" button. The chosen tab is remembered with the session.
 - One line per chunk: its number in bold and its name on the left and, right-aligned, its effort level as a word
   (`verify` in bold default text; `read` and `skim` in the secondary colour). A run from an older variant that says
   "read carefully" shows `verify`. Under the name, a row of check chips from the chunk's `labels` (`logic`, `contract`,
@@ -30,54 +34,64 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   block and a "Data" block, each a list of lines worst impact first. A line is a button with its impact as a chip
   (the top level filled, the second bold outlined, the rest outlined; no chip for a line with no impact) and its
   text, which is the line's `change` and `on` from `review.json` joined by ` · ` (`+ kind` required param · `GET /rows`), or its `text` when the run has no such parts. Clicking one focuses the chunk if another is open, jumps to the
-  line's diff row and centres it, without the pulse of a start jump. A line whose spec or migration file belongs to
-  another chunk shows that file's diff while it is the target, since the focus would hide it otherwise; the file hides
-  again when another chunk or file is chosen. A line with no row (`line` null) scrolls to its file. The lines are not in the start callouts, and the
+  line's diff row and centres it, without the pulse of a stop jump. A line with no row (`line` null) scrolls to its
+  file. The lines are not in the stop callouts, and the
   lines no chunk owns (`unchunked`) have no row; they are in the PR brief card.
-- Clicking a chunk's line focuses the diffs on that chunk, opens it, closes the others and does what its "Start here"
-  button does (below); clicking the open chunk jumps again. A chunk with no start scrolls to its first file
-  instead. "GitHub tree" mode shows every diff again.
-  Clicking a file focuses its chunk and scrolls to its diff. A chunk opened with "Expand all" closes again with "Collapse all" or when another chunk is clicked.
-- A "Start here" button under the open chunk's files, when the chunk has a start (the `start` field of `review.json`: the
-  one line the model says to read first, or, when no single line anchors the chunk, the file to open first, with `side` and
-  `line` null), jumps to that line and centres it, or, for a file start, scrolls to the file's callout above its header. If another chunk is
-  focused it focuses this chunk first, since the line's diff is hidden otherwise. GitHub renders a diff's rows only once
-  the diff is near the window, so the jump scrolls to the file's diff, waits up to 10 seconds for the row, then centres
-  it, measuring the row again after each scroll and nudging until it sits mid-window (GitHub's layout shifts while diffs
-  load); on a timeout the view stays at the file's header. The button's tooltip is `file:line`, or the file's basename for a file start. Opening the files page on
-  a link to a chunk's start (the PR brief card's links) does the same.
-- Every chunk's start that has loaded gets a callout above its line (above the file's header for a file start), as soon as the review shows and as GitHub or Forgejo
-  load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
-  (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text, as wide as its left column
-  plus a 24px gap plus its nav column, and never wider than the diff column) in two columns. The left column has a route icon,
-  a breadcrumb header, `<n> · <box title>` in bold default text, a small muted chevron, then the chunk name in normal weight
-  (the box title is the bold title line of the chunk's first diagram box, read from the rendered diagram; a chunk with no
-  box, or a box with no title, shows just the bold `<n> · <name>` with no chevron), then on its own line a small muted "Why the LLM picked this" over the
-  reason, wrapping within the header's width: the chunk's `start.why`, else the chunk's own `why`. The right column is top-aligned with the header and
-  right-aligned, with no divider before it: a "↑ Previous" button (its tooltip is the chunk's `<n> · <box title>`, else `<n> · <name>`) for the chunk numbered one lower when there is one,
-  over a row of the muted "Next" caption and one small button per chunk to read next, stacked, `<n> · <box title> ↓` (else `<n> · <name> ↓`), or the quiet text "Last step" when there is none. On a diff too narrow for both
-  columns the right column wraps below the text and stays right-aligned. A button does what a click on that
-  chunk in the list does: it focuses, opens and jumps to its start line (a chunk with no start line scrolls to its
-  first file). The chunks to read next are the `next` field of each chunk in `review.json`, the same in flow and risk
-  order; a run without `next` goes to the chunk with the next higher number. A callout is placed once per chunk, so a
-  re-render or a lazy load never doubles it. The callouts show only in "By review" mode, and a focused chunk shows only
-  its own, since the other diffs are hidden.
-- A file start's callout is the first child of that file's diff entry (the GitHub diff entry, the Forgejo file box), so it sits
-  directly above the file header, spans the entry's full width with the same card, and is hidden with the entry. The jump scrolls
-  the entry's top just below the sticky chrome, so the callout shows with the header under it, and marks and pulses the callout
-  alone. It is placed once, comes back if the host drops it, and goes with the callouts.
-- The start line itself is left exactly as the host draws it. Each callout card starts at the file pane's left edge, and
-  the jumped-to chunk's card border is the full purple where the other callouts' is purple at 45%. The jump centres the callout and the line together.
-  The file, line number and code are not repeated, since the diff row shows them. Only one card is marked as the target; the mark
-  goes whenever the line target clears (another selection, a new jump or teardown) and comes back if the host re-renders the
-  row. When a jump lands, its callout pulses once: a purple ring that swells from its resting
-  width to 3px wider and back, three times over about two seconds (666ms each). It fires on
-  every jump from the chunk list or the diagram (a chunk or box click, "Start here") and from a link to a start line, but not
-  from the callout's own Next and ↑ buttons, since the reader is already following the callouts. Only the jumped-to chunk pulses,
-  and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
+- Clicking a chunk's line selects the chunk, opens it, closes the others and goes to the chunk's first stop (below);
+  clicking the open chunk goes there again. A chunk the walkthrough never stops at scrolls to its first file instead.
+  Selecting a chunk marks its files: each of their diff headers gets a quiet accent stripe, which clears when another
+  chunk is selected or the review is reset. Nothing is hidden. Clicking a file selects its chunk and scrolls to its
+  diff. A chunk opened with "Expand all" closes again with "Collapse all" or when another chunk is clicked.
+- A "Start here" button under the open chunk's files appears only for a run made before walkthroughs, when the chunk has
+  a `start` in `review.json`; it goes to that stop, the chunk's first.
+
+## The walkthrough
+
+`review.json`'s `walkthrough` (variant v23) is an ordered list of stops, each `{i, title, why, path, side, line,
+chunk}`: the model's reading order through the change, which can cross chunks and come back to one. `line` is null for a
+stop that names only a file. `chunk` is the chunk whose files hold the stop's file, or null for a file no chunk lists.
+A run made before walkthroughs (v22 and older) has none, so the extension makes one stop per chunk that has a `start`, in
+chunk order: titled by its file's basename and giving the start's reason (else the chunk's), so older runs read as they
+did. A chunk with no start gets no stop.
+
+- The Walkthrough tab lists one row per stop: its number, its title and, right-aligned, its chunk's step word (else its
+  name). The current stop is highlighted. A row goes to its stop: it selects the stop's chunk, opens it, marks its
+  files, makes the stop's file the active one, and jumps to the stop's line and centres it, or, for a stop with no line,
+  scrolls to the file's callout above its header. The diagram follows the stop's chunk: its box takes the halo and the
+  canvas centres on it. GitHub renders a diff's rows only once the diff is near the window, so the jump scrolls to the
+  file's diff, waits up to 10 seconds for the row, then centres it, measuring the row again after each scroll and
+  nudging until it sits mid-window; on a timeout the view stays at the file's header. Opening the files page on a link to
+  a stop's line or file (the PR brief card's links) goes to that stop.
+- Every stop that has loaded gets a callout above its line (above the file's header for a stop with no line), as soon as
+  the review shows and as GitHub or Forgejo load more of the diff, in both unified and split views. It is a full-width
+  table row holding a neutral card (the host's muted surface, a 1px purple border, rounded, from the file pane's left
+  edge, in 14px text, as wide as its left column plus a 24px gap plus its nav column, and never wider than the diff
+  column) in two columns. The left column has a route icon and a header in bold default text, `Stop <i> of <n> · <chunk
+  number> <chunk name>` (without the chunk part for a stop in no chunk), a small muted chevron, then the stop's title in
+  normal weight, and then on its own line a small muted "Why stop here" over the stop's `why`, wrapping within the
+  header's width. The right column is top-aligned with the header and right-aligned, with no divider before it: a
+  "↑ Previous" button (its tooltip is the previous stop's title) when there is one, over a row of the muted "Next"
+  caption and a small button with the next stop's title and ↓, or the quiet text "Last stop". On a diff too narrow for
+  both columns the right column wraps below the text and stays right-aligned. A button goes to that stop, as a click on
+  its row does, without the pulse. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
+  once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "By review" mode.
+- A stop with no line has its callout as the first child of that file's diff entry (the GitHub diff entry, the Forgejo
+  file box), so it sits directly above the file header and spans the entry's full width with the same card. The jump
+  scrolls the entry's top just below the sticky chrome, so the callout shows with the header under it, and marks and
+  pulses the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
+- The stop's line is left exactly as the host draws it. Each callout card starts at the file pane's left edge, and the
+  jumped-to stop's card border is the full purple where the other callouts' is purple at 45%. The jump centres the
+  callout and the line together. The file, line number and code are not repeated, since the diff row shows them. Only
+  one card is marked as the target; the mark goes whenever the line target clears (another selection, a new jump or
+  teardown) and comes back if the host re-renders the row. When a jump lands, its callout pulses once: a purple ring
+  that swells from its resting width to 3px wider and back, three times over about two seconds (666ms each). It fires on
+  every jump from the list or the diagram (a stop, chunk or box click, "Start here") and from a link to a stop, but not
+  from the callout's own Next and ↑ buttons, since the reader is already following the callouts. Only the jumped-to
+  stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-The mode and selected chunk are remembered per PR in `sessionStorage`.
+The mode, tab, selected chunk and current stop are remembered per PR in `sessionStorage`. The chunk and the stop come
+back only for the variant they were chosen in; the tab comes back for any run.
 
 ## When the page server is down
 
@@ -99,7 +113,7 @@ control; the PR brief card on the conversation page names the variant it shows.
 ## Boxes and files
 
 Clicking a diagram box selects the first chunk, in the order the list shows, whose `nodes` include it and does what
-clicking that chunk does: focus, open, jump to its start line. The box takes no stroke, tint or pulse of its own beyond the
+clicking that chunk does: select, open, go to its first stop. The box takes no stroke, tint or pulse of its own beyond the
 chunk's halo. The chunk's start file is the active file: its list row is bold and its diff header gets a
 3px accent bar. A box no chunk lists, and a context box (dashed, default cursor), do nothing when clicked.
 
@@ -136,13 +150,13 @@ that expands it.
   included, is drawn 2px in the accent colour with an accent arrowhead. The halo is not part of the box's bounds, so
   centring and following measure the box itself. A chunk with no nodes dims the whole
   diagram slightly. "GitHub tree" mode or no selection restores it.
-- Clicking a box selects its chunk and jumps to its start line (see "Boxes and files").
+- Clicking a box selects its chunk and goes to its first stop (see "Boxes and files").
 - The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Any scroll wheel or trackpad
   scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
   Ctrl + wheel); the page does not scroll while the pointer is over the canvas. Pressing and dragging anywhere on
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
-  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no chunk selected, every chunk row collapsed, every file shown, no line, box or start-line callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The review's start callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
-  a chunk, whether from the list, a file or contract line in its row, its Start here button, a callout's Previous/Next or a click on
+  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no chunk or stop selected, every chunk row collapsed, no chunk marked, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
+  a chunk, whether from the list, a file or contract line in its row, a stop row, a callout's Previous/Next or a click on
   its box, moves the canvas, over about 200ms (at once under reduced motion). The chunk's box, or the bounding box of its
   boxes, is centred horizontally at the current zoom. Vertically the canvas moves only as far as it takes to keep the boxes
   one solid arrow before and after the chunk's boxes in view (inside the fit margin), and not at all when they already are;
@@ -224,7 +238,7 @@ the page's data, and its header links to the files view. Without a run it is the
   file count. A chunk's start (the file:line link and the quoted line, or the file link and the reason for a file start) sits in a closed "Start here" `<details>` under
   the chunk name. Links into the PR's files view are rewritten to this host's files view, fragment kept.
 - A chunk's start link opens the files view with that line's anchor (a file start's, the file's diff id) in the fragment. When the files page loads with a
-  fragment that is a chunk's start anchor, `content.js` runs the same jump as the chunk's "Start here" button; any other
+  fragment that is a stop's anchor, `content.js` goes to that stop; any other
   fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,
   the way it fetches `review.json` (and the run's `head_sha`, and each chunk's `n`, `name`, `review` and `step`). With no run, or the page server down, the card is the
@@ -260,8 +274,8 @@ Run the pure tests with `node --test test/*.test.js`.
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
-| `focus.js` | Hides diffs outside a chunk and scrolls to a diff |
-| `tree.js`, `tree.css`, `focus.css` | The grouped list, the start-line callout card and the next and previous chunk it links to, and the classes `focus.js` and the line jump toggle |
+| `focus.js` | Marks the focused chunk's file headers and the active file's, and scrolls to a diff. It hides nothing |
+| `tree.js`, `tree.css`, `focus.css` | The Walkthrough and Chunks tabs, the stop callout card with its previous and next stop, and the classes `focus.js` and the line jump toggle |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
@@ -276,7 +290,7 @@ The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in 
 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
 `prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
-`diffEntries`, `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
+`entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
 `restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
@@ -287,7 +301,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | What | Selector or rule |
 | --- | --- |
 | Diff block | `div[id^="diff-"]` with class containing `Diff-module__diffTargetable`; id is `diff-` + sha256 hex of the file path |
-| Entry hidden | the block's ancestor `div[class*="PullRequestDiffsList-module__diffEntry"]` |
+| Entry | the block's ancestor `div[class*="PullRequestDiffsList-module__diffEntry"]` |
 | Block path, first choice | `"diff-" + sha256(path)` looked up with `getElementById` |
 | Block path, fallbacks | a descendant `[data-file-path]`, else `table[data-diff-anchor]` with `aria-label` `Diff for: <path>` |
 | Diagram host | `[class*="prc-PageLayout-PaneWrapper"]` (the file pane) and `[class*="prc-PageLayout-ContentWrapper"]` (the diffs' column), both inside `#diff-comparison-viewer-container`. The panel is inserted right before the pane with the pane's computed `order` (before the column with the column's order when there is no pane), so DOM order places it first and no GitHub element is restyled. Top offset copied from the pane |
@@ -296,7 +310,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
 | Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, trusted only for the PR the page was first opened on |
 
-If a chunk hides nothing, the list is missing, or the list says it couldn't find the diff blocks, GitHub changed these;
+If the list is missing, or the list says it couldn't find the diff blocks, GitHub changed these;
 update `github_page.js` only.
 
 When GitHub's file tree pane is closed there is no tree host, so no list is shown until the pane is reopened.
