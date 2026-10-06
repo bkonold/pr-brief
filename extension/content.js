@@ -206,67 +206,97 @@
     focus.clearBox();
   }
 
-  // A start with no line names only a file.
-  function isFileStart(start) {
-    return start.line == null;
+  // A stop with no line names only a file.
+  function isFileStop(stop) {
+    return stop.line == null;
   }
 
-  // The anchor a start's callout and link use: the line's, else the file's diff id.
-  function startAnchor(start) {
-    return isFileStart(start) ? page.fileAnchor(start.path) : page.lineAnchor(start.path, start.side, start.line);
+  // The anchor a stop's callout and link use: the line's, else the file's diff id.
+  function stopAnchor(stop) {
+    return isFileStop(stop) ? page.fileAnchor(stop.path) : page.lineAnchor(stop.path, stop.side, stop.line);
   }
 
-  // Runs the jump to `chunk`'s start: for a line, its diff scrolls into view and the line is highlighted with its
-  // callout; for a file, the file's diff scrolls to its callout above the header.
-  async function jumpToStart(session, chunk, options) {
+  // Runs the jump to a stop: for a line, its diff scrolls into view and the line is highlighted with its callout; for a
+  // file, the file's diff scrolls to its callout above the header.
+  async function jumpToStop(session, stop, options) {
     if (current !== session || !live()) return;
-    const { path, side, line } = chunk.start;
-    if (isFileStart(chunk.start)) await page.jumpToFile(path, options);
-    else await page.jumpToLine(path, side, line, options);
+    if (isFileStop(stop)) await page.jumpToFile(stop.path, options);
+    else await page.jumpToLine(stop.path, stop.side, stop.line, options);
   }
 
-  // The callouts of the review's starts, one per chunk that has one: each is built when its place is found, and its
-  // buttons select a chunk as a click on that chunk in the list would, without the pulse: the reader is already
-  // following the callouts, so nothing needs finding.
+  // The callouts of the walkthrough, one per stop that has a place in the diff: each is built when its place is found,
+  // and its buttons open a stop as a click on it in the list would, without the pulse: the reader is already following
+  // the callouts, so nothing needs finding.
   async function calloutsFor(session) {
-    const { chunks } = session.review;
-    const anchors = await Promise.all(chunks.map((chunk) => (chunk.start ? startAnchor(chunk.start) : null)));
-    return chunks.flatMap((chunk, index) =>
+    const { stops, review } = session;
+    const anchors = await Promise.all(stops.map(stopAnchor));
+    return stops.flatMap((stop, index) =>
       anchors[index]
         ? [
             {
-              key: chunk.n,
+              key: stop.i,
               anchor: anchors[index],
-              ...(isFileStart(chunk.start) ? { file: true } : {}),
-              render: () => tree.startCallout(chunk, chunks, (target) => selectChunk(session, target, { pulse: false }), diagram.titleOf),
+              ...(isFileStop(stop) ? { file: true } : {}),
+              render: () => tree.stopCallout(stop, stops, (target) => selectStop(session, target, { pulse: false }), review.chunks),
             },
           ]
         : [],
     );
   }
 
-  // Marks the chunk's files in the diff, opens it in the list, makes its start file (else its first) the active one and
-  // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. Selecting the
-  // open chunk again jumps again. `jump` passes on to the line jump, e.g. `{ pulse: false }`. Every selection moves the
-  // diagram to follow the chunk's boxes.
+  // Each selection takes the next number, so that a selection a later one has overtaken stops before it jumps: clicking
+  // Previous or Next quickly ends at the last stop clicked.
+  function startSelection(session) {
+    session.selection += 1;
+    return session.selection;
+  }
+
+  // Opens the stop's chunk in the list and marks it in the diff, makes the stop's file the active one and jumps to the
+  // stop's line, or to its file's header when the stop has no line. A stop in a file no chunk lists selects no chunk.
+  // `jump` passes on to the jump, e.g. `{ pulse: false }`. The diagram follows the stop's chunk.
+  async function selectStop(session, stop, jump = undefined) {
+    const mine = startSelection(session);
+    const chunk = session.review.chunks.find((candidate) => candidate.n === stop.chunk) ?? null;
+    await change(session, () => {
+      leaveLine();
+      deactivate(session);
+      session.mode = "review";
+      session.selectedStop = stop.i;
+      session.selectedN = chunk?.n ?? null;
+      if (chunk) session.expanded = new Set([chunk.n]);
+      session.activeBox = activation(stop.path);
+    });
+    if (current !== session || !live() || session.selection !== mine) return;
+    if (chunk) {
+      centerDiagram(chunk);
+      tree.revealGroup(chunk.n);
+    }
+    await jumpToStop(session, stop, jump);
+  }
+
+  // Goes to the chunk's first stop; a chunk the walkthrough never stops at opens on its first file's header instead.
+  // Selecting the open chunk again jumps again.
   async function selectChunk(session, chunk, jump = undefined) {
-    const path = chunk.start?.path ?? chunk.files[0]?.path;
-    await change(
-      session,
-      () => {
-        leaveLine();
-        deactivate(session);
-        session.mode = "review";
-        session.selectedN = chunk.n;
-        session.expanded = new Set([chunk.n]);
-        if (path) session.activeBox = activation(path);
-      },
-    );
-    if (current !== session || !live()) return;
+    const stop = tree.firstStopOf(session.stops, chunk.n);
+    if (stop) {
+      await selectStop(session, stop, jump);
+      return;
+    }
+    const mine = startSelection(session);
+    const path = chunk.files[0]?.path;
+    await change(session, () => {
+      leaveLine();
+      deactivate(session);
+      session.mode = "review";
+      session.selectedStop = null;
+      session.selectedN = chunk.n;
+      session.expanded = new Set([chunk.n]);
+      if (path) session.activeBox = activation(path);
+    });
+    if (current !== session || !live() || session.selection !== mine) return;
     centerDiagram(chunk);
     tree.revealGroup(chunk.n);
-    if (chunk.start) await jumpToStart(session, chunk, jump);
-    else if (path) await landOnFile(session, path);
+    if (path) await landOnFile(session, path);
   }
 
   // Puts the review back as it was when it loaded: no chunk selected, every row collapsed, every file shown, and no
@@ -279,6 +309,7 @@
         deactivate(session);
         session.mode = "review";
         session.selectedN = null;
+        session.selectedStop = null;
         session.expanded = new Set();
       },
     );
@@ -319,26 +350,10 @@
       onToggleGroup: (key) =>
         change(session, () => (session.expanded.has(key) ? session.expanded.delete(key) : session.expanded.add(key))),
       onSelectChunk: (n) => selectChunk(session, session.review.chunks.find((chunk) => chunk.n === n)),
-      // Selects the chunk if another is selected, opens it in the list, where its start button is, and jumps to its start.
+      // The start button of a chunk in an older run goes to the chunk's first stop, which is its start.
       onJumpToStart: async (n) => {
-        const chunk = session.review.chunks.find((candidate) => candidate.n === n);
-        if (!chunk?.start) return;
-        const refocus = session.selectedN !== null && session.selectedN !== n;
-        if (refocus || !session.expanded.has(n)) {
-          await change(
-            session,
-            () => {
-              if (refocus) {
-                deactivate(session);
-                session.selectedN = n;
-              }
-              session.expanded = new Set([n]);
-            },
-          );
-        }
-        if (current !== session || !live()) return;
-        centerDiagram(chunk);
-        await jumpToStart(session, chunk);
+        const stop = tree.firstStopOf(session.stops, n);
+        if (stop) await selectStop(session, stop);
       },
       // A contract or data line in a chunk's row selects that chunk and jumps to the line's place in the diff, without the
       // pulse.
@@ -392,15 +407,14 @@
     return tree.owns(node) || diagram.owns(node) || page.ownsLine(node);
   }
 
-  // A link to a chunk's start, such as the PR brief card's, carries the anchor of that line or file in the URL fragment.
-  // Opening the files page on it does what the chunk's "Start here" button does. Any other fragment is left to the page.
-  async function jumpToLinkedStart(session) {
+  // A link to a stop, such as the PR brief card's, carries the anchor of that line or file in the URL fragment. Opening
+  // the files page on it goes to that stop. Any other fragment is left to the page.
+  async function jumpToLinkedStop(session) {
     const wanted = location.hash.slice(1);
     if (!wanted.startsWith("diff-") || !session?.review || !live()) return;
-    for (const chunk of session.review.chunks) {
-      const { start } = chunk;
-      if (start && (await startAnchor(start)) === wanted) {
-        if (current === session && live()) handlersFor(session).onJumpToStart(chunk.n);
+    for (const stop of session.stops) {
+      if ((await stopAnchor(stop)) === wanted) {
+        if (current === session && live()) selectStop(session, stop);
         return;
       }
     }
@@ -534,6 +548,9 @@
       order: tree.defaultOrder(review),
       expanded: new Set([selectedN ?? tree.orderChunks(review.chunks, tree.defaultOrder(review))[0]?.n]),
       startedAt: Date.now(),
+      stops: tree.stopsOf(review),
+      selectedStop: null,
+      selection: 0,
       callouts: [],
     };
     const session = current;
@@ -541,7 +558,7 @@
     if (current !== session || !live()) return;
     stopObserving = page.onChange(onMutations);
     refresh();
-    jumpToLinkedStart(current);
+    jumpToLinkedStop(current);
   }
 
   stopNavigating = page.onNavigate(start);

@@ -491,31 +491,19 @@ test("a run opens in flow order only when its chunks have steps", () => {
   assert.equal(defaultOrder({ chunks: [{ name: "A" }] }), "risk");
 });
 
-const { nextOf, prevOf, startCallout } = require("../tree.js");
+const { stopsOf, firstStopOf, stopCallout } = require("../tree.js");
 
-const FLOW_CHUNKS = [
-  { n: 1, name: "Screen", next: [2, 3], why: "Every user's reports.", start: { path: "a.js", side: "R", line: 1, why: "Where the list is built." } },
-  { n: 2, name: "Endpoint", next: [3], why: "w" },
-  { n: 3, name: "Table", next: [], why: "w" },
+const CHUNKS = [
+  { n: 1, name: "Screen", why: "Every user's reports." },
+  { n: 2, name: "Endpoint", why: "w" },
+  { n: 3, name: "Table", why: "w" },
 ];
 
-test("nextOf names the chunks in next, and prevOf the chunk numbered one lower", () => {
-  assert.deepEqual(nextOf(FLOW_CHUNKS, FLOW_CHUNKS[0]).map((chunk) => chunk.n), [2, 3]);
-  assert.deepEqual(nextOf(FLOW_CHUNKS, FLOW_CHUNKS[2]), []);
-  assert.equal(prevOf(FLOW_CHUNKS, FLOW_CHUNKS[1]).n, 1);
-  assert.equal(prevOf(FLOW_CHUNKS, FLOW_CHUNKS[0]), null);
-});
-
-test("without next, nextOf falls back to the chunk with the next higher number", () => {
-  const old = FLOW_CHUNKS.map(({ next, ...chunk }) => chunk);
-  assert.deepEqual(nextOf(old, old[0]).map((chunk) => chunk.n), [2]);
-  assert.deepEqual(nextOf([old[2], old[0]], old[0]).map((chunk) => chunk.n), [3]);
-  assert.deepEqual(nextOf(old, old[2]), []);
-});
-
-test("nextOf skips a number no chunk has", () => {
-  assert.deepEqual(nextOf(FLOW_CHUNKS, { n: 1, next: [9, 2] }).map((chunk) => chunk.n), [2]);
-});
+const STOPS = [
+  { i: 1, title: "List is built", why: "Where the list is built.", path: "a.js", side: "R", line: 4, chunk: 1 },
+  { i: 2, title: "Query filters by owner", why: "Check the owner filter survives.", path: "b.js", side: "R", line: 9, chunk: 3 },
+  { i: 3, title: "Back to the screen", why: "The result renders here.", path: "a.js", side: "R", line: 30, chunk: 1 },
+];
 
 function fakeDom() {
   class Element {
@@ -545,43 +533,22 @@ function fakeDom() {
 const walk = (element) => [element, ...(element.children ?? []).filter((child) => typeof child === "object").flatMap(walk)];
 const byClass = (root, name) => walk(root).filter((element) => element.className.split(" ").includes(name));
 
-test("a start callout shows the chunk, the reason, its next buttons and the previous one, which jump", () => {
+test("a stop callout names the stop, its chunk and title, why to stop here, and its previous and next stops, which go", () => {
   globalThis.document = fakeDom();
   try {
     const gone = [];
-    const card = startCallout(FLOW_CHUNKS[1], FLOW_CHUNKS, (chunk) => gone.push(chunk.n));
-    assert.equal(byClass(card, "prf-callout-chunk")[0].textContent, "2 · Endpoint");
-    assert.equal(byClass(card, "prf-callout-label")[0].textContent, "Why the LLM picked this");
-    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
-    assert.deepEqual([byClass(card, "prf-callout-prev")[0].textContent, byClass(card, "prf-callout-prev")[0].title], ["↑ Previous", "1 · Screen"]);
-    for (const button of [...byClass(card, "prf-callout-go"), ...byClass(card, "prf-callout-prev")]) button.listeners.click();
-    assert.deepEqual(gone, [3, 1]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-const BOXED_CHUNKS = [
-  { n: 1, name: "Screen", next: [2], why: "w", nodes: ["a"] },
-  { n: 2, name: "Endpoint", next: [3], why: "w", nodes: ["b", "b2"] },
-  { n: 3, name: "Table", next: [], why: "w", nodes: ["c"] },
-];
-const BOX_TITLES = { a: "List items", b: "Fetch items", c: "Store items" };
-const titleOf = (nodeId) => BOX_TITLES[nodeId] ?? "";
-
-test("a start callout's header is the box title in bold, a chevron, then the chunk name, and its buttons use box titles", () => {
-  globalThis.document = fakeDom();
-  try {
-    const gone = [];
-    const card = startCallout(BOXED_CHUNKS[1], BOXED_CHUNKS, (chunk) => gone.push(chunk.n), titleOf);
+    const card = stopCallout(STOPS[1], STOPS, (stop) => gone.push(stop.i), CHUNKS);
     const head = byClass(card, "prf-callout-head")[0];
     assert.deepEqual(head.children.map((child) => child.className), ["prf-callout-icon", "prf-callout-chunk", "prf-callout-sep", "prf-callout-name"]);
     assert.equal(head.children[1].tag, "strong");
-    assert.equal(head.children[1].textContent, "2 · Fetch items");
-    assert.equal(head.children[3].textContent, "Endpoint");
-    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Store items ↓"]);
+    assert.equal(head.children[1].textContent, "Stop 2 of 3 \u00b7 3 Table");
+    assert.equal(head.children[3].textContent, "Query filters by owner");
+    assert.equal(byClass(card, "prf-callout-label")[0].textContent, "Why stop here");
+    assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Check the owner filter survives.");
     const previous = byClass(card, "prf-callout-prev")[0];
-    assert.deepEqual([previous.textContent, previous.title], ["↑ Previous", "1 · List items"]);
+    assert.deepEqual([previous.textContent, previous.title], ["\u2191 Previous", "List is built"]);
+    assert.equal(byClass(card, "prf-callout-nav-label")[0].textContent, "Next");
+    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["Back to the screen \u2193"]);
     for (const button of [...byClass(card, "prf-callout-go"), previous]) button.listeners.click();
     assert.deepEqual(gone, [3, 1]);
   } finally {
@@ -589,44 +556,55 @@ test("a start callout's header is the box title in bold, a chevron, then the chu
   }
 });
 
-test("a chunk with no box or no title for its box keeps the bold number and chunk name, with no chevron", () => {
+test("the first stop's callout has no previous button, and the last says Last stop and offers no next button", () => {
   globalThis.document = fakeDom();
   try {
-    const noBox = startCallout({ ...BOXED_CHUNKS[1], nodes: [] }, BOXED_CHUNKS, () => {}, titleOf);
-    assert.deepEqual(byClass(noBox, "prf-callout-head")[0].children.map((child) => child.className), ["prf-callout-icon", "prf-callout-chunk"]);
-    assert.equal(byClass(noBox, "prf-callout-chunk")[0].textContent, "2 · Endpoint");
-    const untitled = startCallout(BOXED_CHUNKS[1], BOXED_CHUNKS, () => {}, () => "");
-    assert.equal(byClass(untitled, "prf-callout-chunk")[0].textContent, "2 · Endpoint");
-    assert.deepEqual(byClass(untitled, "prf-callout-sep"), []);
-    assert.deepEqual(byClass(untitled, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
-    assert.equal(byClass(untitled, "prf-callout-prev")[0].title, "1 · Screen");
+    const first = stopCallout(STOPS[0], STOPS, () => {}, CHUNKS);
+    assert.deepEqual(byClass(first, "prf-callout-prev"), []);
+    assert.deepEqual(byClass(first, "prf-callout-go").map((button) => button.textContent), ["Query filters by owner \u2193"]);
+    const last = stopCallout(STOPS[2], STOPS, () => {}, CHUNKS);
+    assert.equal(byClass(last, "prf-callout-nav-label")[0].textContent, "Last stop");
+    assert.deepEqual(byClass(last, "prf-callout-go"), []);
+    assert.equal(byClass(last, "prf-callout-prev")[0].title, "Query filters by owner");
   } finally {
     delete globalThis.document;
   }
 });
 
-test("a start callout uses the start line's reason, lists every next chunk and has no previous button on the first chunk", () => {
+test("a stop with no chunk or no reason leaves the chunk and the reason out of its callout", () => {
   globalThis.document = fakeDom();
   try {
-    const card = startCallout(FLOW_CHUNKS[0], FLOW_CHUNKS, () => {});
-    assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Where the list is built.");
-    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["2 · Endpoint ↓", "3 · Table ↓"]);
-    assert.deepEqual(byClass(card, "prf-callout-prev"), []);
+    const card = stopCallout({ ...STOPS[0], chunk: null, why: "" }, STOPS, () => {}, CHUNKS);
+    assert.equal(byClass(card, "prf-callout-chunk")[0].textContent, "Stop 1 of 3");
+    assert.deepEqual(byClass(card, "prf-callout-reason"), []);
+    assert.deepEqual(byClass(card, "prf-callout-label"), []);
   } finally {
     delete globalThis.document;
   }
 });
 
-test("the last chunk's callout says Last step and offers no next button", () => {
-  globalThis.document = fakeDom();
-  try {
-    const card = startCallout(FLOW_CHUNKS[2], FLOW_CHUNKS, () => {});
-    assert.equal(byClass(card, "prf-callout-nav-label")[0].textContent, "Last step");
-    assert.deepEqual(byClass(card, "prf-callout-go"), []);
-    assert.deepEqual([byClass(card, "prf-callout-prev")[0].textContent, byClass(card, "prf-callout-prev")[0].title], ["↑ Previous", "2 · Endpoint"]);
-  } finally {
-    delete globalThis.document;
-  }
+test("a run with a walkthrough shows its stops as given, even when there are none", () => {
+  assert.deepEqual(stopsOf({ chunks: CHUNKS, walkthrough: STOPS }), STOPS);
+  assert.deepEqual(stopsOf({ chunks: CHUNKS.map((chunk) => ({ ...chunk, start: { path: "a.js", side: "R", line: 1 } })), walkthrough: [] }), []);
+});
+
+test("a run without a walkthrough gets one stop per chunk that has a start, in chunk order, filtering nothing", () => {
+  const chunks = [
+    { n: 1, name: "Screen", why: "Every user's reports.", start: { path: "src/ui.js", side: "R", line: 4, why: "Where the list is built." } },
+    { n: 2, name: "Endpoint", why: "No start." },
+    { n: 3, name: "Table", why: "Why the table.", start: { path: "db/V1.sql", side: null, line: null } },
+  ];
+  assert.deepEqual(stopsOf({ chunks }), [
+    { i: 1, title: "ui.js", why: "Where the list is built.", path: "src/ui.js", side: "R", line: 4, chunk: 1 },
+    { i: 2, title: "V1.sql", why: "Why the table.", path: "db/V1.sql", side: null, line: null, chunk: 3 },
+  ]);
+  assert.deepEqual(stopsOf({ chunks: [{ n: 1, name: "A", why: "w" }] }), []);
+});
+
+test("firstStopOf finds the first stop in a chunk, and null for a chunk the walkthrough skips", () => {
+  assert.equal(firstStopOf(STOPS, 1).i, 1);
+  assert.equal(firstStopOf(STOPS, 3).i, 2);
+  assert.equal(firstStopOf(STOPS, 2), null);
 });
 
 function fakeTable(anchors) {
@@ -907,20 +885,6 @@ test("jumpToFile does nothing for a diff that is not in the page", async () => {
     assert.equal(dom.callouts()[0].classes.has("prf-line-target"), false);
   } finally {
     dom.done();
-  }
-});
-
-test("a start callout for a file start reads the start's reason and keeps its next and previous buttons", () => {
-  globalThis.document = fakeDom();
-  try {
-    const fileStart = { path: "b.js", side: null, line: null, why: "Open this file first." };
-    const chunks = FLOW_CHUNKS.map((chunk) => (chunk.n === 2 ? { ...chunk, start: fileStart } : chunk));
-    const card = startCallout(chunks[1], chunks, () => {});
-    assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Open this file first.");
-    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["3 · Table ↓"]);
-    assert.equal(byClass(card, "prf-callout-prev")[0].title, "1 · Screen");
-  } finally {
-    delete globalThis.document;
   }
 });
 

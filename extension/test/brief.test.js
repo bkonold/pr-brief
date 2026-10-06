@@ -333,7 +333,9 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       EXTRA_KEY: "extra",
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
-      startCallout: (chunk, chunks, onGo, titleOf) => ({ chunk, chunks, onGo, titleOf }),
+      stopsOf: require("../tree.js").stopsOf,
+      firstStopOf: require("../tree.js").firstStopOf,
+      stopCallout: (stop, stops, onGo, chunks) => ({ stop, stops, onGo, chunks }),
       flashRows() {},
       revealGroup() {},
       remove() {},
@@ -949,18 +951,18 @@ test("clicking a diagram box does what clicking its chunk does, and a box no chu
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded], emphasized.at(-1)], [3, [3], ["c"]]);
 });
 
-test("a review opens with a callout entry for every chunk that has a start line, anchored at that line", async () => {
+test("a run with no walkthrough opens with a callout entry for every chunk that has a start line, anchored at that line", async () => {
   const { callouts } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
   assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor]), [[1, "src/ui.jsR4"], [2, "src/api.jsR9"], [3, "db/V1.sqlR2"]]);
 });
 
-test("a chunk without a start line gets no callout", async () => {
+test("a run with no walkthrough gives a chunk without a start line no stop and no callout", async () => {
   const [first, ...rest] = STEP_REVIEW.chunks;
   const { start, ...unstarted } = first;
   const { callouts } = loadContent({ run: null, view: "files", review: { ...STEP_REVIEW, chunks: [unstarted, ...rest] } });
   await settle();
-  assert.deepEqual(callouts.at(-1).map((entry) => entry.key), [2, 3]);
+  assert.deepEqual(callouts.at(-1).map((entry) => entry.key), [1, 2]);
 });
 
 test("the callouts are shown in the review and removed in the host's own tree view, in either order", async () => {
@@ -974,31 +976,106 @@ test("the callouts are shown in the review and removed in the host's own tree vi
   assert.equal(callouts.at(-1).length, 3);
 });
 
-test("a callout's next and previous buttons open that chunk and jump to its start line without the pulse", async () => {
+test("a callout's next and previous buttons open that stop and jump to its line without the pulse", async () => {
   const { callouts, jumps, renders } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
   jumps.length = 0;
-  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
-  assert.equal(chunk.n, 1);
-  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  const { onGo, stop, stops } = callouts.at(-1)[0].render();
+  assert.equal(stop.i, 1);
+  await onGo(stops[stop.i]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["src/api.js", "R", 9, { pulse: false }]]));
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [2, [2]]);
 });
 
-test("a callout reads box titles from the diagram", async () => {
-  const { callouts } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+const WALK_REVIEW = {
+  ...STEP_REVIEW,
+  variant: "v23",
+  chunks: STEP_REVIEW.chunks.map(({ start, ...chunk }) => chunk),
+  walkthrough: [
+    { i: 1, title: "List is built", why: "Entry point.", path: "src/ui.js", side: "R", line: 4, chunk: 1 },
+    { i: 2, title: "Query filters", why: "The call lands here.", path: "db/V1.sql", side: "R", line: 2, chunk: 3 },
+    { i: 3, title: "Back to the screen", why: "It renders here.", path: "src/ui.js", side: "R", line: 30, chunk: 1 },
+    { i: 4, title: "The whole endpoint", why: "No single line.", path: "src/api.js", side: null, line: null, chunk: 2 },
+  ],
+};
+
+test("a walkthrough run has a callout for every stop, a file stop anchored at its file's diff, and chunks need no start", async () => {
+  const { callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.equal(callouts.at(-1)[0].render().titleOf("b"), "title of b");
+  assert.deepEqual(
+    callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file ?? false]),
+    [[1, "src/ui.jsR4", false], [2, "db/V1.sqlR2", false], [3, "src/ui.jsR30", false], [4, "diff-src/api.js", true]],
+  );
+  const { stop, stops, chunks } = callouts.at(-1)[1].render();
+  assert.deepEqual([stop.i, stops.length, chunks.length], [2, 4, 3]);
 });
 
-test("a callout's button for a chunk with no start line opens it without a jump", async () => {
-  const [first, second, ...rest] = STEP_REVIEW.chunks;
-  const { start, ...unstarted } = second;
-  const { callouts, jumps, renders } = loadContent({ run: null, view: "files", review: { ...STEP_REVIEW, chunks: [first, unstarted, ...rest] } });
+test("walking the stops with a callout's buttons crosses and revisits chunks, from the first stop to the last", async () => {
+  const { callouts, jumps, fileJumps, renders, centered, marked, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
-  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
-  assert.deepEqual(jumps, []);
+  const { onGo, stops } = callouts.at(-1)[0].render();
+  const walked = [];
+  for (const stop of stops) {
+    await onGo(stop);
+    const { state } = renders.at(-1);
+    walked.push([stop.i, state.selectedN, [...state.expanded], marked.at(-1), emphasized.at(-1), centered.at(-1)]);
+  }
+  assert.deepEqual(walked, [
+    [1, 1, [1], 1, ["a"], ["a"]],
+    [2, 3, [3], 3, ["c"], ["c"]],
+    [3, 1, [1], 1, ["a"], ["a"]],
+    [4, 2, [2], 2, ["b"], ["b"]],
+  ]);
+  assert.equal(JSON.stringify(jumps), JSON.stringify([["src/ui.js", "R", 4, { pulse: false }], ["db/V1.sql", "R", 2, { pulse: false }], ["src/ui.js", "R", 30, { pulse: false }]]));
+  assert.equal(JSON.stringify(fileJumps), JSON.stringify([["src/api.js", { pulse: false }]]));
+});
+
+test("a stop in a file no chunk lists selects no chunk but still jumps there", async () => {
+  const outside = { ...WALK_REVIEW, walkthrough: [{ i: 1, title: "Docs", why: "w", path: "docs/readme.md", side: "R", line: 3, chunk: null }] };
+  const { callouts, jumps, renders, marked } = loadContent({ run: null, view: "files", review: outside });
+  await settle();
+  await callouts.at(-1)[0].render().onGo(outside.walkthrough[0]);
+  assert.equal(JSON.stringify(jumps), JSON.stringify([["docs/readme.md", "R", 3, { pulse: false }]]));
+  assert.deepEqual([renders.at(-1).state.selectedN, marked.at(-1)], [null, null]);
+});
+
+test("clicking a chunk goes to its first stop, again on every click, and a chunk with no stop opens without a jump", async () => {
+  const { renders, jumps, fileJumps } = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, walkthrough: WALK_REVIEW.walkthrough.slice(0, 3) } });
+  await settle();
+  for (const click of [1, 2]) {
+    jumps.length = 0;
+    await renders.at(-1).handlers.onSelectChunk(1);
+    assert.deepEqual(jumps, [["src/ui.js", "R", 4, undefined]], `click ${click}`);
+    assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [1, [1]]);
+  }
+  jumps.length = 0;
+  await renders.at(-1).handlers.onSelectChunk(2);
+  assert.deepEqual([jumps, fileJumps], [[], []]);
+  assert.equal(renders.at(-1).state.selectedN, 2);
+});
+
+test("clicking Previous or Next quickly ends at the last stop clicked, jumping only there", async () => {
+  const { callouts, jumps, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  const { onGo, stops } = callouts.at(-1)[0].render();
+  await Promise.all([onGo(stops[1]), onGo(stops[2])]);
+  assert.equal(JSON.stringify(jumps), JSON.stringify([["src/ui.js", "R", 30, { pulse: false }]]));
+  assert.equal(renders.at(-1).state.selectedN, 1);
+});
+
+test("a diagram box click goes to the first stop of the first chunk that lists it", async () => {
+  const { jumps, diagramHandlers, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  diagramHandlers.at(-1).onNode("c");
+  await settle();
+  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["db/V1.sql", "R", 2]]);
+  assert.equal(renders.at(-1).state.selectedN, 3);
+});
+
+test("opening the files page on a stop's diff anchor goes to that stop", async () => {
+  const { fileJumps, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
+  await settle();
+  assert.deepEqual(fileJumps, [["src/api.js", undefined]]);
   assert.equal(renders.at(-1).state.selectedN, 2);
 });
 
@@ -1034,8 +1111,8 @@ test("clicking a chunk with a file start, its Start here button and a callout bu
   await renders.at(-1).handlers.onSelectChunk(2);
   await renders.at(-1).handlers.onJumpToStart(2);
   assert.deepEqual(fileJumps, [["src/api.js", undefined], ["src/api.js", undefined]]);
-  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
-  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  const { onGo, stop, stops } = callouts.at(-1)[0].render();
+  await onGo(stops[stop.i]);
   assert.equal(JSON.stringify(fileJumps.at(-1)), JSON.stringify(["src/api.js", { pulse: false }]));
   assert.deepEqual(jumps, []);
   assert.deepEqual([renders.at(-1).state.selectedN, [...renders.at(-1).state.expanded]], [2, [2]]);
@@ -1069,8 +1146,8 @@ test("every action that focuses a chunk centres the diagram on the chunk's boxes
   assert.deepEqual(centered, [["b"]]);
   await renders.at(-1).handlers.onSelectChunk(3);
   assert.deepEqual(centered.at(-1), ["c"]);
-  const { onGo, chunk, chunks } = callouts.at(-1)[0].render();
-  await onGo(require("../tree.js").nextOf(chunks, chunk)[0]);
+  const { onGo, stop, stops } = callouts.at(-1)[0].render();
+  await onGo(stops[stop.i]);
   assert.deepEqual(centered.at(-1), ["b"]);
   await renders.at(-1).handlers.onJumpToStart(1);
   assert.deepEqual(centered.at(-1), ["a"]);

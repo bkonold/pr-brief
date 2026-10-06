@@ -77,19 +77,6 @@
     return chunks.find((chunk) => chunk.n === n) ?? null;
   }
 
-  // The chunks to read after `chunk`: the ones its `next` names, else, for a run that has no `next`, the chunk with the
-  // next higher number. Empty for the last chunk.
-  function nextOf(chunks, chunk) {
-    if (Array.isArray(chunk.next)) return chunk.next.map((n) => chunkByNumber(chunks, n)).filter(Boolean);
-    const following = chunks.filter((other) => other.n > chunk.n).sort((a, b) => a.n - b.n)[0];
-    return following ? [following] : [];
-  }
-
-  // The chunk numbered one below `chunk`; null for the first.
-  function prevOf(chunks, chunk) {
-    return chunkByNumber(chunks, chunk.n - 1);
-  }
-
   function folderOf(path) {
     const slash = path.lastIndexOf("/");
     return slash === -1 ? "" : path.slice(0, slash);
@@ -270,55 +257,63 @@
     return element;
   }
 
-  // The title of the chunk's first diagram box, as `titleOf(nodeId)` gives it; "" when the chunk has no box or the
-  // diagram has no title for it.
-  function boxTitleOf(chunk, titleOf) {
-    const nodeId = chunk.nodes?.[0];
-    return (nodeId && titleOf(nodeId)) || "";
+  // The walkthrough's stops, in reading order: review.json's `walkthrough` when the run has one. A run made before
+  // walkthroughs has one stop per chunk that names a start, in chunk order, titled by its file and giving the chunk's
+  // reason for starting there.
+  function stopsOf(review) {
+    if (Array.isArray(review.walkthrough)) return review.walkthrough;
+    return review.chunks
+      .filter((chunk) => chunk.start)
+      .map((chunk, index) => ({
+        i: index + 1,
+        title: baseNameOf(chunk.start.path),
+        why: readFirstReason(chunk),
+        path: chunk.start.path,
+        side: chunk.start.side ?? null,
+        line: chunk.start.line ?? null,
+        chunk: chunk.n,
+      }));
   }
 
-  // `<n> · <box title>`, else `<n> · <chunk name>`.
-  function chunkLabel(chunk, titleOf) {
-    return `${chunk.n} · ${boxTitleOf(chunk, titleOf) || chunk.name}`;
+  // The first stop that lies in chunk `n`; null when the walkthrough never stops there.
+  function firstStopOf(stops, n) {
+    return stops.find((stop) => stop.chunk === n) ?? null;
   }
 
-  // The card shown above a chunk's start line, or above its start file's header, in the diff: where the chunk is (its
-  // box title, then its name), why the model starts there, and, in a column beside them, buttons to the previous chunk and
-  // to the chunks to read next. `onGo(chunk)` opens a chunk and jumps to its start; `titleOf(nodeId)` gives a diagram box's title.
-  function startCallout(chunk, chunks, onGo, titleOf = () => "") {
+  // The card shown above a stop's line, or above its file's header, in the diff: which stop of how many this is, the
+  // chunk it lies in and its title, why to stop here, and, in a column beside them, buttons to the previous and the next
+  // stop. `onGo(stop)` opens a stop; `chunks` names the chunk a stop lies in.
+  function stopCallout(stop, stops, onGo, chunks = []) {
     const card = make("div", "prf-callout");
     const main = make("div", "prf-callout-main");
     const head = make("div", "prf-callout-head");
     head.append(outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"));
-    if (boxTitleOf(chunk, titleOf)) {
-      head.append(
-        make("strong", "prf-callout-chunk", chunkLabel(chunk, titleOf)),
-        outlineIcon(CHEVRON_ICON, 14, "prf-callout-sep"),
-        make("span", "prf-callout-name", chunk.name),
-      );
-    } else {
-      head.append(make("strong", "prf-callout-chunk", chunkLabel(chunk, titleOf)));
-    }
+    const chunk = chunkByNumber(chunks, stop.chunk);
+    head.append(
+      make("strong", "prf-callout-chunk", `Stop ${stop.i} of ${stops.length}${chunk ? ` · ${chunk.n} ${chunk.name}` : ""}`),
+      outlineIcon(CHEVRON_ICON, 14, "prf-callout-sep"),
+      make("span", "prf-callout-name", stop.title),
+    );
     main.append(head);
-    const reason = readFirstReason(chunk);
-    if (reason) main.append(make("div", "prf-callout-label", "Why the LLM picked this"), make("div", "prf-callout-reason", reason));
+    if (stop.why) main.append(make("div", "prf-callout-label", "Why stop here"), make("div", "prf-callout-reason", stop.why));
     card.append(main);
 
     const nav = make("div", "prf-callout-nav");
-    const previous = prevOf(chunks, chunk);
+    const at = stops.findIndex((other) => other.i === stop.i);
+    const previous = stops[at - 1];
     if (previous) {
       const back = button("prf-callout-prev", "↑ Previous", () => onGo(previous));
-      back.title = chunkLabel(previous, titleOf);
+      back.title = previous.title;
       nav.append(back);
     }
-    const targets = nextOf(chunks, chunk);
     const next = make("div", "prf-callout-next");
-    if (targets.length) {
+    const following = stops[at + 1];
+    if (following) {
       const buttons = make("div", "prf-callout-targets");
-      for (const target of targets) buttons.append(button("prf-callout-go", `${chunkLabel(target, titleOf)} ↓`, () => onGo(target)));
+      buttons.append(button("prf-callout-go", `${following.title} ↓`, () => onGo(following)));
       next.append(make("span", "prf-callout-nav-label", "Next"), buttons);
     } else {
-      next.append(make("span", "prf-callout-nav-label", "Last step"));
+      next.append(make("span", "prf-callout-nav-label", "Last stop"));
     }
     nav.append(next);
     card.append(nav);
@@ -544,7 +539,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { changeBlocks, impactChip, lineText, fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, startCallout, nextOf, prevOf, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
+  ns.tree = { changeBlocks, impactChip, lineText, fileRow, render, renderServerNote, renderGenerateLine, flashRows, revealGroup, revealTarget, readFirstReason, stopsOf, firstStopOf, stopCallout, remove, owns, orderChunks, chunkOfNode, hasSteps, defaultOrder, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, staleMessage, EXTRA_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;
