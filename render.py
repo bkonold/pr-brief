@@ -426,6 +426,15 @@ def diff_lines_by_path(diff: str) -> dict[str, list[DiffLine]]:
     return lines_by_path
 
 
+def match_diff_line(diff_lines: dict[str, list[DiffLine]], path: str, text: str) -> tuple[DiffLine | None, str]:
+    """The one line of the file's diff whose stripped text is `text`; None, with what went wrong, when no line or
+    several lines match."""
+    found: list[DiffLine] = [line for line in diff_lines.get(path, []) if line[2] == text]
+    if len(found) == 1:
+        return found[0], ""
+    return None, "not found" if not found else f"matched {len(found)} lines"
+
+
 def resolve_start(raw: Any, name: str, files: list[str], diff_lines: dict[str, list[DiffLine]],
                   notes: list[str], file_start: bool = False) -> dict[str, Any] | None:
     """The chunk's start line when its quoted text matches exactly one line of the quoted file's diff.
@@ -444,15 +453,14 @@ def resolve_start(raw: Any, name: str, files: list[str], diff_lines: dict[str, l
         return None
     start: dict[str, Any] | None = None
     if text:
-        found: list[DiffLine] = [line for line in diff_lines.get(path, []) if line[2] == text]
-        problem: str = "start line not found" if not found else f"start line matched {len(found)} lines"
-        if len(found) == 1:
-            side, number, _ = found[0]
+        match, problem = match_diff_line(diff_lines, path, text)
+        if match is not None:
+            side, number, _ = match
             start = {"path": path, "side": side, "line": number, "text": text}
         elif file_start:
-            notes.append(f"chunk '{name}': {problem}, pointing at the file")
+            notes.append(f"chunk '{name}': start line {problem}, pointing at the file")
         else:
-            notes.append(f"chunk '{name}': {problem}")
+            notes.append(f"chunk '{name}': start line {problem}")
             return None
     if start is None:
         start = {"path": path, "side": None, "line": None}
