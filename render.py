@@ -484,6 +484,61 @@ def start_why(raw: Any, name: str, notes: list[str]) -> str | None:
     return why
 
 
+STOP_TITLE_MAX_WORDS = 6
+STOP_WHY_MAX_WORDS = 20
+STOPS_RANGE = (3, 10)
+
+
+def resolve_stops(raw: Any, files: list[str], diff_lines: dict[str, list[DiffLine]],
+                  chunk_of: dict[str, int]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The walkthrough's stops, numbered from 1 in the model's order, and the notes about what was fixed.
+
+    A stop quoting a line found exactly once in its file's diff points at that line; any other stop points at its file
+    alone (side and line None). A stop in a file outside the diff, or at a place an earlier stop already has, is
+    dropped. `chunk` is the number of the chunk that holds the stop's file, from `chunk_of`."""
+    notes: list[str] = []
+    if not isinstance(raw, list):
+        return [], ["no walkthrough"]
+    stops: list[dict[str, Any]] = []
+    taken: set[tuple[str, int | None]] = set()
+    for position, item in enumerate(raw, 1):
+        label: str = f"stop {position}"
+        path: str = clean_path(item.get("file", "")) if isinstance(item, dict) else ""
+        if path not in files:
+            notes.append(f"{label}: dropped, its file is not in the PR: {path or '(none)'}")
+            continue
+        text: str = str(item.get("line_text", "")).strip()
+        side: str | None = None
+        number: int | None = None
+        if text:
+            match, problem = match_diff_line(diff_lines, path, text)
+            if match is None:
+                notes.append(f"{label}: line {problem}, pointing at the file")
+            else:
+                side, number, _ = match
+        if (path, number) in taken:
+            notes.append(f"{label}: dropped, an earlier stop is already at {path}" + ("" if number is None else f":{number}"))
+            continue
+        taken.add((path, number))
+        title: str = " ".join(str(item.get("title", "")).split())
+        if not title:
+            notes.append(f"{label}: no title, using the file's name")
+            title = path.split("/")[-1]
+        elif len(title.split()) > STOP_TITLE_MAX_WORDS:
+            notes.append(f"{label}: title is longer than {STOP_TITLE_MAX_WORDS} words")
+        why: str = " ".join(str(item.get("why", "")).split())
+        if not why:
+            notes.append(f"{label}: no reason")
+        elif len(why.split()) > STOP_WHY_MAX_WORDS:
+            notes.append(f"{label}: reason is longer than {STOP_WHY_MAX_WORDS} words")
+        stops.append({"i": len(stops) + 1, "title": title, "why": why, "path": path, "side": side, "line": number,
+                      "chunk": chunk_of.get(path)})
+    low, high = STOPS_RANGE
+    if not low <= len(stops) <= high:
+        notes.append(f"{len(stops)} stops, expected {low} to {high}")
+    return stops, notes
+
+
 STEP_MAX_WORDS = 2
 
 
@@ -596,6 +651,18 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
     for number, chunk in enumerate(chunks, 1):
         chunk.number = number
     return chunks
+
+
+def build_walkthrough(raw: Any, chunks: list[Chunk], paths: list[str], diff_lines: dict[str, list[DiffLine]],
+                      notes: list[str]) -> list[dict[str, Any]]:
+    """The resolved stops, with a note for each `verify` chunk that no stop visits."""
+    chunk_of: dict[str, int] = {path: chunk.number for chunk in chunks for path in chunk.files}
+    stops, stop_notes = resolve_stops(raw, paths, diff_lines, chunk_of)
+    notes.extend(stop_notes)
+    visited: set[int | None] = {stop["chunk"] for stop in stops}
+    notes.extend(f"chunk '{chunk.name}': a verify chunk with no walkthrough stop"
+                 for chunk in chunks if chunk.review == "verify" and chunk.number not in visited)
+    return stops
 
 
 NODE_DECLARATION = re.compile(r'(?<![\w-])(?P<id>[A-Za-z0-9_][A-Za-z0-9_-]*)(?P<open>\s*\[")(?:\d+\s*·\s*|\d+[.:)]\s+)?')
@@ -1308,9 +1375,10 @@ def line_json(line: Line) -> dict[str, Any]:
 
 def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], has_diagram: bool,
                 nodes: list[dict[str, Any]] | None, review_labels: bool = False,
-                lineset: layout.LineSet | None = None) -> dict[str, Any]:
+                lineset: layout.LineSet | None = None, walkthrough: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """The chunks in review order, for the browser extension that groups the Files changed page by chunk. With a
-    `lineset`, each chunk lists the contract and data lines it owns and `unchunked` the ones no chunk owns."""
+    `lineset`, each chunk lists the contract and data lines it owns and `unchunked` the ones no chunk owns. With a
+    `walkthrough`, the stops are listed in reading order beside the chunks."""
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     return {
         "schema": 2,
@@ -1322,6 +1390,7 @@ def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], ha
         **({"nodes": nodes} if nodes is not None else {}),
         **({"unchunked": {"contract": [line_json(line) for line in lineset.loose_contract],
                           "data": [line_json(line) for line in lineset.loose_data]}} if lineset is not None else {}),
+        **({"walkthrough": walkthrough} if walkthrough is not None else {}),
         "chunks": [{"n": c.number, "name": c.name, "review": c.review, "raised_by": c.raised_by, "why": c.why,
                     "nodes": c.nodes,
                     **({"labels": c.labels} if review_labels else {}),
@@ -1633,7 +1702,11 @@ def main() -> int:
     (run_dir / "body.html").write_text(markdown_page(md))
     has_diagram: bool = write_diagram_svg(md, run_dir, notes)
     if cfg.get("files") == "chunks":
-        (run_dir / "review.json").write_text(json.dumps(review_json(run, pr, chunks, has_diagram, nodes, bool(cfg.get("review_labels")), lineset), indent=2) + "\n")
+        walkthrough: list[dict[str, Any]] | None = (
+            build_walkthrough(data.get("walkthrough"), chunks, [f["path"] for f in pr["files"]], diff_lines, notes)
+            if cfg.get("walkthrough") else None)
+        (run_dir / "review.json").write_text(
+            json.dumps(review_json(run, pr, chunks, has_diagram, nodes, bool(cfg.get("review_labels")), lineset, walkthrough), indent=2) + "\n")
     if notes:
         (run_dir / "error.txt").write_text("Rendered with these fixes:\n" + "\n".join(f"- {n}" for n in notes) + "\n")
     return 0
