@@ -993,9 +993,65 @@ test("a chunk's change line is its change and where as one line, or the whole te
   }
 });
 
-test("visiblePaths lists a chunk's files then the extra paths it does not already hold", () => {
-  const { visiblePaths } = require("../focus.js");
-  const chunk = { files: [{ path: "a.js" }, { path: "b.js" }] };
-  assert.deepEqual(visiblePaths(chunk, ["spec.json", "a.js"]), ["a.js", "b.js", "spec.json"]);
-  assert.deepEqual(visiblePaths(chunk, []), ["a.js", "b.js"]);
+function fakeHeader() {
+  const classes = new Set();
+  return { classes, classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } };
+}
+
+test("focus offers no way to hide a diff, and markChunk tints only the chunk's headers without touching any diff", async () => {
+  const focus = require("../focus.js");
+  assert.deepEqual(Object.keys(focus).sort(), ["announceBox", "clearBox", "markBox", "markChunk", "scrollTo"]);
+  const headers = new Map([["a.js", fakeHeader()], ["b.js", fakeHeader()], ["c.js", fakeHeader()]]);
+  const saved = { document: globalThis.document, page: globalThis.prFocus.page, alive: globalThis.prFocus.alive };
+  globalThis.prFocus.alive = () => true;
+  globalThis.prFocus.page = {
+    fileBlocks: () => new Map(),
+    entryFor: async (path) => (headers.has(path) ? path : null),
+    entryOf: () => null,
+    fileHeaderOf: (entry) => headers.get(entry) ?? null,
+  };
+  globalThis.document = { querySelectorAll: () => [...headers.values()].filter((header) => header.classes.has("prf-chunk-mark")) };
+  try {
+    const marked = () => [...headers].filter(([, header]) => header.classes.has("prf-chunk-mark")).map(([path]) => path);
+    await focus.markChunk({ files: [{ path: "a.js" }, { path: "b.js" }] });
+    assert.deepEqual(marked(), ["a.js", "b.js"]);
+    await focus.markChunk({ files: [{ path: "b.js" }, { path: "c.js" }, { path: "not-loaded.js" }] });
+    assert.deepEqual(marked(), ["b.js", "c.js"]);
+    await focus.markChunk(null);
+    assert.deepEqual(marked(), []);
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.prFocus.page = saved.page;
+    globalThis.prFocus.alive = saved.alive;
+    if (saved.document === undefined) delete globalThis.document;
+  }
+});
+
+test("a newer markChunk wins over an older one that is still looking for its headers", async () => {
+  const focus = require("../focus.js");
+  const headers = new Map([["a.js", fakeHeader()], ["b.js", fakeHeader()]]);
+  const saved = { document: globalThis.document, page: globalThis.prFocus.page, alive: globalThis.prFocus.alive };
+  const gates = new Map();
+  globalThis.prFocus.alive = () => true;
+  globalThis.prFocus.page = {
+    fileBlocks: () => new Map(),
+    entryFor: (path) => new Promise((resolve) => gates.set(path, () => resolve(path))),
+    entryOf: () => null,
+    fileHeaderOf: (entry) => headers.get(entry),
+  };
+  globalThis.document = { querySelectorAll: () => [...headers.values()].filter((header) => header.classes.has("prf-chunk-mark")) };
+  try {
+    const older = focus.markChunk({ files: [{ path: "a.js" }] });
+    const newer = focus.markChunk({ files: [{ path: "b.js" }] });
+    gates.get("b.js")();
+    await newer;
+    gates.get("a.js")();
+    await older;
+    assert.deepEqual([...headers].filter(([, header]) => header.classes.has("prf-chunk-mark")).map(([path]) => path), ["b.js"]);
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.prFocus.page = saved.page;
+    globalThis.prFocus.alive = saved.alive;
+    if (saved.document === undefined) delete globalThis.document;
+  }
 });

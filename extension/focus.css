@@ -1,9 +1,5 @@
-.prf-hidden {
-  display: none !important;
-}
-
-.prf-fade-in {
-  animation: prf-fade-in 150ms ease-out;
+.prf-chunk-mark {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--prf-guide) 40%, transparent);
 }
 
 .prf-box-active {
@@ -20,14 +16,7 @@
   }
 }
 
-@keyframes prf-fade-in {
-  from {
-    opacity: 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .prf-fade-in,
   .prf-box-flash {
     animation: none;
   }

@@ -1,51 +1,7 @@
 (() => {
   const ns = (globalThis.prFocus ??= {});
-  const HIDDEN = "prf-hidden";
-  const FADE_IN = "prf-fade-in";
-
-  // A newer apply() supersedes an older one still waiting on the path hashes.
-  let generation = 0;
-
-  // Hidden diffs vanish at once; a diff that becomes visible fades in (focus.css).
-  function setHidden(entry, hidden) {
-    if (entry.classList.contains(HIDDEN) === hidden) return;
-    entry.classList.toggle(HIDDEN, hidden);
-    if (hidden) return;
-    entry.classList.add(FADE_IN);
-    entry.addEventListener("animationend", () => entry.classList.remove(FADE_IN), { once: true });
-  }
-
-  function clear() {
-    for (const element of document.querySelectorAll(`.${HIDDEN}`)) setHidden(element, false);
-  }
-
   async function entryOfPath(path, scanned) {
     return (await ns.page.entryFor(path)) ?? ns.page.entryOf(scanned.get(path));
-  }
-
-  // The paths whose diffs stay visible for `chunk`: its files, then `extra`, files outside it that something in its row
-  // points at (a contract line in the spec's diff).
-  function visiblePaths(chunk, extra) {
-    const own = chunk.files.map(({ path }) => path);
-    return [...own, ...extra.filter((path) => !own.includes(path))];
-  }
-
-  // Hides every diff outside `chunk` and `extra` and scrolls to the chunk's first loaded diff. apply(null) shows all.
-  async function apply(chunk, { scroll = true, extra = [] } = {}) {
-    const mine = ++generation;
-    if (!chunk) {
-      clear();
-      return {};
-    }
-    const scanned = ns.page.fileBlocks();
-    const found = await Promise.all(visiblePaths(chunk, extra).map((path) => entryOfPath(path, scanned)));
-    if (mine !== generation) return { stale: true };
-
-    const keep = new Set(found.filter(Boolean));
-    for (const entry of ns.page.diffEntries()) setHidden(entry, !keep.has(entry));
-    const first = found.find(Boolean);
-    if (scroll && first) ns.page.scrollToElement(first);
-    return {};
   }
 
   async function scrollTo(path) {
@@ -55,8 +11,10 @@
 
   const ACTIVE = "prf-box-active";
   const FLASH = "prf-box-flash";
+  const CHUNK = "prf-chunk-mark";
 
   let boxGeneration = 0;
+  let chunkGeneration = 0;
   let announceGeneration = 0;
 
   function reducedMotion() {
@@ -82,6 +40,19 @@
     for (const header of headers) header.classList.add(ACTIVE);
   }
 
+  // Tints the headers of the chunk's files with a quiet accent stripe and takes it off every other header. A null
+  // chunk takes it off all of them. No diff is hidden: the stripe only shows where the chunk's files are. GitHub
+  // re-renders diffs, so this is re-applied on each refresh.
+  async function markChunk(chunk) {
+    const mine = ++chunkGeneration;
+    const headers = new Set(chunk ? await headersOf(chunk.files.map(({ path }) => path)) : []);
+    if (mine !== chunkGeneration || !ns.alive?.()) return;
+    for (const header of document.querySelectorAll(`.${CHUNK}`)) {
+      if (!headers.has(header)) header.classList.remove(CHUNK);
+    }
+    for (const header of headers) header.classList.add(CHUNK);
+  }
+
   function flash(header) {
     header.classList.remove(FLASH);
     void header.offsetWidth;
@@ -104,7 +75,7 @@
     for (const header of document.querySelectorAll(`.${ACTIVE}, .${FLASH}`)) header.classList.remove(ACTIVE, FLASH);
   }
 
-  ns.focus = { visiblePaths, apply, scrollTo, markBox, announceBox, clearBox };
+  ns.focus = { scrollTo, markBox, markChunk, announceBox, clearBox };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.focus;

@@ -119,7 +119,7 @@
       timer = null;
       if (!live()) return;
       start();
-      refresh({ scroll: false });
+      refresh();
     }, delay);
   }
 
@@ -127,17 +127,12 @@
     return session.mode === "review" ? (session.review.chunks.find((c) => c.n === session.selectedN) ?? null) : null;
   }
 
-  // The paths outside the selected chunk whose diffs are shown with it because a line in its row was clicked.
-  function revealedPaths(session) {
-    return session.reveal?.n === session.selectedN ? [...session.reveal.paths] : [];
-  }
-
   function extraFiles(session) {
     const listed = new Set(session.review.chunks.flatMap((chunk) => chunk.files.map((file) => file.path)));
     return [...page.fileBlocks().keys()].filter((path) => !listed.has(path)).map((path) => ({ path }));
   }
 
-  async function refresh({ scroll }) {
+  function refresh() {
     const session = current;
     if (session?.offline && live()) {
       tree.renderServerNote(session.offline, { onRetry: () => retry(session) });
@@ -149,9 +144,8 @@
     }
     if (!session?.review || !live()) return;
     const chunk = selectedChunk(session);
-    const result = await focus.apply(chunk, { scroll, extra: revealedPaths(session) });
-    if (result.stale || current !== session) return;
     renderDiagram(session, chunk);
+    focus.markChunk(chunk);
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
     page.showCallouts(session.mode === "review" ? session.callouts : []);
@@ -251,7 +245,7 @@
     );
   }
 
-  // Focuses the diffs on the chunk, opens it in the list, makes its start file (else its first) the active one and
+  // Marks the chunk's files in the diff, opens it in the list, makes its start file (else its first) the active one and
   // jumps to its start line or start file; a chunk with no start lands on its first file's header instead. Selecting the
   // open chunk again jumps again. `jump` passes on to the line jump, e.g. `{ pulse: false }`. Every selection moves the
   // diagram to follow the chunk's boxes.
@@ -267,7 +261,6 @@
         session.expanded = new Set([chunk.n]);
         if (path) session.activeBox = activation(path);
       },
-      { scroll: false },
     );
     if (current !== session || !live()) return;
     centerDiagram(chunk);
@@ -287,9 +280,7 @@
         session.mode = "review";
         session.selectedN = null;
         session.expanded = new Set();
-        session.reveal = null;
       },
-      { scroll: false },
     );
   }
 
@@ -306,11 +297,11 @@
     if (chunk) selectChunk(session, chunk);
   }
 
-  function change(session, update, options) {
+  function change(session, update) {
     if (current !== session || !live()) return Promise.resolve();
     update();
     save(session);
-    return refresh(options);
+    return refresh();
   }
 
   function handlersFor(session) {
@@ -324,13 +315,11 @@
             deactivate(session);
             session.mode = mode;
           },
-          { scroll: false },
         ),
       onToggleGroup: (key) =>
-        change(session, () => (session.expanded.has(key) ? session.expanded.delete(key) : session.expanded.add(key)), { scroll: false }),
+        change(session, () => (session.expanded.has(key) ? session.expanded.delete(key) : session.expanded.add(key))),
       onSelectChunk: (n) => selectChunk(session, session.review.chunks.find((chunk) => chunk.n === n)),
-      // The start file's diff is hidden while another chunk is focused, so that chunk is focused first. The chunk is
-      // also opened in the list, where its start button is.
+      // Selects the chunk if another is selected, opens it in the list, where its start button is, and jumps to its start.
       onJumpToStart: async (n) => {
         const chunk = session.review.chunks.find((candidate) => candidate.n === n);
         if (!chunk?.start) return;
@@ -345,7 +334,6 @@
               }
               session.expanded = new Set([n]);
             },
-            { scroll: false },
           );
         }
         if (current !== session || !live()) return;
@@ -353,11 +341,10 @@
         await jumpToStart(session, chunk);
       },
       // A contract or data line in a chunk's row selects that chunk and jumps to the line's place in the diff, without the
-      // pulse. The line may be in the spec, which belongs to another chunk, so its file is shown with this one.
+      // pulse.
       onJumpToLine: async (n, line) => {
         const chunk = session.review.chunks.find((candidate) => candidate.n === n);
         if (!chunk) return;
-        const outside = !chunk.files.some((file) => file.path === line.path);
         await change(
           session,
           () => {
@@ -370,12 +357,7 @@
               session.selectedN = n;
               session.expanded = new Set([n]);
             }
-            if (outside) {
-              if (session.reveal?.n !== n) session.reveal = { n, paths: new Set() };
-              session.reveal.paths.add(line.path);
-            }
           },
-          { scroll: false },
         );
         if (current !== session || !live()) return;
         centerDiagram(chunk);
@@ -394,16 +376,15 @@
             if (n !== null) session.expanded.add(n);
             session.activeBox = activation(path);
           },
-          { scroll: false },
         );
         if (current !== session || !live()) return;
         const chunk = session.review.chunks.find((candidate) => candidate.n === n);
         if (chunk) centerDiagram(chunk);
         await landOnFile(session, path);
       },
-      onOrder: (order) => change(session, () => (session.order = order), { scroll: false }),
-      onExpandAll: () => change(session, () => (session.expanded = new Set(allKeys())), { scroll: false }),
-      onCollapseAll: () => change(session, () => (session.expanded = new Set()), { scroll: false }),
+      onOrder: (order) => change(session, () => (session.order = order)),
+      onExpandAll: () => change(session, () => (session.expanded = new Set(allKeys()))),
+      onCollapseAll: () => change(session, () => (session.expanded = new Set())),
     };
   }
 
@@ -439,7 +420,7 @@
     const setView = (view) => {
       if (current !== session || !live()) return;
       session.line.view = view;
-      refresh({ scroll: false });
+      refresh();
     };
     session.line = {
       view: { kind: "none" },
@@ -456,7 +437,7 @@
     };
     current = session;
     stopObserving = page.onChange(onMutations);
-    refresh({ scroll: false });
+    refresh();
     if (status.ok && status.state === "running") session.line.controller.adopt(status);
   }
 
@@ -485,7 +466,7 @@
     stopObserving = null;
     page.cancelJump();
     page.clearLineTarget();
-    focus.apply(null);
+    focus.markChunk(null);
     focus.clearBox();
     tree.remove();
     diagram.remove();
@@ -534,7 +515,7 @@
     if (token === loadToken && review?.error === "server") {
       current = { key, pr, offline: review.baseUrl, startedAt: Date.now() };
       stopObserving = page.onChange(onMutations);
-      refresh({ scroll: false });
+      refresh();
       return;
     }
     if (token === loadToken && !review) {
@@ -559,7 +540,8 @@
     session.callouts = await calloutsFor(session);
     if (current !== session || !live()) return;
     stopObserving = page.onChange(onMutations);
-    refresh({ scroll: selectedN !== null }).then(() => jumpToLinkedStart(current));
+    refresh();
+    jumpToLinkedStart(current);
   }
 
   stopNavigating = page.onNavigate(start);

@@ -284,7 +284,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const callouts = [];
   const emphasized = [];
   const centered = [];
-  const applied = [];
+  const marked = [];
   const lineEvents = [];
   const stored = {};
   const diagramHandlers = [];
@@ -339,7 +339,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       remove() {},
       owns: () => false,
     },
-    focus: { apply: async (chunk, options) => (applied.push([chunk?.n ?? null, options]), {}), clearBox() {}, markBox() {}, scrollTo: async () => {}, announceBox() {} },
+    focus: { markChunk: (chunk) => marked.push(chunk?.n ?? null), clearBox() {}, markBox() {}, scrollTo: async () => {}, announceBox() {} },
     diagram: {
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
@@ -361,7 +361,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, applied, lineEvents, stored, diagramHandlers };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, marked, lineEvents, stored, diagramHandlers };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -1135,28 +1135,27 @@ test("the Contract section's groups and chips stay in the description, apart fro
   assert.equal(html.match(/<details/g).length >= 3, true);
 });
 
-test("a line in a chunk's row selects the chunk, shows its file and jumps to its line without the pulse", async () => {
+test("a line in a chunk's row selects the chunk and jumps to its line without the pulse, leaving every diff in place", async () => {
   const lined = {
     ...STEP_REVIEW,
     chunks: STEP_REVIEW.chunks.map((chunk) => (chunk.n === 2 ? { ...chunk, contract: [{ impact: "callers must change", text: "t", path: "api/openapi.json", side: "R", line: 40 }] } : chunk)),
   };
-  const { renders, jumps, fileJumps, applied } = loadContent({ run: null, view: "files", review: lined });
+  const { renders, jumps, fileJumps, marked } = loadContent({ run: null, view: "files", review: lined });
   await settle();
   jumps.length = 0;
   await renders.at(-1).handlers.onJumpToLine(2, lined.chunks[1].contract[0]);
   assert.deepEqual(plain(jumps), [["api/openapi.json", "R", 40, { pulse: false }]]);
   const { state } = renders.at(-1);
   assert.deepEqual([state.selectedN, [...state.expanded]], [2, [2]]);
-  assert.deepEqual(plain(applied.at(-1)), [2, { scroll: false, extra: ["api/openapi.json"] }]);
+  assert.equal(marked.at(-1), 2);
   await renders.at(-1).handlers.onJumpToLine(2, { impact: null, text: "t", path: "src/api.js", side: null, line: null });
   assert.deepEqual(plain(fileJumps), [["src/api.js", { pulse: false }]]);
-  assert.deepEqual(plain(applied.at(-1)), [2, { scroll: false, extra: ["api/openapi.json"] }]);
   await renders.at(-1).handlers.onSelectChunk(3);
-  assert.deepEqual(plain(applied.at(-1)), [3, { scroll: false, extra: [] }]);
+  assert.equal(marked.at(-1), 3);
 });
 
-test("the diagram's Reset restores the load-time state: nothing selected or open, every file shown, no box marked, nothing saved", async () => {
-  const { renders, callouts, applied, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
+test("the diagram's Reset restores the load-time state: nothing selected or open, no chunk or box marked, nothing saved", async () => {
+  const { renders, callouts, marked, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
   const loaded = plain(renders.at(-1).state);
   diagramHandlers.at(-1).onNode("c");
@@ -1174,23 +1173,23 @@ test("the diagram's Reset restores the load-time state: nothing selected or open
   const { state } = renders.at(-1);
   assert.deepEqual([state.mode, state.selectedN, [...state.expanded], [...state.activeFiles]], ["review", null, [], []]);
   assert.equal(state.order, loaded.order);
-  assert.deepEqual(plain(applied.at(-1)), [null, { scroll: false, extra: [] }]);
+  assert.equal(marked.at(-1), null);
   assert.equal(emphasized.at(-1), null);
   assert.deepEqual(lineEvents.slice(0, 2), ["cancelJump", "clearLineTarget"]);
   assert.equal(callouts.length > shownBefore, true);
   assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: null, variant: "v16" });
 });
 
-test("Reset also clears a mode of GitHub's own tree and the files a line click revealed", async () => {
-  const lined = { ...STEP_REVIEW, chunks: STEP_REVIEW.chunks.map((chunk) => (chunk.n === 2 ? { ...chunk, contract: [{ impact: "additive", text: "t", path: "api/openapi.json", side: "R", line: 40 }] } : chunk)) };
-  const { renders, applied, diagramHandlers } = loadContent({ run: null, view: "files", review: lined });
+test("Reset also clears a mode of GitHub's own tree", async () => {
+  const { renders, marked, diagramHandlers } = loadContent({ run: null, view: "files", review: STEP_REVIEW });
   await settle();
-  await renders.at(-1).handlers.onJumpToLine(2, lined.chunks[1].contract[0]);
+  await renders.at(-1).handlers.onSelectChunk(2);
   await renders.at(-1).handlers.onMode("github");
   assert.equal(renders.at(-1).state.mode, "github");
+  assert.equal(marked.at(-1), null);
   diagramHandlers.at(-1).onReset();
   await settle();
   assert.equal(renders.at(-1).state.mode, "review");
   await renders.at(-1).handlers.onSelectChunk(2);
-  assert.deepEqual(plain(applied.at(-1)), [2, { scroll: false, extra: [] }]);
+  assert.equal(marked.at(-1), 2);
 });
