@@ -8,7 +8,7 @@
   // The flex row holding the file tree (a sticky 380px column) and the diffs' column.
   const DIFF_CONTAINER = "#diff-container";
   // The element of one file's diff. It carries id="diff-<sha1 hex of the path>" and data-new-filename /
-  // data-old-filename; the whole box is hidden to hide the file, so it is both block and entry.
+  // data-old-filename; the whole box is both block and entry.
   const DIFF_BLOCK = `${DIFF_CONTAINER} .diff-file-box[id^="diff-"]`;
   // The diffs' column, a sibling of the tree after it.
   const DIFF_CONTENT = "#diff-content-container";

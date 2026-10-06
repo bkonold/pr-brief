@@ -15,7 +15,7 @@
 //   fetchHeadSha(pr)                optional, async: the PR's head sha read from the host when the page does not show
 //                                   it (null on failure)
 //   blockSelector, pathOfBlock(b)   the element holding one file's diff, and the path it shows
-//   entryOf(block)                  the element to hide so the spacing between diffs collapses with it
+//   entryOf(block)                  the whole entry of one file's diff, which holds the file callout above its header
 //   diffId(path)                    the id of a file's diff block (async)
 //   findRow(anchor)                 the table row of a line anchor, or null
 //   fileHeaderSelector              a file's header; stickySkip: elements the sticky-chrome scan ignores
@@ -165,10 +165,6 @@
 
     function entryOf(block) {
       return block ? spec.entryOf(block) : null;
-    }
-
-    function diffEntries() {
-      return [...new Set([...document.querySelectorAll(spec.blockSelector)].map(entryOf))];
     }
 
     // The entry of the diff block with this id, or null while that diff is not in the page.
@@ -512,7 +508,6 @@
       currentHeadSha,
       fileBlocks,
       entryOf,
-      diffEntries,
       entryFor,
       lineAnchor,
       fileAnchor,
