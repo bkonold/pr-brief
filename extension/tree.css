@@ -596,6 +596,10 @@
 
 .prf-callout {
   box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: flex-start;
   width: fit-content;
   max-width: 100%;
   padding: 14px 18px;
@@ -614,6 +618,11 @@
 .prf-callout-file.prf-line-target .prf-callout {
   border-color: var(--prf-guide);
   box-shadow: 0 0 0 calc(1px + var(--prf-pulse)) var(--prf-guide);
+}
+
+.prf-callout-main {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .prf-callout-head {
@@ -656,13 +665,26 @@
 
 .prf-callout-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.prf-callout-next {
+  display: flex;
   gap: 10px;
   align-items: center;
   justify-content: flex-end;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--borderColor-muted, #d1d9e0b3);
+}
+
+.prf-callout-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
 }
 
 .prf-callout-nav-label {
@@ -687,8 +709,4 @@
 .prf-callout-go:hover,
 .prf-callout-prev:hover {
   background: var(--bgColor-neutral-muted, #818b981f);
-}
-
-.prf-callout-prev {
-  margin-right: 4px;
 }

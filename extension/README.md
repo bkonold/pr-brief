@@ -48,14 +48,15 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   a link to a chunk's start (the PR brief card's links) does the same.
 - Every chunk's start that has loaded gets a callout above its line (above the file's header for a file start), as soon as the review shows and as GitHub or Forgejo
   load more of the diff, in both unified and split views. It is a full-width table row holding a neutral card
-  (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text, as wide as its header line
-  and never wider than the diff column or narrower than its button row) with a route icon,
+  (the host's muted surface, a 1px purple border, rounded, from the file pane's left edge, in 14px text, as wide as its left column
+  plus a 24px gap plus its nav column, and never wider than the diff column) in two columns. The left column has a route icon,
   a breadcrumb header, `<n> · <box title>` in bold default text, a small muted chevron, then the chunk name in normal weight
   (the box title is the bold title line of the chunk's first diagram box, read from the rendered diagram; a chunk with no
   box, or a box with no title, shows just the bold `<n> · <name>` with no chevron), then on its own line a small muted "Why the LLM picked this" over the
-  reason, wrapping within the header's width: the chunk's `start.why`, else the chunk's own `why`. Below a hairline, a last row, right-aligned in the card, starts
-  with a "↑ Previous" button (its tooltip is the chunk's `<n> · <box title>`, else `<n> · <name>`) for the chunk numbered one lower when there is one, then "Next"
-  followed by one small button per chunk to read next, `<n> · <box title> ↓` (else `<n> · <name> ↓`), or the quiet text "Last step" when there is none. A button does what a click on that
+  reason, wrapping within the header's width: the chunk's `start.why`, else the chunk's own `why`. The right column is top-aligned with the header and
+  right-aligned, with no divider before it: a "↑ Previous" button (its tooltip is the chunk's `<n> · <box title>`, else `<n> · <name>`) for the chunk numbered one lower when there is one,
+  over a row of the muted "Next" caption and one small button per chunk to read next, stacked, `<n> · <box title> ↓` (else `<n> · <name> ↓`), or the quiet text "Last step" when there is none. On a diff too narrow for both
+  columns the right column wraps below the text and stays right-aligned. A button does what a click on that
   chunk in the list does: it focuses, opens and jumps to its start line (a chunk with no start line scrolls to its
   first file). The chunks to read next are the `next` field of each chunk in `review.json`, the same in flow and risk
   order; a run without `next` goes to the chunk with the next higher number. A callout is placed once per chunk, so a

@@ -283,10 +283,11 @@
   }
 
   // The card shown above a chunk's start line, or above its start file's header, in the diff: where the chunk is (its
-  // box title, then its name), why the model starts there, and buttons to the chunks to read next and to the previous one. `onGo(chunk)`
-  // opens a chunk and jumps to its start; `titleOf(nodeId)` gives a diagram box's title.
+  // box title, then its name), why the model starts there, and, in a column beside them, buttons to the previous chunk and
+  // to the chunks to read next. `onGo(chunk)` opens a chunk and jumps to its start; `titleOf(nodeId)` gives a diagram box's title.
   function startCallout(chunk, chunks, onGo, titleOf = () => "") {
     const card = make("div", "prf-callout");
+    const main = make("div", "prf-callout-main");
     const head = make("div", "prf-callout-head");
     head.append(outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"));
     if (boxTitleOf(chunk, titleOf)) {
@@ -298,9 +299,10 @@
     } else {
       head.append(make("strong", "prf-callout-chunk", chunkLabel(chunk, titleOf)));
     }
-    card.append(head);
+    main.append(head);
     const reason = readFirstReason(chunk);
-    if (reason) card.append(make("div", "prf-callout-label", "Why the LLM picked this"), make("div", "prf-callout-reason", reason));
+    if (reason) main.append(make("div", "prf-callout-label", "Why the LLM picked this"), make("div", "prf-callout-reason", reason));
+    card.append(main);
 
     const nav = make("div", "prf-callout-nav");
     const previous = prevOf(chunks, chunk);
@@ -310,12 +312,15 @@
       nav.append(back);
     }
     const targets = nextOf(chunks, chunk);
+    const next = make("div", "prf-callout-next");
     if (targets.length) {
-      nav.append(make("span", "prf-callout-nav-label", "Next"));
-      for (const target of targets) nav.append(button("prf-callout-go", `${chunkLabel(target, titleOf)} ↓`, () => onGo(target)));
+      const buttons = make("div", "prf-callout-targets");
+      for (const target of targets) buttons.append(button("prf-callout-go", `${chunkLabel(target, titleOf)} ↓`, () => onGo(target)));
+      next.append(make("span", "prf-callout-nav-label", "Next"), buttons);
     } else {
-      nav.append(make("span", "prf-callout-nav-label", "Last step"));
+      next.append(make("span", "prf-callout-nav-label", "Last step"));
     }
+    nav.append(next);
     card.append(nav);
     return card;
   }
