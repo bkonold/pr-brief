@@ -7,7 +7,7 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, ambiguousNames, levelLabel, normalizeLevel, chunkLabels, orderChunks, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
+const { staleMessage, normalizeLevel, orderChunks, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
@@ -41,30 +41,10 @@ test("staleMessage reports only a known, different head", () => {
   );
 });
 
-test("ambiguousNames lists the basenames that more than one file shares", () => {
-  const files = [{ path: "a/x/route.tsx" }, { path: "a/y/route.tsx" }, { path: "a/x/utils.ts" }, { path: "README.md" }];
-  assert.deepEqual([...ambiguousNames(files)], ["route.tsx"]);
-  assert.equal(ambiguousNames([{ path: "a/x.ts" }, { path: "b/y.ts" }]).size, 0);
-  assert.equal(ambiguousNames([]).size, 0);
-});
-
-test("levelLabel names the effort level and reads the older read carefully as verify", () => {
-  assert.equal(levelLabel("verify"), "verify");
-  assert.equal(levelLabel("read"), "read");
-  assert.equal(levelLabel("skim"), "skim");
-  assert.equal(levelLabel("read carefully"), "verify");
-});
-
 test("normalizeLevel falls back to read for a missing or unknown word", () => {
   assert.equal(normalizeLevel("Read  Carefully"), "verify");
   assert.equal(normalizeLevel(undefined), "read");
   assert.equal(normalizeLevel("careful"), "read");
-});
-
-test("chunkLabels lists the known labels in display order and none for a review without labels", () => {
-  assert.deepEqual(chunkLabels({ labels: ["generated", "logic", "breaking", "bogus", "data"] }), ["logic", "breaking", "data", "generated"]);
-  assert.deepEqual(chunkLabels({ labels: [] }), []);
-  assert.deepEqual(chunkLabels({}), []);
 });
 
 test("orderChunks sorts by review level, keeps ties in order and puts Unchunked after skim", () => {
@@ -222,11 +202,10 @@ const NODE_CHUNKS = [
   { n: 3, name: "Notes", review: "read" },
 ];
 
-test("chunkOfNode picks the first chunk in the displayed order that lists the box", () => {
-  assert.equal(chunkOfNode(NODE_CHUNKS, "flow", "shared").n, 1);
-  assert.equal(chunkOfNode(NODE_CHUNKS, "risk", "shared").n, 2);
-  assert.equal(chunkOfNode(NODE_CHUNKS, "risk", "ui").n, 1);
-  assert.equal(chunkOfNode(NODE_CHUNKS, "risk", "missing"), null);
+test("chunkOfNode picks the first chunk in review.json's order that lists the box", () => {
+  assert.equal(chunkOfNode(NODE_CHUNKS, "shared").n, 1);
+  assert.equal(chunkOfNode(NODE_CHUNKS, "api").n, 2);
+  assert.equal(chunkOfNode(NODE_CHUNKS, "missing"), null);
 });
 
 test("legendKinds lists only the styles a diagram uses, then the selection state and the lanes note", () => {
@@ -470,7 +449,7 @@ test("GitHub's conversation page, which embeds no head sha, asks the run server 
   }
 });
 
-const { hasSteps, defaultOrder } = require("../tree.js");
+const { hasSteps } = require("../tree.js");
 
 test("orderChunks in flow order keeps review.json's order and puts Unchunked last", () => {
   const chunks = [
@@ -484,11 +463,9 @@ test("orderChunks in flow order keeps review.json's order and puts Unchunked las
   assert.deepEqual(orderChunks(chunks), orderChunks(chunks, "risk"));
 });
 
-test("a run opens in flow order only when its chunks have steps", () => {
+test("a run has steps only when one of its chunks names a step", () => {
   assert.equal(hasSteps([{ name: "A" }, { name: "B", step: "API" }]), true);
   assert.equal(hasSteps([{ name: "A" }]), false);
-  assert.equal(defaultOrder({ chunks: [{ name: "A", step: "UI" }] }), "flow");
-  assert.equal(defaultOrder({ chunks: [{ name: "A" }] }), "risk");
 });
 
 const { stopsOf, firstStopOf, stopCallout } = require("../tree.js");
@@ -669,43 +646,6 @@ const WALK_STOPS = [
   { i: 3, title: "Docs", why: "w", path: "c.md", side: null, line: null, chunk: null },
 ];
 
-test("the tabs offer Walkthrough then Chunks, mark the chosen one, and report a click", () => {
-  const { tabs } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const chosen = [];
-    for (const tab of ["walkthrough", "chunks"]) {
-      const element = tabs({ tab }, { onTab: (name) => chosen.push(name) });
-      const buttons = byClass(element, "prf-tab");
-      assert.deepEqual(buttons.map((button) => button.textContent), ["Walkthrough", "Chunks"]);
-      assert.deepEqual(buttons.map((button) => button.attributes["aria-selected"]), tab === "walkthrough" ? ["true", "false"] : ["false", "true"]);
-    }
-    const [, chunksTab] = byClass(tabs({ tab: "walkthrough" }, { onTab: (name) => chosen.push(name) }), "prf-tab");
-    chunksTab.listeners.click();
-    assert.deepEqual(chosen.slice(-1), ["chunks"]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("the bar shows the tabs in the review, and the order switch and expand button only under the Chunks tab", () => {
-  const { bar } = require("../tree.js");
-  const saved = globalThis.prFocus.page;
-  globalThis.prFocus.page = { treeLabel: "GitHub tree" };
-  globalThis.document = fakeDom();
-  try {
-    const review = { chunks: WALK_CHUNKS };
-    const base = { order: "flow", extras: [], expanded: new Set() };
-    const shown = (state) => ["prf-tabs", "prf-order", "prf-expand"].map((name) => byClass(bar(review, { ...base, ...state }, {}), name).length);
-    assert.deepEqual(shown({ mode: "review", tab: "walkthrough" }), [1, 0, 0]);
-    assert.deepEqual(shown({ mode: "review", tab: "chunks" }), [1, 1, 1]);
-    assert.deepEqual(shown({ mode: "github", tab: "chunks" }), [0, 0, 0]);
-  } finally {
-    delete globalThis.document;
-    globalThis.prFocus.page = saved;
-  }
-});
-
 test("a walkthrough row shows the stop's number, its title and its chunk's step word, else its name, and marks the current stop", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
@@ -726,13 +666,13 @@ test("a walkthrough row shows the stop's number, its title and its chunk's step 
   }
 });
 
-test("a walkthrough with no stops says so instead of listing rows", () => {
+test("a run with no stops says so instead of listing rows", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const list = stopList({ chunks: WALK_CHUNKS }, { stops: [], selectedStop: null }, {});
     assert.deepEqual(byClass(list, "prf-stop"), []);
-    assert.match(byClass(list, "prf-banner")[0].textContent, /no walkthrough/);
+    assert.match(byClass(list, "prf-banner")[0].textContent, /no stops/);
   } finally {
     delete globalThis.document;
   }
@@ -1016,75 +956,6 @@ test("jumpToFile does nothing for a diff that is not in the page", async () => {
     assert.equal(dom.callouts()[0].classes.has("prf-line-target"), false);
   } finally {
     dom.done();
-  }
-});
-
-test("a file row ends with its added and removed line counts, a zero side left out, and none when there are no lines", () => {
-  globalThis.document = fakeDom();
-  try {
-    const { fileRow } = require("../tree.js");
-    const countsOf = (file) => {
-      const row = fileRow(file, () => {}).children[0];
-      return byClass(row, "prf-file-counts").map((counts) => [row.children.at(-1) === counts, counts.children.map((side) => [side.className, side.textContent])]);
-    };
-    assert.deepEqual(countsOf({ path: "a/x.js", additions: 12, deletions: 3 }), [[true, [["prf-add", "+12"], ["prf-del", "\u22123"]]]]);
-    assert.deepEqual(countsOf({ path: "a/x.js", additions: 12, deletions: 0 }), [[true, [["prf-add", "+12"]]]]);
-    assert.deepEqual(countsOf({ path: "a/x.js", additions: 0, deletions: 4 }), [[true, [["prf-del", "\u22124"]]]]);
-    assert.deepEqual(countsOf({ path: "a/x.js", additions: 0, deletions: 0 }), []);
-    assert.deepEqual(countsOf({ path: "a/x.js" }), []);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a chunk's Contract and Data blocks list each line with its impact chip above its files, and a click reports the line", () => {
-  const { changeBlocks, impactChip } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const chunk = {
-      n: 2,
-      contract: [
-        { impact: "callers must change", text: "`size` now required", path: "api/openapi.json", side: "R", line: 40 },
-        { impact: "additive", text: "new `GET /items`", path: "api/openapi.json", side: "R", line: 52 },
-      ],
-      data: [{ impact: null, text: "DO block in V9.sql", path: "db/V9.sql", side: "R", line: 3 }],
-    };
-    const clicked = [];
-    const blocks = changeBlocks(chunk, (line) => clicked.push(line.line));
-    assert.deepEqual(blocks.map((block) => block.className), ["prf-lines prf-lines-contract", "prf-lines prf-lines-data"]);
-    assert.deepEqual(blocks.map((block) => byClass(block, "prf-lines-title")[0].textContent), ["Contract", "Data"]);
-    const chips = byClass(blocks[0], "prf-impact");
-    assert.deepEqual(chips.map((chip) => [chip.className, chip.textContent]), [["prf-impact prf-impact-0", "callers must change"], ["prf-impact prf-impact-2", "additive"]]);
-    assert.deepEqual(byClass(blocks[1], "prf-impact"), []);
-    assert.deepEqual(byClass(blocks[0], "prf-line-text")[0].children.map((part) => part.tag ?? part), ["code", " now required"]);
-    const rows = byClass(blocks[0], "prf-line");
-    assert.equal(rows[0].title, "openapi.json:40");
-    rows[1].listeners.click();
-    assert.deepEqual(clicked, [52]);
-    assert.equal(impactChip("consumers may break", ["callers must change", "consumers may break"]).className, "prf-impact prf-impact-1");
-    assert.equal(impactChip("rewrites rows", ["destructive", "rewrites rows", "additive"]).className, "prf-impact prf-impact-1");
-    assert.equal(impactChip("x", ["a"]), null);
-    assert.deepEqual(changeBlocks({ n: 1 }, () => {}), []);
-    assert.deepEqual(changeBlocks({ n: 1, contract: [] }, () => {}), []);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a chunk's change line is its change and where as one line, or the whole text when the run has no such parts", () => {
-  const { changeBlocks, lineText } = require("../tree.js");
-  assert.equal(lineText({ change: "`+ productType` required param", on: "`GET /rows`", text: "long sentence" }), "`+ productType` required param · `GET /rows`");
-  assert.equal(lineText({ change: "DO block", on: "", text: "DO block in V9.sql" }), "DO block");
-  assert.equal(lineText({ text: "`size` now required" }), "`size` now required");
-  globalThis.document = fakeDom();
-  try {
-    const chunk = { n: 1, contract: [{ impact: "callers must change", text: "sentence", change: "`+ kind` required param", on: "`GET /rows`", reaches: "request", path: "api/openapi.json", side: "R", line: 4 }] };
-    const [block] = changeBlocks(chunk, () => {});
-    const parts = byClass(block, "prf-line-text")[0].children.map((part) => part.tag ?? part);
-    assert.deepEqual(parts, ["code", " required param · ", "code"]);
-    assert.equal(byClass(block, "prf-line").length, 1);
-  } finally {
-    delete globalThis.document;
   }
 });
 

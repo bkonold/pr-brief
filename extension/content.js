@@ -108,7 +108,7 @@
     try {
       sessionStorage.setItem(
         storageKey(session.pr),
-        JSON.stringify({ mode: session.mode, tab: session.tab, selectedN: session.selectedN, selectedStop: session.selectedStop, variant: session.review?.variant }),
+        JSON.stringify({ mode: session.mode, selectedN: session.selectedN, selectedStop: session.selectedStop, variant: session.review?.variant }),
       );
     } catch {
       // The choice just isn't remembered.
@@ -128,11 +128,6 @@
 
   function selectedChunk(session) {
     return session.mode === "review" ? (session.review.chunks.find((c) => c.n === session.selectedN) ?? null) : null;
-  }
-
-  function extraFiles(session) {
-    const listed = new Set(session.review.chunks.flatMap((chunk) => chunk.files.map((file) => file.path)));
-    return [...page.fileBlocks().keys()].filter((path) => !listed.has(path)).map((path) => ({ path }));
   }
 
   function refresh() {
@@ -160,14 +155,8 @@
       session.review,
       {
         mode: session.mode,
-        tab: session.tab,
-        order: session.order,
         stops: session.stops,
         selectedStop: session.selectedStop,
-        selectedN: session.selectedN,
-        expanded: session.expanded,
-        extras: extraFiles(session),
-        activeFiles: new Set(session.activeBox?.paths ?? []),
         pageSha: page.headSha(),
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
@@ -197,12 +186,11 @@
     return { paths: [path] };
   }
 
-  // Lands the file's header below the sticky chrome and then, together, flashes its list row and its header.
+  // Lands the file's header below the sticky chrome and then announces it.
   async function landOnFile(session, path) {
     if (current !== session) return;
     await focus.scrollTo(path);
     if (current !== session || !live() || session.activeBox?.paths[0] !== path) return;
-    tree.flashRows();
     focus.announceBox([path]);
   }
 
@@ -257,9 +245,9 @@
     return session.selection;
   }
 
-  // Opens the stop's chunk in the list and marks it in the diff, makes the stop's file the active one and jumps to the
-  // stop's line, or to its file's header when the stop has no line. A stop in a file no chunk lists selects no chunk.
-  // `jump` passes on to the jump, e.g. `{ pulse: false }`. The diagram follows the stop's chunk.
+  // Marks the stop's chunk in the diff, makes the stop's file the active one and jumps to the stop's line, or to its
+  // file's header when the stop has no line. A stop in a file no chunk lists selects no chunk. `jump` passes on to the
+  // jump, e.g. `{ pulse: false }`. The diagram follows the stop's chunk.
   async function selectStop(session, stop, jump = undefined) {
     const mine = startSelection(session);
     const chunk = session.review.chunks.find((candidate) => candidate.n === stop.chunk) ?? null;
@@ -269,19 +257,16 @@
       session.mode = "review";
       session.selectedStop = stop.i;
       session.selectedN = chunk?.n ?? null;
-      if (chunk) session.expanded = new Set([chunk.n]);
       session.activeBox = activation(stop.path);
     });
     if (current !== session || !live() || session.selection !== mine) return;
-    if (chunk) {
-      centerDiagram(chunk);
-      tree.revealGroup(chunk.n);
-    }
+    if (chunk) centerDiagram(chunk);
+    tree.revealStop(stop.i);
     await jumpToStop(session, stop, jump);
   }
 
-  // Goes to the chunk's first stop; a chunk the walkthrough never stops at opens on its first file's header instead.
-  // Selecting the open chunk again jumps again.
+  // Goes to the chunk's first stop; a chunk the walkthrough never stops at is marked in the diff and scrolled to its
+  // first file's header instead. Selecting the same chunk again jumps again.
   async function selectChunk(session, chunk, jump = undefined) {
     const stop = tree.firstStopOf(session.stops, chunk.n);
     if (stop) {
@@ -296,17 +281,15 @@
       session.mode = "review";
       session.selectedStop = null;
       session.selectedN = chunk.n;
-      session.expanded = new Set([chunk.n]);
       if (path) session.activeBox = activation(path);
     });
     if (current !== session || !live() || session.selection !== mine) return;
     centerDiagram(chunk);
-    tree.revealGroup(chunk.n);
     if (path) await landOnFile(session, path);
   }
 
-  // Puts the review back as it was when it loaded: no chunk selected, every row collapsed, every file shown, and no
-  // line or box marked. The saved selection is cleared with it.
+  // Puts the review back as it was when it loaded: no chunk or stop selected and no line or box marked. The saved
+  // selection is cleared with it.
   function resetReview(session) {
     return change(
       session,
@@ -316,7 +299,6 @@
         session.mode = "review";
         session.selectedN = null;
         session.selectedStop = null;
-        session.expanded = new Set();
       },
     );
   }
@@ -327,10 +309,10 @@
     diagram.centerOn(chunk.nodes ?? []);
   }
 
-  // A box selects the first chunk, in list order, that lists it, as a click on that chunk would. A box no chunk lists
-  // does nothing.
+  // A box goes to the first stop of the first chunk, in review.json's order, that lists it; a chunk with no stop goes to
+  // its first file's header. A box no chunk lists does nothing.
   function selectNode(session, nodeId) {
-    const chunk = tree.chunkOfNode(session.review.chunks, session.order, nodeId);
+    const chunk = tree.chunkOfNode(session.review.chunks, nodeId);
     if (chunk) selectChunk(session, chunk);
   }
 
@@ -342,7 +324,6 @@
   }
 
   function handlersFor(session) {
-    const allKeys = () => [...session.review.chunks.map((chunk) => chunk.n), tree.EXTRA_KEY];
     return {
       onMode: (mode) =>
         change(
@@ -353,61 +334,7 @@
             session.mode = mode;
           },
         ),
-      onToggleGroup: (key) =>
-        change(session, () => (session.expanded.has(key) ? session.expanded.delete(key) : session.expanded.add(key))),
-      onTab: (tab) => change(session, () => (session.tab = tab)),
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
-      onSelectChunk: (n) => selectChunk(session, session.review.chunks.find((chunk) => chunk.n === n)),
-      // The start button of a chunk in an older run goes to the chunk's first stop, which is its start.
-      onJumpToStart: async (n) => {
-        const stop = tree.firstStopOf(session.stops, n);
-        if (stop) await selectStop(session, stop);
-      },
-      // A contract or data line in a chunk's row selects that chunk and jumps to the line's place in the diff, without the
-      // pulse.
-      onJumpToLine: async (n, line) => {
-        const chunk = session.review.chunks.find((candidate) => candidate.n === n);
-        if (!chunk) return;
-        await change(
-          session,
-          () => {
-            leaveLine();
-            if (session.selectedN === n) {
-              session.expanded.add(n);
-            } else {
-              deactivate(session);
-              session.mode = "review";
-              session.selectedN = n;
-              session.expanded = new Set([n]);
-            }
-          },
-        );
-        if (current !== session || !live()) return;
-        centerDiagram(chunk);
-        if (line.line == null) await page.jumpToFile(line.path, { pulse: false });
-        else await page.jumpToLine(line.path, line.side, line.line, { pulse: false });
-      },
-      // A file row selects its chunk without the chunk's own scroll, lands that file's header below the sticky chrome
-      // and makes the file active: its row and header get the box bar and the header flashes.
-      onSelectFile: async (n, path) => {
-        await change(
-          session,
-          () => {
-            leaveLine();
-            deactivate(session);
-            session.selectedN = n;
-            if (n !== null) session.expanded.add(n);
-            session.activeBox = activation(path);
-          },
-        );
-        if (current !== session || !live()) return;
-        const chunk = session.review.chunks.find((candidate) => candidate.n === n);
-        if (chunk) centerDiagram(chunk);
-        await landOnFile(session, path);
-      },
-      onOrder: (order) => change(session, () => (session.order = order)),
-      onExpandAll: () => change(session, () => (session.expanded = new Set(allKeys()))),
-      onCollapseAll: () => change(session, () => (session.expanded = new Set())),
     };
   }
 
@@ -555,10 +482,7 @@
       pr,
       review,
       mode: saved.mode === "github" ? "github" : "review",
-      tab: saved.tab === "chunks" ? "chunks" : "walkthrough",
       selectedN,
-      order: tree.defaultOrder(review),
-      expanded: new Set([selectedN ?? tree.orderChunks(review.chunks, tree.defaultOrder(review))[0]?.n]),
       startedAt: Date.now(),
       stops,
       selectedStop,

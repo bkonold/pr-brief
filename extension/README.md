@@ -2,8 +2,7 @@
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
 (`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes for a
-chunked variant and replaces the host's file tree with a list grouped by review chunk, like a "group by
-importance" view. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+chunked variant and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
 where it describes the page, and the Forgejo selectors are in their own table at the end.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
@@ -11,39 +10,9 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - A toggle, "By review" / "GitHub tree". "GitHub tree" brings GitHub's own tree back; the toggle stays so you can
   switch again. No mode, chunk or stop ever hides a diff: every file's diff is always in the page, so the host's find
   and page-down work across chunks.
-- Two tabs under the toggle in "By review" mode, **Walkthrough** (the default) and **Chunks**. The Walkthrough is a path
-  of stops in reading order (see "The walkthrough"); Chunks is the map of the change, the list below, with its order
-  switch and an "Expand all" / "Collapse all" button. The chosen tab is remembered with the session.
-- One line per chunk: its number in bold and its name on the left and, right-aligned, its effort level as a word
-  (`verify` in bold default text; `read` and `skim` in the secondary colour). A run from an older variant that says
-  "read carefully" shows `verify`. Under the name, a row of check chips from the chunk's `labels` (`logic`, `contract`,
-  `breaking`, `data`, `destructive`, `access`, `generated`): outlined 12px pills in the secondary colour, except
-  `breaking` and `destructive`, which are filled in the text colour with the background colour as their text. No chip
-  or level uses red, green or amber, which read as diff changes. Only the open chunk lists its files; the others stay
-  one line plus chips. Groups are ordered by effort level (`verify`, `read`, `skim`), then "Unchunked"; skim-level chunks and "Unchunked" are muted.
-  When the run's chunks carry a `step` (v16), the order is the flow of the change as `review.json` lists it, and a quiet
-  "Order: by flow | by risk" switch under the toggle reorders the list. The
-  switch changes only the order: numbers, selection, start jumps and the diagram highlight are by chunk, so they work in
-  both. It is not remembered, so each load opens in flow order; a run with no steps opens by risk and has no switch. A "Not in review" group, in the same one-line style, lists loaded diffs no chunk names.
-- Files show only their basename, in small monospace; the chunk's start file is in the primary text colour and the rest are
-  muted. A basename shared by two files of the list gets its folder as a dim suffix; the full path is the row's tooltip. The
-  file order is the chunk's own. Each row ends with the file's `+<additions> −<deletions>` in 11px tabular numbers, green and
-  red from the host's success and danger colours, a zero side left out and none for a file with no lines; the counts are
-  right-aligned to the same edge as the chunk rows' level words, and the name truncates before them.
-- A run with `contract` and `data` on its chunks (v22) shows them in the open chunk's row, above its files: a "Contract"
-  block and a "Data" block, each a list of lines worst impact first. A line is a button with its impact as a chip
-  (the top level filled, the second bold outlined, the rest outlined; no chip for a line with no impact) and its
-  text, which is the line's `change` and `on` from `review.json` joined by ` · ` (`+ kind` required param · `GET /rows`), or its `text` when the run has no such parts. Clicking one focuses the chunk if another is open, jumps to the
-  line's diff row and centres it, without the pulse of a stop jump. A line with no row (`line` null) scrolls to its
-  file. The lines are not in the stop callouts, and the
-  lines no chunk owns (`unchunked`) have no row; they are in the PR brief card.
-- Clicking a chunk's line selects the chunk, opens it, closes the others and goes to the chunk's first stop (below);
-  clicking the open chunk goes there again. A chunk the walkthrough never stops at scrolls to its first file instead.
-  Selecting a chunk marks its files: each of their diff headers gets a quiet accent stripe, which clears when another
-  chunk is selected or the review is reset. Nothing is hidden. Clicking a file selects its chunk and scrolls to its
-  diff. A chunk opened with "Expand all" closes again with "Collapse all" or when another chunk is clicked.
-- A "Start here" button under the open chunk's files appears only for a run made before walkthroughs, when the chunk has
-  a `start` in `review.json`; it goes to that stop, the chunk's first.
+- Under the toggle in "By review" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs and no
+  chunk list. The chunks stay in `review.json` and drive the diagram's boxes and halo, the marked diff headers and the
+  chunk named in each stop's row and callout.
 
 ## The walkthrough
 
@@ -54,9 +23,9 @@ A run made before walkthroughs (v22 and older) has none, so the extension makes 
 chunk order: titled by its file's basename and giving the start's reason (else the chunk's), so older runs read as they
 did. A chunk with no start gets no stop.
 
-- The Walkthrough tab lists one row per stop: its number, its title and, right-aligned, its chunk's step word (else its
-  name). The current stop is highlighted. A row goes to its stop: it selects the stop's chunk, opens it, marks its
-  files, makes the stop's file the active one, and jumps to the stop's line and centres it, or, for a stop with no line,
+- The list has one row per stop: its number, its title and, right-aligned, its chunk's step word (else its name). The
+  current stop is highlighted and scrolled into view. A row goes to its stop: it marks the stop's chunk and its files in
+  the diff, makes the stop's file the active one, and jumps to the stop's line and centres it, or, for a stop with no line,
   scrolls to the file's callout above its header. The diagram follows the stop's chunk: its box takes the halo and the
   canvas centres on it. GitHub renders a diff's rows only once the diff is near the window, so the jump scrolls to the
   file's diff, waits up to 10 seconds for the row, then centres it, measuring the row again after each scroll and
@@ -87,13 +56,13 @@ did. A chunk with no start gets no stop.
   one card is marked as the target; the mark goes whenever the line target clears (another selection, a new jump or
   teardown) and comes back if the host re-renders the row. When a jump lands, its callout pulses once: a purple ring
   that swells from its resting width to 3px wider and back, three times over about two seconds (666ms each). It fires on
-  every jump from the list or the diagram (a stop, chunk or box click, "Start here") and from a link to a stop, but not
+  every jump from the list or the diagram (a stop or box click) and from a link to a stop, but not
   from the callout's own Next and ↑ buttons, since the reader is already following the callouts. Only the jumped-to
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-The mode, tab, selected chunk and current stop are remembered per PR in `sessionStorage`. The chunk and the stop come
-back only for the variant they were chosen in; the tab comes back for any run.
+The mode, selected chunk and current stop are remembered per PR in `sessionStorage`. The chunk and the stop come back
+only for the variant they were chosen in.
 
 ## When the page server is down
 
@@ -114,25 +83,25 @@ control; the PR brief card on the conversation page names the variant it shows.
 
 ## Boxes and files
 
-Clicking a diagram box selects the first chunk, in the order the list shows, whose `nodes` include it and does what
-clicking that chunk does: select, open, go to its first stop. The box takes no stroke, tint or pulse of its own beyond the
-chunk's halo. The chunk's start file is the active file: its list row is bold and its diff header gets a
-3px accent bar. A box no chunk lists, and a context box (dashed, default cursor), do nothing when clicked.
+Clicking a diagram box goes to the first stop of the first chunk, in `review.json`'s order, whose `nodes` include it. A
+chunk the walkthrough never stops at is marked in the diff and scrolled to its first file's header, which becomes the
+active file with a 3px accent bar, and no stop is current. The box takes no stroke, tint or pulse of its own beyond the
+chunk's halo. A box no chunk lists, and a context box (dashed, default cursor), do nothing when clicked.
 
-The active file clears when another box, a chunk's line, a file row or the mode toggle is used. A file row lands its
-file's header just below GitHub's sticky chrome (the offset is measured when the click happens, as the lowest stuck edge
-of the page's sticky or fixed elements that span the diff column), then flashes the row and the header for about 1.2s;
-under `prefers-reduced-motion` the flash is skipped.
+The active file clears when another box or stop is used or the mode toggle is. A landing on a file's header puts it just
+below GitHub's sticky chrome (the offset is measured when the click happens, as the lowest stuck edge of the page's
+sticky or fixed elements that span the diff column), then flashes the header for about 1.2s; under
+`prefers-reduced-motion` the flash is skipped.
 
 ## The change diagram
 
 When `review.json` names a `diagram` (`diagram.svg` in the run directory), `background.js` fetches it with the review
 and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
-diagram, chunk list, code, and the other two columns narrow by the panel's width (280px by default) instead of being
+diagram, stop list, code, and the other two columns narrow by the panel's width (280px by default) instead of being
 covered. The panel is sticky at the file tree pane's offset and as tall as the pane. Its header's `‹` button collapses it
 (remembered in `sessionStorage`) into a 30px rail in the same spot, with "Diagram" written vertically under a `›` button
 that expands it.
-- The diagram, the chunk list and the code are separated by single dividers: the panel's right border, then GitHub's own
+- The diagram, the stop list and the code are separated by single dividers: the panel's right border, then GitHub's own
   rule down the pane's right edge.
 
 - Motion: the line jump scrolls smoothly (a target more than 1.5 windows away is first approached instantly to one window
@@ -141,12 +110,12 @@ that expands it.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
   the viewport, 280px by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
 - In a v21 diagram each box shows `<n> · title` in bold at its top left, its effort level as a small secondary word at its
-  top right and its chips along the bottom (the same pills as the chunk list), and its border follows the level: `verify`
+  top right and its chips along the bottom (the effort level and check chips), and its border follows the level: `verify`
   2px in the text colour, `read` 1px, `skim` dashed and muted. 
 - A legend under the card lists only the styles the SVG uses (changed step, verify, read, skim,
   writes data, unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected
   chunk" (the halo) and, when the diagram has lanes, a note that columns are code layers.
-- Selecting a chunk (header click, box click or the jump button) highlights its `nodes` and dims nothing. Each highlighted
+- Selecting a chunk (a stop or a box click) highlights its `nodes` and dims nothing. Each highlighted
   box keeps its own stroke and fill and gains a halo: a 5px ring in the accent colour at 30% opacity, 6px outside the
   box (amber on save boxes). Every edge with an end on a highlighted box, incoming or outgoing and dashed return edges
   included, is drawn 2px in the accent colour with an accent arrowhead. The halo is not part of the box's bounds, so
@@ -157,9 +126,8 @@ that expands it.
   scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
   Ctrl + wheel); the page does not scroll while the pointer is over the canvas. Pressing and dragging anywhere on
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
-  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no chunk or stop selected, every chunk row collapsed, no chunk marked, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
-  a chunk, whether from the list, a file or contract line in its row, a stop row, a callout's Previous/Next or a click on
-  its box, moves the canvas, over about 200ms (at once under reduced motion). The chunk's box, or the bounding box of its
+  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no chunk or stop selected, no chunk marked, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
+  a chunk, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas, over about 200ms (at once under reduced motion). The chunk's box, or the bounding box of its
   boxes, is centred horizontally at the current zoom. Vertically the canvas moves only as far as it takes to keep the boxes
   one solid arrow before and after the chunk's boxes in view (inside the fit margin), and not at all when they already are;
   a dotted arrow, which returns to an earlier box, joins nothing, and a box with no arrows (the "Also in this PR" boxes) has
@@ -277,7 +245,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Marks the focused chunk's file headers and the active file's, and scrolls to a diff. It hides nothing |
-| `tree.js`, `tree.css`, `focus.css` | The Walkthrough and Chunks tabs, the stop callout card with its previous and next stop, and the classes `focus.js` and the line jump toggle |
+| `tree.js`, `tree.css`, `focus.css` | The stop list, the stop callout card with its previous and next stop, and the classes `focus.js` and the line jump toggle |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
