@@ -70,6 +70,21 @@ class ChunkedSections(unittest.TestCase):
         self.assertNotIn("### **Contract**", text)
         self.assertEqual(text.count('<details class="section">'), 2)
 
+    def test_a_walkthrough_variant_leaves_no_rule_after_the_contract_or_the_data_section(self) -> None:
+        (text, _, _, _, _), _ = render_body({"walkthrough": True})
+        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>Contract</strong> '
+                               r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong> ')
+        contract_to_data = text[text.index("<summary><strong>Contract</strong>"):text.index("<summary><strong>Data</strong>")]
+        self.assertNotIn("___", contract_to_data)
+        after_data = text[text.index("<summary><strong>Data</strong>"):]
+        self.assertEqual(after_data.count("___"), 1)
+        self.assertTrue(after_data.rstrip().endswith("___"))
+        self.assertEqual(text.count("___"), 3)
+
+    def test_a_variant_without_a_walkthrough_keeps_the_rules_after_both_sections(self) -> None:
+        (text, _, _, _, _), _ = render_body()
+        self.assertEqual(text.count("___"), 5)
+
     def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
         (text, _, _, _, lineset), _ = render_body()
         contract = self.section_of(text, "Contract")

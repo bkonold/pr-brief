@@ -1354,7 +1354,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
                 value = value.replace("\n-", "\n\n-").strip()
             body += f"{value}\n"
         if idx < len(ordered) - 1:
-            body += "\n\n___\n\n"
+            joined: bool = bool(cfg.get("walkthrough")) and key in ("contract", "data")
+            body += "\n\n" if joined else "\n\n___\n\n"
     body += "\n\n" + walkthrough + "___\n\n"
     nodes: list[dict[str, Any]] | None = None
     if node_files is not None:
