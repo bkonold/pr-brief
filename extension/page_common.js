@@ -38,7 +38,8 @@
   const JUMP_TIMEOUT_MS = 10000;
   const STICKY_BAND_VIEWPORTS = 0.3;
   const LAND_TOLERANCE = 1;
-  const CENTER_TOLERANCE = 4;
+  const CALLOUT_GAP = 16;
+  const USER_INPUT_EVENTS = ["wheel", "touchstart", "pointerdown", "keydown"];
   const LAND_CORRECTIONS = 3;
   const IDLE_POLL_MS = 50;
   const IDLE_POLLS = 3;
@@ -69,10 +70,13 @@
     return Math.abs(distance) <= tolerance ? 0 : distance;
   }
 
-  // The distance still to scroll for a row with this rect to sit in the middle of a window `viewportHeight`
-  // tall: 0 when it is within `tolerance` of the middle.
-  function centeringDelta({ top, height }, viewportHeight, tolerance = CENTER_TOLERANCE) {
-    const distance = top + height / 2 - viewportHeight / 2;
+  // The distance still to scroll for a callout whose top is at `top` to sit CALLOUT_GAP below `offset` (the bottom of the
+  // sticky chrome), limited to what the page can scroll: a callout near the end of the page lands as close as the page
+  // lets it. 0 when it is within `tolerance` of where it can get. `scrollTop` is the window's scroll position and
+  // `scrollMax` the furthest it can go.
+  function calloutDelta(top, offset, { scrollTop, scrollMax }, tolerance = LAND_TOLERANCE) {
+    const wanted = startDistance(top, offset + CALLOUT_GAP);
+    const distance = Math.max(-scrollTop, Math.min(wanted, scrollMax - scrollTop));
     return Math.abs(distance) <= tolerance ? 0 : distance;
   }
 
@@ -87,6 +91,29 @@
       nudge(distance);
     }
     return false;
+  }
+
+  // Keeps a landed target in place while the layout around it shifts. `observe(callback)` calls the callback whenever
+  // the layout changes and returns how to stop; `onInput(callback)` calls it when the user scrolls or clicks and returns
+  // how to stop. Each layout change nudges by `delta()`, the distance the target is off by. The user's first input
+  // releases the hold, as does the returned function. Nothing runs after a release.
+  function holdPlace({ delta, nudge, observe, onInput }) {
+    let released = false;
+    const stops = [];
+    const release = () => {
+      if (released) return;
+      released = true;
+      for (const stop of stops) stop();
+    };
+    stops.push(onInput(release));
+    stops.push(
+      observe(() => {
+        if (released) return;
+        const distance = delta();
+        if (distance !== 0) nudge(distance);
+      }),
+    );
+    return release;
   }
 
   function reducedMotion() {
@@ -365,22 +392,59 @@
       return scrollUntilLanded(() => landingDelta(entry.getBoundingClientRect().top, currentStickyOffset(entry)), newScrollToken());
     }
 
-    // The box of a line target: the row and, when it has one, the callout row above it.
-    function targetRect(row) {
-      const rect = row.getBoundingClientRect();
-      const callout = calloutRowOf(row);
-      if (!callout) return rect;
-      const { top } = callout.getBoundingClientRect();
-      return { top, height: rect.bottom - top };
+    // What the window can scroll: where it is and the furthest it can go.
+    function scrollLimits() {
+      return { scrollTop: scrollY, scrollMax: document.documentElement.scrollHeight - innerHeight };
     }
 
-    // Scrolls the row for `anchor`, with its callout row, to the middle of the window. The row is looked up again on
-    // every measurement, since the host can replace it while the diffs around it load.
-    function scrollToRow(anchor, token) {
-      return scrollUntilLanded(() => {
-        const row = findRow(anchor);
-        return row ? centeringDelta(targetRect(row), innerHeight) : 0;
-      }, token);
+    // The distance to scroll for `callout`, a stop's callout inside `entry`'s diff, to sit CALLOUT_GAP below the sticky
+    // chrome over the diffs and the file's own sticky header, so every stop lands in the same place. Both are measured
+    // as they are now.
+    function calloutPlace(callout, entry) {
+      const header = fileHeaderOf(entry)?.getBoundingClientRect().height ?? 0;
+      return calloutDelta(callout.getBoundingClientRect().top, currentStickyOffset(entry) + header, scrollLimits());
+    }
+
+    // The place of a line stop: its callout row above the line, else the line's row.
+    function linePlace(anchor, entry) {
+      const row = findRow(anchor);
+      return row ? calloutPlace(calloutRowOf(row) ?? row, entry) : 0;
+    }
+
+    // A file stop's callout is above its header in the entry; with none, the entry's top stands in for it.
+    function filePlace(id) {
+      const entry = entryOfId(id);
+      return entry ? calloutPlace(fileCalloutOf(entry) ?? entry, entry) : 0;
+    }
+
+    // The hold on the last landed stop, or null.
+    let releaseHold = null;
+
+    function watchLayout(callback) {
+      const observer = new ResizeObserver(callback);
+      observer.observe(document.querySelector(spec.containerSelector) ?? document.body);
+      observer.observe(document.body);
+      return () => observer.disconnect();
+    }
+
+    function watchInput(callback) {
+      for (const type of USER_INPUT_EVENTS) globalThis.addEventListener(type, callback, { capture: true, passive: true });
+      return () => {
+        for (const type of USER_INPUT_EVENTS) globalThis.removeEventListener(type, callback, { capture: true });
+      };
+    }
+
+    function endHold() {
+      releaseHold?.();
+      releaseHold = null;
+    }
+
+    // Keeps the landed stop in place while content above it shifts (diffs loading, files expanding) until the user scrolls
+    // or clicks, a newer jump starts or the jump is cancelled.
+    function holdStop(delta) {
+      endHold();
+      if (!globalThis.ResizeObserver) return;
+      releaseHold = holdPlace({ delta, nudge: (top) => scrollBy({ top, behavior: "instant" }), observe: watchLayout, onInput: watchInput });
     }
 
     let cancelPendingJump = null;
@@ -410,22 +474,25 @@
     }
 
     // A diff's rows may be rendered only once the diff is near the window, so the file's diff is scrolled
-    // to first; then the line's row is waited for, highlighted, and scrolled to the centre together with its callout. If
-    // the row never appears the view stays at the file's header. Returns whether the row ended centred. `pulse: false`
-    // lands without the pulse.
+    // to first; then the line's row is waited for, highlighted, and scrolled so its callout sits in the stop place (see
+    // calloutPlace), where it is held. If the row never appears the view stays at the file's header. Returns whether the
+    // callout ended in place. `pulse: false` lands without the pulse.
     async function jumpToLine(path, side, line, { pulse = true } = {}) {
       const mine = ++latestJump;
       cancelPendingJump?.();
+      endHold();
       clearLineTarget();
-      const [anchor, entry] = await Promise.all([lineAnchor(path, side, line), entryFor(path)]);
-      if (!entry || mine !== latestJump) return false;
-      scrollToElement(entry);
+      const id = await spec.diffId(path);
+      const anchor = `${id}${side}${line}`;
+      if (!entryOfId(id) || mine !== latestJump) return false;
+      scrollToElement(entryOfId(id));
       const found = await waitForRow(anchor, JUMP_TIMEOUT_MS);
       if (!found || mine !== latestJump) return false;
       lineTarget = { anchor };
       found.classList.add(LINE_TARGET);
       placeCallouts();
-      const landed = await scrollToRow(anchor, newScrollToken());
+      const place = () => linePlace(anchor, entryOfId(id));
+      const landed = await scrollUntilLanded(place, newScrollToken());
       if (mine !== latestJump) return false;
       const row = findRow(anchor);
       if (!row) {
@@ -433,15 +500,17 @@
         return false;
       }
       row.classList.add(LINE_TARGET);
+      holdStop(place);
       if (pulse) pulseTarget([row, calloutRowOf(row)]);
       return landed;
     }
 
-    // Scrolls to a file's diff entry, whose callout is its first child, so the callout sits just below the sticky chrome
-    // with the file header under it. Returns whether the entry ended in place. `pulse: false` lands without the pulse.
+    // Scrolls to a file's diff entry, whose callout is its first child, so the callout sits in the stop place (see
+    // calloutPlace), where it is held. Returns whether the callout ended in place. `pulse: false` lands without the pulse.
     async function jumpToFile(path, { pulse = true } = {}) {
       const mine = ++latestJump;
       cancelPendingJump?.();
+      endHold();
       clearLineTarget();
       const anchor = await fileAnchor(path);
       if (!entryOfId(anchor) || mine !== latestJump) return false;
@@ -452,10 +521,8 @@
         lineTarget = target;
         marked.classList.add(LINE_TARGET);
       }
-      const landed = await scrollUntilLanded(() => {
-        const entry = entryOfId(anchor);
-        return entry ? landingDelta(entry.getBoundingClientRect().top, currentStickyOffset(entry)) : 0;
-      }, newScrollToken());
+      const place = () => filePlace(anchor);
+      const landed = await scrollUntilLanded(place, newScrollToken());
       if (mine !== latestJump) return false;
       if (!marked) return landed;
       placeCallouts();
@@ -465,6 +532,7 @@
         return false;
       }
       callout.classList.add(LINE_TARGET);
+      holdStop(place);
       if (pulse) pulseTarget([callout]);
       return landed;
     }
@@ -473,6 +541,7 @@
       latestJump += 1;
       newScrollToken();
       cancelPendingJump?.();
+      endHold();
     }
 
     function onChange(callback) {
@@ -516,7 +585,8 @@
       stickyOffset,
       startDistance,
       landingDelta,
-      centeringDelta,
+      calloutDelta,
+      holdPlace,
       correctLanding,
       jumpToLine,
       jumpToFile,

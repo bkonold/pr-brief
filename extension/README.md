@@ -23,11 +23,15 @@ numbers of the stops that land on it. A run that is not schema 4 with `nodes` an
 variant) is not shown: see "Older runs".
 
 - The list has one row per stop: its number and its title. The current stop is highlighted and scrolled into view. A
-  row goes to its stop: it makes the stop's file the active one, and jumps to the stop's line and centres it, or, for a stop with no line,
-  scrolls to the file's callout above its header. The diagram follows the stop: its box takes the halo and the
+  row goes to its stop: it makes the stop's file the active one, and jumps to the stop's line, or, for a stop with no line,
+  to the file's callout above its header. Either way the callout's top edge lands 16px below the sticky chrome over the
+  diffs and the file's own sticky header, both measured at that moment, so every stop appears in the same place and the
+  Previous and Next buttons stay under the pointer. Near the end of the page it lands as close as the page can scroll.
+  Once landed, a stop is held there while content above it shifts (diffs loading, files expanding), watched by a
+  ResizeObserver on the diffs, until the user scrolls or clicks or another jump starts. The diagram follows the stop: its box takes the halo and the
   canvas centres on it. GitHub renders a diff's rows only once the diff is near the window, so the jump scrolls to the
-  file's diff, waits up to 10 seconds for the row, then centres it, measuring the row again after each scroll and
-  nudging until it sits mid-window; on a timeout the view stays at the file's header. Opening the files page on a link to
+  file's diff, waits up to 10 seconds for the row, then scrolls its callout into place, measuring again after each scroll and
+  nudging until it sits there; on a timeout the view stays at the file's header. Opening the files page on a link to
   a stop's line or file (the PR brief card's links) goes to that stop.
 - Every stop that has loaded gets a callout above its line (above the file's header for a stop with no line), as soon as
   the review shows and as GitHub or Forgejo load more of the diff, in both unified and split views. It is a full-width
@@ -46,11 +50,9 @@ variant) is not shown: see "Older runs".
   once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "By review" mode.
 - A stop with no line has its callout as the first child of that file's diff entry (the GitHub diff entry, the Forgejo
   file box), so it sits directly above the file header and spans the entry's full width with the same card. The jump
-  scrolls the entry's top just below the sticky chrome, so the callout shows with the header under it, and marks and
-  pulses the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
+  places the callout like a line stop's, so the header shows under it, and marks and pulses the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
 - The stop's line is left exactly as the host draws it. Each callout card starts at the file pane's left edge, and the
-  jumped-to stop's card border is the full purple where the other callouts' is purple at 45%. The jump centres the
-  callout and the line together. The file, line number and code are not repeated, since the diff row shows them. Only
+  jumped-to stop's card border is the full purple where the other callouts' is purple at 45%. The file, line number and code are not repeated, since the diff row shows them. Only
   one card is marked as the target; the mark goes whenever the line target clears (another selection, a new jump or
   teardown) and comes back if the host re-renders the row. When a jump lands, its callout pulses once: a purple ring
   that swells from its resting width to 3px wider and back, three times over about two seconds (666ms each). It fires on
@@ -264,7 +266,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Block path, fallbacks | a descendant `[data-file-path]`, else `table[data-diff-anchor]` with `aria-label` `Diff for: <path>` |
 | Diagram host | `[class*="prc-PageLayout-PaneWrapper"]` (the file pane) and `[class*="prc-PageLayout-ContentWrapper"]` (the diffs' column), both inside `#diff-comparison-viewer-container`. The panel is inserted right before the pane with the pane's computed `order` (before the column with the column's order when there is no pane), so DOM order places it first and no GitHub element is restyled. Top offset copied from the pane |
 | Tree host | `#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]`: GitHub's tree with its "File tree" heading. `#pr-file-tree` also holds the "Filter files" box as its first child, so the list is inserted before the host and the host is hidden with a class |
-| Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed and scrolled to the middle of the window. |
+| Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed, and its callout row is scrolled to the stop place. |
 | Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
 | Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, trusted only for the PR the page was first opened on |
 

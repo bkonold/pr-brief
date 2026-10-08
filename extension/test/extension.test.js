@@ -6,7 +6,7 @@ const { createHash } = require("node:crypto");
 const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
-const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
+const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, calloutDelta, holdPlace, correctLanding } = githubPage;
 const { staleMessage, revealTarget } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, captionFor } = require("../diagram.js");
 
@@ -275,12 +275,80 @@ test("correctLanding gives up after its passes when the entry keeps moving", asy
   assert.equal(nudged, 3);
 });
 
-test("centeringDelta is the distance from a row's middle to the window's middle, 0 within tolerance", () => {
-  assert.equal(centeringDelta({ top: 1000, height: 20 }, 800), 610);
-  assert.equal(centeringDelta({ top: -500, height: 20 }, 800), -890);
-  assert.equal(centeringDelta({ top: 390, height: 20 }, 800), 0);
-  assert.equal(centeringDelta({ top: 394, height: 20 }, 800), 0);
-  assert.equal(centeringDelta({ top: 396, height: 20 }, 800), 6);
+const LIMITS = { scrollTop: 2000, scrollMax: 9000 };
+
+test("calloutDelta puts a callout 16px below the sticky chrome and asks for no correction within a pixel", () => {
+  assert.equal(calloutDelta(1000, 104, LIMITS), 880);
+  assert.equal(calloutDelta(-300, 104, LIMITS), -420);
+  assert.equal(calloutDelta(120, 104, LIMITS), 0);
+  assert.equal(calloutDelta(121, 104, LIMITS), 0);
+  assert.equal(calloutDelta(122.5, 104, LIMITS), 2.5);
+});
+
+test("calloutDelta places a line stop and a file stop alike: the sticky chrome plus the file header, then 16px", () => {
+  const chrome = 60;
+  const header = 44;
+  const place = (calloutTop) => calloutDelta(calloutTop, chrome + header, LIMITS);
+  assert.equal(place(chrome + header + 16), 0);
+  assert.equal(place(700), 700 - 120);
+});
+
+test("calloutDelta lands as close as it can near the top and the bottom of the page", () => {
+  assert.equal(calloutDelta(1000, 104, { scrollTop: 8900, scrollMax: 9000 }), 100);
+  assert.equal(calloutDelta(1000, 104, { scrollTop: 9000, scrollMax: 9000 }), 0);
+  assert.equal(calloutDelta(-90, 104, { scrollTop: 40, scrollMax: 9000 }), -40);
+  assert.equal(calloutDelta(-90, 104, { scrollTop: 0, scrollMax: 9000 }), 0);
+});
+
+function fakeHold({ delta }) {
+  const log = { nudges: [], observing: 0, listening: 0 };
+  let layoutChanged = null;
+  let userInput = null;
+  const release = holdPlace({
+    delta,
+    nudge: (distance) => log.nudges.push(distance),
+    observe: (callback) => {
+      layoutChanged = callback;
+      log.observing += 1;
+      return () => (log.observing -= 1);
+    },
+    onInput: (callback) => {
+      userInput = callback;
+      log.listening += 1;
+      return () => (log.listening -= 1);
+    },
+  });
+  return { log, release, shift: () => layoutChanged(), input: () => userInput() };
+}
+
+test("holdPlace nudges the target back when the layout shifts, and not when it is already in place", () => {
+  let off = 0;
+  const hold = fakeHold({ delta: () => off });
+  hold.shift();
+  off = 120;
+  hold.shift();
+  off = 0;
+  hold.shift();
+  assert.deepEqual(hold.log.nudges, [120]);
+  assert.deepEqual([hold.log.observing, hold.log.listening], [1, 1]);
+});
+
+test("holdPlace stops watching at the user's first input, so a later shift is left alone", () => {
+  const hold = fakeHold({ delta: () => 80 });
+  hold.input();
+  assert.deepEqual([hold.log.observing, hold.log.listening], [0, 0]);
+  hold.shift();
+  assert.deepEqual(hold.log.nudges, []);
+});
+
+test("holdPlace can be released by the page, and releasing twice stops nothing twice", () => {
+  const hold = fakeHold({ delta: () => 80 });
+  hold.release();
+  hold.release();
+  hold.input();
+  assert.deepEqual([hold.log.observing, hold.log.listening], [0, 0]);
+  hold.shift();
+  assert.deepEqual(hold.log.nudges, []);
 });
 
 test("chooseAdapter picks the adapter that serves the host and none for any other", () => {
@@ -757,6 +825,7 @@ function fakeEntries(ids) {
     querySelector: () => null,
     createTreeWalker: () => ({ nextNode: () => null }),
     body: root,
+    documentElement: { scrollHeight: 5000 },
   };
   globalThis.NodeFilter = { SHOW_ELEMENT: 1, FILTER_ACCEPT: 1, FILTER_SKIP: 3, FILTER_REJECT: 2 };
   globalThis.innerHeight = 800;
@@ -848,6 +917,93 @@ test("jumpToFile marks the file callout as the target and pulses it, and a jump 
     page.clearLineTarget();
     assert.equal(second.classes.has("prf-line-target"), false);
   } finally {
+    dom.done();
+  }
+});
+
+function scrollingPage(dom, startTop) {
+  const state = { top: startTop, layout: [], input: new Map() };
+  globalThis.scrollBy = ({ top }) => {
+    state.top -= top;
+    globalThis.scrollY += top;
+  };
+  globalThis.addEventListener = (type, handler) => state.input.set(type, handler);
+  globalThis.removeEventListener = (type) => state.input.delete(type);
+  globalThis.ResizeObserver = class {
+    constructor(callback) {
+      this.callback = callback;
+      this.live = true;
+      state.layout.push(this);
+    }
+    observe() {}
+    disconnect() {
+      this.live = false;
+    }
+  };
+  state.shift = (by) => {
+    state.top += by;
+    for (const observer of state.layout) if (observer.live) observer.callback();
+  };
+  dom.callouts()[0].getBoundingClientRect = () => ({ top: state.top, height: 40, bottom: state.top + 40, left: 0, right: 0 });
+  return state;
+}
+
+function endScrollingPage() {
+  for (const name of ["addEventListener", "removeEventListener", "ResizeObserver"]) delete globalThis[name];
+}
+
+test("jumpToFile lands the callout 16px below the sticky chrome and the file header, and holds it as content above shifts", async () => {
+  const dom = fakeEntries(["a"]);
+  try {
+    const page = filePage();
+    page.showCallouts([fileEntry(1, "a")]);
+    const scrolling = scrollingPage(dom, 900);
+    dom.entries.get("a").children[1].getBoundingClientRect = () => ({ top: 0, height: 36, bottom: 36, left: 0, right: 0 });
+    assert.equal(await page.jumpToFile("a"), true);
+    assert.equal(scrolling.top, 36 + 16);
+    scrolling.shift(300);
+    assert.equal(scrolling.top, 36 + 16);
+    scrolling.shift(-120);
+    assert.equal(scrolling.top, 36 + 16);
+  } finally {
+    endScrollingPage();
+    dom.done();
+  }
+});
+
+test("a held stop is let go at the user's first scroll or click, and by a newer jump or cancelJump", async () => {
+  for (const release of [(page, scrolling) => scrolling.input.get("wheel")(), (page, scrolling) => scrolling.input.get("pointerdown")(), (page) => page.cancelJump()]) {
+    const dom = fakeEntries(["a"]);
+    try {
+      const page = filePage();
+      page.showCallouts([fileEntry(1, "a")]);
+      const scrolling = scrollingPage(dom, 900);
+      await page.jumpToFile("a");
+      assert.equal(scrolling.top, 16);
+      release(page, scrolling);
+      scrolling.shift(300);
+      assert.equal(scrolling.top, 316);
+      assert.equal(scrolling.input.size, 0);
+    } finally {
+      endScrollingPage();
+      dom.done();
+    }
+  }
+});
+
+test("jumpToFile near the end of the page lands as close as the page can scroll and does not keep nudging", async () => {
+  const dom = fakeEntries(["a"]);
+  try {
+    const page = filePage();
+    page.showCallouts([fileEntry(1, "a")]);
+    const scrolling = scrollingPage(dom, 5000);
+    assert.equal(await page.jumpToFile("a"), true);
+    assert.equal(scrolling.top, 800);
+    assert.equal(globalThis.scrollY, 4200);
+    scrolling.shift(0);
+    assert.equal(scrolling.top, 800);
+  } finally {
+    endScrollingPage();
     dom.done();
   }
 });
