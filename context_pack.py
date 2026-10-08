@@ -27,7 +27,9 @@ CACHE = HOME / ".cache"
 MIRROR = CACHE / LOCAL.get("mirror_name", "mirror.git")
 LOCK = CACHE / "mirror.lock"
 SOURCE_CHECKOUT: str | None = LOCAL.get("source_checkout") or os.environ.get("GITHUB_WORKSPACE")
-GITHUB_URL: str | None = LOCAL.get("github_url")
+GITHUB_URL: str | None = LOCAL.get("github_url") or (
+    f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{os.environ['GITHUB_REPOSITORY']}.git"
+    if os.environ.get("GITHUB_REPOSITORY") else None)
 REACH_CONFIG: dict[str, Any] | None = config_section("reach")
 
 SECTIONS: tuple[str, ...] = ("callers", "reach", "contract", "migrations")
@@ -117,7 +119,7 @@ def has_commit(sha: str) -> bool:
 def ensure_commits(shas: list[str], host: str = "github") -> None:
     """Make every sha available in the mirror, cloning it first when absent. Serialized across
     processes by a file lock. Without `source_checkout` no mirror is cloned. For a GitHub PR a missing sha
-    is fetched from `github_url` (nothing is fetched without it); for a Forgejo PR it is fetched from
+    is fetched from `github_url`, or from the repository a GitHub Actions job runs in (nothing is fetched without either); for a Forgejo PR it is fetched from
     `source_checkout`, where the commits of a Forgejo branch normally already are, and never from GitHub.
     A sha that cannot be fetched stays missing; `build` drops the sections that need it."""
     if not (MIRROR.exists() or SOURCE_CHECKOUT):
