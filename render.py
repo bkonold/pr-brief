@@ -34,7 +34,11 @@ sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: E402
 
 DIAGRAM_THRESHOLD = 5
-DIAGRAM_WRAPPING_WIDTH = 400
+# The diagram's text size and the width its labels wrap at, in diagram units. The pane zooms the diagram to its width, so a
+# box's on-screen text size is its font size times pane width over diagram width: a larger font in narrower boxes
+# (the second line may break inside a long identifier) is what makes the text bigger on screen.
+DIAGRAM_FONT_SIZE = 24
+DIAGRAM_WRAPPING_WIDTH = 180
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 CONTEXT_CAPTION = "Dashed boxes are unchanged context"
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
@@ -47,13 +51,14 @@ class AnswerError(Exception):
 # ---------------------------------------------------------------- diagram
 
 def render_diagram(raw: Any) -> str:
-    """The diagram top-down, with its labels wrapped at DIAGRAM_WRAPPING_WIDTH."""
+    """The diagram top-down, in DIAGRAM_FONT_SIZE text with its labels wrapped at DIAGRAM_WRAPPING_WIDTH."""
     diagram: str = sanitize_diagram(raw)  # an empty diagram is dropped, as PR-Agent does
     if not diagram:
         return ""
     diagram = apply_diagram_direction(diagram, "TD", DIAGRAM_THRESHOLD)
     lines: list[str] = diagram.split("\n")
-    init: str = '%%{init: {"flowchart": {"wrappingWidth": ' + str(DIAGRAM_WRAPPING_WIDTH) + '}}}%%'
+    init: str = ('%%{init: {"themeVariables": {"fontSize": "' + str(DIAGRAM_FONT_SIZE) + 'px"}, "flowchart": {"wrappingWidth": '
+                 + str(DIAGRAM_WRAPPING_WIDTH) + '}}}%%')
     fence: int = next(i for i, line in enumerate(lines) if line.strip().startswith("```mermaid"))
     lines.insert(fence + 1, init)
     return "\n".join(lines)
@@ -522,16 +527,16 @@ const DIAGRAM_CONFIG = {
     .node.context rect.label-container { fill: none; stroke: #b4b2a9; stroke-dasharray: 4 4; }
     .node .nodeLabel, .node .label div { color: #26215c; text-align: center; }
     .node .nodeLabel p { margin: 0; }
-    .nodeLabel .badge { display: inline-block; margin-right: 4px; padding: 0 7px; font-size: 12px; line-height: 16px; font-weight: 600; color: #fff; background: #7f77dd; border-radius: 9px; }
+    .nodeLabel .badge { display: inline-block; margin-right: .25em; padding: 0 .45em; font-size: .75em; line-height: 1.33; font-weight: 600; color: #fff; background: #7f77dd; border-radius: 1em; }
     .nodeLabel .t { font-weight: 600; }
-    .nodeLabel .s { color: #5f5e5a; font-weight: 400; }
+    .nodeLabel .s { color: #5f5e5a; font-weight: 400; overflow-wrap: anywhere; }
     .context .nodeLabel, .context .label div { color: #5f5e5a; }
     path.flowchart-link { stroke: #9370db; stroke-width: 1px; fill: none; }
     .marker, .arrowMarkerPath { fill: none !important; stroke: #9370db !important; stroke-width: 1px; }
     .edgeLabel rect { fill: transparent !important; opacity: 0; }
     .edgeLabel, .edgeLabel p, .edgeLabel span, .labelBkg { background-color: transparent !important; color: #7f77dd !important; font-weight: 400; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
     .cluster rect { fill: none; stroke: #e5e3f0; stroke-width: 1px; rx: 8px; ry: 8px; }
-    .cluster-label .nodeLabel, .cluster-label span, .cluster-label p { color: #8a8a99; font-size: 12px; font-weight: 400; }
+    .cluster-label .nodeLabel, .cluster-label span, .cluster-label p { color: #8a8a99; font-size: .75em; font-weight: 400; }
   `,
 };
 

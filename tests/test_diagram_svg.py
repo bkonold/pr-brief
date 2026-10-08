@@ -226,5 +226,18 @@ class Render(unittest.TestCase):
         self.assertNotIn("mermaid", json.loads((self.run_dir / "run.json").read_text()))
 
 
+class DiagramSize(unittest.TestCase):
+    def test_the_diagram_is_drawn_in_a_large_font_wrapped_narrow(self) -> None:
+        text = render.render_diagram("```mermaid\nflowchart TD\n  a[\"A\"] --> b[\"B\"]\n```")
+        self.assertIn(f'"themeVariables": {{"fontSize": "{render.DIAGRAM_FONT_SIZE}px"}}', text)
+        self.assertIn(f'"wrappingWidth": {render.DIAGRAM_WRAPPING_WIDTH}', text)
+        self.assertGreaterEqual(render.DIAGRAM_FONT_SIZE, 20)
+        self.assertLessEqual(render.DIAGRAM_WRAPPING_WIDTH, 200)
+
+    def test_badges_and_cluster_titles_scale_with_the_text(self) -> None:
+        self.assertNotRegex(render.DIAGRAM_STYLE, r"\.badge \{[^}]*font-size: \d+px")
+        self.assertNotRegex(render.DIAGRAM_STYLE, r"\.cluster-label[^}]*font-size: \d+px")
+
+
 if __name__ == "__main__":
     unittest.main()
