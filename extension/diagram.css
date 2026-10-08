@@ -172,6 +172,7 @@
 .prd-card svg {
   display: block;
   max-width: none !important;
+  overflow: visible;
 }
 
 .prd-viewport svg {
@@ -186,11 +187,18 @@
 }
 
 .prd-halo {
-  --prd-accent: 83, 74, 183;
   fill: none !important;
-  stroke: rgba(var(--prd-accent), 0.3) !important;
-  stroke-width: 5px !important;
+  stroke: color-mix(in srgb, var(--prf-guide, #534ab7) 22%, transparent) !important;
+  stroke-width: 8px !important;
   pointer-events: none;
+}
+
+.prd-card g.node.prd-on > rect:not(.prd-halo) {
+  fill: color-mix(in srgb, var(--prf-guide, #534ab7) 11%, transparent) !important;
+}
+
+.prd-card g.node.prd-on .nodeLabel .t {
+  color: color-mix(in srgb, var(--prf-guide, #534ab7) 65%, #000) !important;
 }
 
 .prd-card path.prd-on {

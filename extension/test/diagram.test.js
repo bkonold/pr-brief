@@ -486,7 +486,11 @@ function emphasisFixture() {
   };
   const children = [];
   const rectAttrs = { x: "100", y: "50", width: "80", height: "40", rx: "4" };
+  const computed = {};
+  global.getComputedStyle = () => computed;
   const shape = {
+    computed,
+    attrs: rectAttrs,
     localName: "rect",
     getAttribute: (name) => rectAttrs[name] ?? null,
     after: (node) => children.splice(0, 0, node),
@@ -539,11 +543,11 @@ test("applyEmphasis clears everything for null and dims the whole diagram for an
   assert.equal(card.classList.contains("prd-none"), false);
 });
 
-test("applyEmphasis ringes a focused rect box with a halo 6px outside it and removes it when focus moves", () => {
+test("applyEmphasis ringes a focused rect box with a halo 6px outside it, concentric with its corners, and removes it when focus moves", () => {
   const { found, card, created, children } = emphasisFixture();
   applyEmphasis(card, found, ["a"]);
   assert.equal(created.length, 1);
-  assert.deepEqual(created[0].attrs, { class: "prd-halo", x: "94", y: "44", width: "92", height: "52", rx: "10" });
+  assert.deepEqual(created[0].attrs, { class: "prd-halo", x: "94", y: "44", width: "92", height: "52", rx: "10", ry: "10" });
   assert.equal(found.halos.get("a"), created[0]);
   applyEmphasis(card, found, ["a"]);
   assert.equal(created.length, 1);
@@ -555,6 +559,39 @@ test("applyEmphasis ringes a focused rect box with a halo 6px outside it and rem
   applyEmphasis(card, found, null);
   assert.equal(found.halos.size, 0);
   assert.equal(children.length, 0);
+});
+
+test("the halo takes its corner radii from the box's computed style, else its attributes, else square corners", () => {
+  const radii = (computed, attrs) => {
+    const { found, card, created } = emphasisFixture();
+    const shape = found.nodes.get("a").querySelector();
+    Object.assign(shape.computed, computed);
+    for (const name of ["rx", "ry"]) delete shape.attrs[name];
+    Object.assign(shape.attrs, attrs);
+    applyEmphasis(card, found, ["a"]);
+    return [created[0].attrs.rx, created[0].attrs.ry];
+  };
+  assert.deepEqual(radii({ rx: "14px", ry: "14px" }, {}), ["20", "20"]);
+  assert.deepEqual(radii({ rx: "14px", ry: "auto" }, {}), ["20", "20"]);
+  assert.deepEqual(radii({ rx: "auto", ry: "auto" }, { rx: "4", ry: "2" }), ["10", "8"]);
+  assert.deepEqual(radii({ rx: "50%", ry: "auto" }, { ry: "3" }), ["9", "9"]);
+  assert.deepEqual(radii({ rx: "auto", ry: "auto" }, {}), ["6", "6"]);
+  assert.deepEqual(radii({ rx: "8px", ry: "12px" }, {}), ["14", "18"]);
+});
+
+test("focus leaves nothing behind: after it moves or clears, a box has no class and no halo and its shape is untouched", () => {
+  const { found, card, children } = emphasisFixture();
+  const group = found.nodes.get("a");
+  const shape = group.querySelector();
+  const before = JSON.stringify(shape.attrs);
+  applyEmphasis(card, found, ["a"]);
+  assert.equal(group.classList.contains("prd-on"), true);
+  applyEmphasis(card, found, ["b"]);
+  assert.deepEqual([group.classList.set.size, children.length], [0, 1]);
+  applyEmphasis(card, found, null);
+  assert.deepEqual([...found.nodes.values()].map((entry) => entry.classList.set.size), [0, 0, 0, 0]);
+  assert.deepEqual([children.length, found.halos.size, card.classList.set.size], [0, 0, 0]);
+  assert.equal(JSON.stringify(shape.attrs), before);
 });
 
 test("applyEmphasis draws no halo for a box without a rect", () => {

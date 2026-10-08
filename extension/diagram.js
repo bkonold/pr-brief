@@ -184,17 +184,35 @@
     return `url(#${copyId})`;
   }
 
-  // A ring around a box's rect, HALO_GAP outside it; null for a shape that is not a rect with a position.
+  // A corner radius of a shape in user units: a length in px or a plain number from its computed style or its attribute,
+  // null for `auto`, a percentage or nothing.
+  function lengthOf(value) {
+    return typeof value === "string" && /^\d*\.?\d+(px)?$/.test(value.trim()) ? parseFloat(value) : null;
+  }
+
+  // The corner radii of a box's rect. Mermaid sets them with CSS (the theme's `rx`/`ry` properties) as often as with
+  // attributes; one that is unset takes the other's value, as SVG does, and both unset mean square corners.
+  function radiiOf(shape) {
+    const style = getComputedStyle(shape);
+    const rx = lengthOf(style.rx) ?? lengthOf(shape.getAttribute("rx"));
+    const ry = lengthOf(style.ry) ?? lengthOf(shape.getAttribute("ry"));
+    return { rx: rx ?? ry ?? 0, ry: ry ?? rx ?? 0 };
+  }
+
+  // A ring around a box's rect, HALO_GAP outside it with corners HALO_GAP wider than the box's own so the two curves stay
+  // parallel; null for a shape that is not a rect with a position.
   function haloOf(shape) {
     const [x, y, width, height] = ["x", "y", "width", "height"].map((name) => Number(shape.getAttribute(name)));
     if (![x, y, width, height].every(Number.isFinite) || shape.localName !== "rect") return null;
+    const { rx, ry } = radiiOf(shape);
     const ring = document.createElementNS(SVG_NS, "rect");
     ring.setAttribute("class", "prd-halo");
     ring.setAttribute("x", String(x - HALO_GAP));
     ring.setAttribute("y", String(y - HALO_GAP));
     ring.setAttribute("width", String(width + 2 * HALO_GAP));
     ring.setAttribute("height", String(height + 2 * HALO_GAP));
-    ring.setAttribute("rx", String((Number(shape.getAttribute("rx")) || 0) + HALO_GAP));
+    ring.setAttribute("rx", String(rx + HALO_GAP));
+    ring.setAttribute("ry", String(ry + HALO_GAP));
     return ring;
   }
 
