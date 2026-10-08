@@ -24,20 +24,16 @@ FLOW = [raw("Screen", "skim", "src/ui.js", "UI"), raw("Endpoint", "read", "src/a
 
 class FlowOrder(unittest.TestCase):
     def test_flow_order_keeps_the_models_order_even_after_a_floor_raises_a_chunk(self) -> None:
-        chunks = build_chunks(FLOW, COUNTS, PATHS, FLOORS, [], {}, flow_order=True)
+        chunks = build_chunks(FLOW, COUNTS, PATHS, FLOORS, [], {})
         self.assertEqual([(c.number, c.name, c.review) for c in chunks],
                          [(1, "Screen", "skim"), (2, "Endpoint", "read"), (3, "Table", "verify")])
 
-    def test_risk_order_still_sorts_by_level(self) -> None:
-        chunks = build_chunks(FLOW, COUNTS, PATHS, FLOORS, [], {})
-        self.assertEqual([c.name for c in chunks], ["Table", "Endpoint", "Screen"])
-
     def test_flow_order_keeps_unchunked_last(self) -> None:
-        chunks = build_chunks(FLOW[:2], COUNTS, PATHS, FLOORS, [], {}, flow_order=True)
+        chunks = build_chunks(FLOW[:2], COUNTS, PATHS, FLOORS, [], {})
         self.assertEqual([c.name for c in chunks], ["Screen", "Endpoint", "Unchunked"])
 
     def test_the_step_is_kept_when_it_is_one_or_two_words(self) -> None:
-        chunks = build_chunks(FLOW, COUNTS, PATHS, FLOORS, [], {}, flow_order=True)
+        chunks = build_chunks(FLOW, COUNTS, PATHS, FLOORS, [], {})
         self.assertEqual([c.step for c in chunks], ["UI", "API", "Database"])
 
     def test_a_long_or_blank_step_is_dropped_with_a_note(self) -> None:

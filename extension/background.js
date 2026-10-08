@@ -19,7 +19,7 @@ async function serverToken() {
 
 function matchesPr(review, owner, repo, pr) {
   return (
-    review?.schema === 2 &&
+    review?.schema === 3 &&
     Array.isArray(review.chunks) &&
     String(review.repo).toLowerCase() === `${owner}/${repo}`.toLowerCase() &&
     Number(review.pr) === Number(pr)

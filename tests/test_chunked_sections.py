@@ -124,6 +124,7 @@ class ChunkedSections(unittest.TestCase):
         (_, _, chunks, _, lineset), _ = render_body()
         data = review_json(RUN, PR, chunks, False, None, True, lineset)
         by_name = {c["name"]: c for c in data["chunks"]}
+        self.assertEqual(set(by_name["Item endpoints"]), {"n", "name", "review", "raised_by", "why", "nodes", "labels", "contract", "data", "files"})
         first = by_name["Item endpoints"]["contract"][0]
         self.assertEqual(set(first), {"impact", "text", "change", "on", "reaches", "path", "side", "line"})
         self.assertEqual((first["change"], first["on"], first["reaches"]), ("`+ owner` required", "`ItemRequest`", "request"))
@@ -133,7 +134,7 @@ class ChunkedSections(unittest.TestCase):
         self.assertEqual(by_name["Generated"]["contract"], [])
         self.assertEqual([l["text"] for l in data["unchunked"]["contract"]], ["`GET /gone` removed"])
         self.assertEqual(data["unchunked"]["data"], [])
-        self.assertEqual(data["schema"], 2)
+        self.assertEqual(data["schema"], 3)
 
     def test_an_older_variant_has_none_of_these_fields(self) -> None:
         (text, _, chunks, _, lineset), _ = render_body({"contract_layout": None})

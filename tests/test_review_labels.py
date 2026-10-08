@@ -7,36 +7,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from render import (  # noqa: E402
-    LEVELS, Chunk, build_chunks, clean_checks, derive_labels, file_floor, generated_share, is_destructive_sql,
-    normalize_level, review_json, style_levels,
+    LEVELS, Chunk, build_chunks, clean_checks, derive_labels, file_floor, generated_share, normalize_level, review_json, style_levels,
 )
 
 SPEC = "api/openapi.json"
 SDK = "web/sdk/generated.ts"
 CONTROLLER = "api/controllers/ItemController.java"
-DTO = "api/models/ItemRequest.java"
 SERVICE = "api/services/ItemService.java"
 MIGRATION = "api/db/migration/V9__items.sql"
 FLOORS = {"tag": [{"name": "generated", "globs": [SPEC, SDK]}]}
-CONTRACT = {"path": SPEC, "removals": ["removed operation GET /api/items/archive"],
-            "newly_required": ["ItemRequest.owner (now required)"]}
-PATHS = [SPEC, SDK, CONTROLLER, DTO, SERVICE, MIGRATION, "docs/notes.md"]
+PATHS = [SPEC, SDK, CONTROLLER, SERVICE, MIGRATION, "docs/notes.md"]
 COUNTS = {path.lower(): (3, 1) for path in PATHS}
-DIFF_LINES = {
-    CONTROLLER: [("R", 4, '@GetMapping("/archive")'), ("R", 9, "return items.list();")],
-    DTO: [("R", 2, "public record ItemRequest(String owner) {}")],
-    SERVICE: [("R", 5, "return repository.findAll();")],
-}
 
 
 def raw(name: str, review: str, files: list[str], checks: list[str] | None = None) -> dict:
-    return {"name": name, "review": review, "why": "w", "files": files, **({} if checks is None else {"checks": checks})}
+    return {"name": name, "review": review, "why": "w", "step": "S", "files": files,
+            **({} if checks is None else {"checks": checks})}
 
 
-def build(chunks: list[dict], contract: dict | None = None, migration_added: dict | None = None,
-          notes: list[str] | None = None, paths: list[str] = PATHS, floors: dict = FLOORS) -> list[Chunk]:
-    return build_chunks(chunks, COUNTS, paths, floors, [] if notes is None else notes, DIFF_LINES, contract,
-                        review_labels=True, migration_added=migration_added)
+def build(chunks: list[dict], contract: dict | None = None, notes: list[str] | None = None,
+          paths: list[str] = PATHS, floors: dict = FLOORS) -> list[Chunk]:
+    return build_chunks(chunks, COUNTS, paths, floors, [] if notes is None else notes, {}, contract, review_labels=True)
 
 
 class Levels(unittest.TestCase):
@@ -67,10 +58,8 @@ class Levels(unittest.TestCase):
         self.assertEqual(chunks[0].review, "read")
         self.assertEqual(notes, ["chunk 'A': unknown review level 'careful', using 'read'"])
 
-    def test_the_catch_all_chunk_is_skim_for_labelled_variants_and_read_otherwise(self) -> None:
+    def test_the_catch_all_chunk_is_skim(self) -> None:
         self.assertEqual(build([raw("A", "read", [SERVICE])], paths=[SERVICE, "docs/notes.md"])[-1].review, "skim")
-        legacy = build_chunks([raw("A", "read", [SERVICE])], COUNTS, [SERVICE, "docs/notes.md"], {}, [], {})
-        self.assertEqual(legacy[-1].review, "read")
 
 
 class Checks(unittest.TestCase):
@@ -103,98 +92,6 @@ class DeriveLabels(unittest.TestCase):
         self.assertEqual(derive_labels(["access"], False, False, True), ["access", "generated"])
 
 
-class Destructive(unittest.TestCase):
-    def test_statements_that_lose_or_narrow_data_are_destructive(self) -> None:
-        for sql in ("DROP TABLE items;", "alter table items drop column legacy;", "DELETE FROM items WHERE x = 1;",
-                    "TRUNCATE items;", "ALTER TABLE items ALTER COLUMN qty TYPE integer;",
-                    "ALTER TABLE items ALTER COLUMN qty SET DATA TYPE integer;",
-                    "ALTER TABLE items ALTER COLUMN qty SET NOT NULL;", "DROP INDEX idx_items;"):
-            self.assertTrue(is_destructive_sql([sql]), sql)
-
-    def test_additive_and_loosening_statements_are_not(self) -> None:
-        for sql in ("ALTER TABLE items ADD COLUMN note text;", "CREATE INDEX idx ON items (id);",
-                    "UPDATE items SET note = '';", "ALTER TABLE items ALTER COLUMN qty DROP NOT NULL;",
-                    "ALTER TABLE items ALTER COLUMN qty DROP DEFAULT;",
-                    "ALTER TABLE items ADD FOREIGN KEY (o) REFERENCES o (id) ON DELETE CASCADE;",
-                    "ALTER TABLE items ADD COLUMN note text; -- DROP later"):
-            self.assertFalse(is_destructive_sql([sql]), sql)
-
-    def test_a_migration_with_a_destructive_line_marks_its_chunk_and_raises_it_to_verify(self) -> None:
-        chunks = build([raw("Items table", "skim", [MIGRATION], ["data"]), raw("Service", "read", [SERVICE], ["logic"])],
-                       migration_added={MIGRATION: ["ALTER TABLE items DROP COLUMN legacy;"]}, paths=[MIGRATION, SERVICE])
-        self.assertEqual((chunks[0].labels, chunks[0].review, chunks[0].raised_by),
-                         (["destructive"], "verify", ["destructive migration"]))
-        self.assertEqual((chunks[1].labels, chunks[1].review), (["logic"], "read"))
-
-    def test_an_additive_migration_keeps_data_and_its_level(self) -> None:
-        chunks = build([raw("Items table", "read", [MIGRATION], ["data"])],
-                       migration_added={MIGRATION: ["ALTER TABLE items ADD COLUMN note text;"]}, paths=[MIGRATION])
-        self.assertEqual((chunks[0].labels, chunks[0].review, chunks[0].raised_by), (["data"], "read", []))
-
-
-class Breaking(unittest.TestCase):
-    CHUNKS = [
-        raw("SDK", "skim", [SPEC, SDK]),
-        raw("Endpoint", "read", [CONTROLLER], ["logic", "contract"]),
-        raw("Request", "read", [DTO], ["contract"]),
-        raw("Service", "read", [SERVICE], ["logic"]),
-    ]
-    PATHS = [SPEC, SDK, CONTROLLER, DTO, SERVICE]
-
-    def labels(self, chunks: list[dict] = CHUNKS, contract: dict | None = CONTRACT) -> dict[str, list[str]]:
-        return {c.name: c.labels for c in build(chunks, contract, paths=self.PATHS)}
-
-    def test_breaking_lands_on_the_chunks_whose_code_names_the_change_not_on_the_generated_chunk(self) -> None:
-        self.assertEqual(self.labels(), {"SDK": ["generated"], "Endpoint": ["logic", "breaking"],
-                                         "Request": ["breaking"], "Service": ["logic"]})
-
-    def test_a_breaking_chunk_is_raised_to_verify_and_says_why(self) -> None:
-        chunks = {c.name: c for c in build(self.CHUNKS, CONTRACT, paths=self.PATHS)}
-        self.assertEqual((chunks["Endpoint"].review, chunks["Endpoint"].raised_by), ("verify", ["breaking change"]))
-        self.assertEqual(chunks["SDK"].review, "skim")
-
-    def test_a_chunk_the_model_labelled_contract_wins_over_one_it_did_not(self) -> None:
-        chunks = [raw("SDK", "skim", [SPEC, SDK]), raw("Endpoint", "read", [CONTROLLER], ["contract"]),
-                  raw("Service", "read", [SERVICE], [])]
-        diff = {**DIFF_LINES, SERVICE: [("R", 1, 'client.get("/archive")')]}
-        built = build_chunks(chunks, COUNTS, [SPEC, SDK, CONTROLLER, SERVICE], FLOORS, [], diff,
-                             {"path": SPEC, "removals": ["removed operation GET /api/items/archive"]}, review_labels=True)
-        self.assertEqual({c.name: c.labels for c in built}, {"SDK": ["generated"], "Endpoint": ["breaking"], "Service": []})
-
-    def test_with_no_code_naming_it_the_single_contract_chunk_gets_it_with_a_note(self) -> None:
-        notes: list[str] = []
-        chunks = [raw("SDK", "skim", [SPEC, SDK]), raw("Endpoint", "read", [CONTROLLER], ["contract"]),
-                  raw("Service", "read", [SERVICE], ["logic"])]
-        built = build(chunks, {"path": SPEC, "removals": ["Gone (schema removed)"]}, notes=notes, paths=[SPEC, SDK, CONTROLLER, SERVICE])
-        self.assertEqual({c.name: c.labels for c in built}, {"SDK": ["generated"], "Endpoint": ["breaking"], "Service": ["logic"]})
-        self.assertEqual(notes, ["breaking change: no hand-written file names it, placed on chunk 'Endpoint'"])
-
-    def test_with_several_contract_chunks_and_no_match_it_goes_to_the_chunk_with_the_spec_when_that_is_hand_written(self) -> None:
-        chunks = [raw("Spec and endpoint", "read", [SPEC, CONTROLLER], ["contract"]), raw("Request", "read", [DTO], ["contract"])]
-        built = build_chunks(chunks, COUNTS, [SPEC, CONTROLLER, DTO], FLOORS, [], {},
-                             {"path": SPEC, "removals": ["Gone (schema removed)"]}, review_labels=True)
-        self.assertEqual({c.name: c.labels for c in built}, {"Spec and endpoint": ["breaking"], "Request": ["contract"]})
-
-    def test_with_several_contract_chunks_and_a_generated_spec_chunk_it_goes_to_the_first_contract_chunk(self) -> None:
-        notes: list[str] = []
-        built = build(self.CHUNKS, {"path": SPEC, "removals": ["Gone (schema removed)"]}, notes=notes, paths=self.PATHS)
-        self.assertEqual({c.name: c.labels for c in built}["Endpoint"], ["logic", "breaking"])
-        self.assertIn("breaking change: no hand-written file names it, placed on chunk 'Endpoint'", notes)
-
-    def test_test_files_do_not_attract_the_label(self) -> None:
-        test_path = "api/test/ItemRequestTest.java"
-        chunks = [raw("SDK", "skim", [SPEC, SDK]), raw("Endpoint", "read", [CONTROLLER], ["contract"]),
-                  raw("Tests", "read", [test_path])]
-        diff = {**DIFF_LINES, test_path: [("R", 1, "new ItemRequest(null)")]}
-        built = build_chunks(chunks, {**COUNTS, test_path.lower(): (1, 0)}, [SPEC, SDK, CONTROLLER, test_path], FLOORS, [], diff,
-                             {"path": SPEC, "newly_required": ["ItemRequest.owner (now required)"]}, review_labels=True)
-        self.assertEqual({c.name: c.labels for c in built}["Tests"], [])
-
-    def test_no_breaking_change_means_no_breaking_label(self) -> None:
-        self.assertNotIn("breaking", sum(self.labels(contract={"path": SPEC, "removals": [], "newly_required": []}).values(), []))
-        self.assertNotIn("breaking", sum(self.labels(contract=None).values(), []))
-
-
 class Generated(unittest.TestCase):
     def test_a_chunk_of_only_generated_files_is_labelled_generated(self) -> None:
         self.assertEqual(build([raw("SDK", "skim", [SPEC, SDK])], paths=[SPEC, SDK])[0].labels, ["generated"])
@@ -212,12 +109,6 @@ class Generated(unittest.TestCase):
 
 
 class Floors(unittest.TestCase):
-    def test_the_highest_of_a_floor_and_a_label_raise_wins(self) -> None:
-        floors = {**FLOORS, "floor": [{"name": "controller", "level": "read", "globs": ["**/controllers/**"]}]}
-        chunks = build([raw("Endpoint", "skim", [CONTROLLER], ["contract"])], {"path": SPEC, "removals": ["removed operation GET /x/archive"]},
-                       paths=[CONTROLLER], floors=floors)
-        self.assertEqual((chunks[0].review, chunks[0].raised_by), ("verify", ["breaking change"]))
-
     def test_a_floor_alone_still_raises_and_names_itself(self) -> None:
         floors = {"floor": [{"name": "controller", "level": "read", "globs": ["**/controllers/**"]}]}
         chunks = build([raw("Endpoint", "skim", [CONTROLLER])], paths=[CONTROLLER], floors=floors)
