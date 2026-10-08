@@ -94,7 +94,7 @@ sticky or fixed elements that span the diff column), then flashes the header for
 
 When `review.json` names a `diagram` (`diagram.svg` in the run directory), `background.js` fetches it with the review
 and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
-diagram, stop list, code, and the other two columns narrow by the panel's width (280px by default) instead of being
+diagram, stop list, code, and the other two columns narrow by the panel's width (a fifth of the viewport by default, at least 220px) instead of being
 covered. The panel is sticky at the file tree pane's offset and as tall as the pane. Its header's `‹` button collapses it
 (remembered in `sessionStorage`) into a 30px rail in the same spot, with "Diagram" written vertically under a `›` button
 that expands it.
@@ -105,7 +105,7 @@ that expands it.
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
   250ms. The emphasized box gets a halo in `#534ab7` and keeps its own stroke and fill. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
-  the viewport, 280px by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
+  the viewport, a fifth of the viewport by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
 - Each box shows the numbers of the stops that land on it as a purple badge (`2 · 5`) before its bold title, and a
   box with no stop has no badge. A box covering no changed file is dashed and muted. When the diagram has one, a line
   under the card reads "Dashed boxes are unchanged context".

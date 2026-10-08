@@ -8,7 +8,7 @@ const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
 const { staleMessage, revealTarget } = require("../tree.js");
-const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, captionFor } = require("../diagram.js");
+const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, captionFor } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
   const expected = { owner: "example-org", repo: "example-repo", pr: 42, view: "files" };
@@ -107,6 +107,15 @@ test("unsafeAttribute flags event handlers and javascript links only", () => {
   assert.equal(unsafeAttribute("data-id", "L_A_B_0"), false);
 });
 
+test("the default width is a fifth of the viewport and never below 220px", () => {
+  assert.equal(defaultWidth(1680), 336);
+  assert.equal(defaultWidth(1000), 220);
+  assert.equal(defaultWidth(1100), 220);
+  assert.equal(defaultWidth(2560), 512);
+  assert.equal(defaultWidth(300), 220);
+  assert.equal(defaultWidth(undefined), 220);
+});
+
 test("clampWidth keeps the panel between 220px and 65% of the viewport", () => {
   assert.equal(clampWidth(400, 1680), 400);
   assert.equal(clampWidth(100, 1680), 220);
@@ -115,8 +124,9 @@ test("clampWidth keeps the panel between 220px and 65% of the viewport", () => {
   assert.equal(clampWidth(500, 1000), 500);
   assert.equal(clampWidth(900, 1000), 650);
   assert.equal(clampWidth(300, 200), 220);
-  assert.equal(clampWidth(NaN, 1680), 280);
-  assert.equal(clampWidth(undefined, 1680), 280);
+  assert.equal(clampWidth(NaN, 1680), 336);
+  assert.equal(clampWidth(NaN, 800), 220);
+  assert.equal(clampWidth(undefined, 1680), 336);
 });
 
 const OLD_AND_NEW = [{ variant: "v10" }, { variant: "v11b" }, { variant: "v15" }, { variant: "v16" }];

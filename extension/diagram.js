@@ -7,13 +7,18 @@
   const EDGE_ID = /^L_(.+)_\d+$/;
   const DASHED_EDGE = /\bedge-pattern-(?:dotted|dashed)\b/;
   const WIDTH_KEY = "diagramWidth";
-  const DEFAULT_WIDTH = 280;
+  const DEFAULT_VIEWPORT_SHARE = 0.2;
   const MIN_WIDTH = 220;
   const MAX_VIEWPORT_SHARE = 0.65;
 
+  // The width of a panel nobody has resized: a fifth of the viewport, at least MIN_WIDTH.
+  function defaultWidth(viewportWidth) {
+    return Math.max(MIN_WIDTH, Math.round(viewportWidth * DEFAULT_VIEWPORT_SHARE) || 0);
+  }
+
   // A usable panel width for this viewport: at least MIN_WIDTH, at most MAX_VIEWPORT_SHARE of the viewport.
   function clampWidth(width, viewportWidth) {
-    if (!Number.isFinite(width)) return DEFAULT_WIDTH;
+    if (!Number.isFinite(width)) return defaultWidth(viewportWidth);
     return Math.round(Math.max(MIN_WIDTH, Math.min(width, viewportWidth * MAX_VIEWPORT_SHARE)));
   }
 
@@ -256,7 +261,7 @@
   let shownText = null;
   let emphasis = null;
   let canvas = null;
-  let panelWidth = DEFAULT_WIDTH;
+  let panelWidth = defaultWidth(globalThis.innerWidth);
   let caption = "";
 
   // The remembered width is read once when the script loads, so it is usually known before the first render.
@@ -307,7 +312,7 @@
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
     handle.addEventListener("dblclick", () => {
-      setWidth(panel, DEFAULT_WIDTH);
+      setWidth(panel, defaultWidth(innerWidth));
       storeWidth(panelWidth);
     });
     return handle;
@@ -673,7 +678,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, captionFor, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, captionFor, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;
