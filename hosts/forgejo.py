@@ -3,6 +3,7 @@ come from local.toml (`forgejo_url`, `forgejo_token_file`). The token is sent in
 header and never appears in a URL, a message or a log line."""
 import hashlib
 import json
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -10,6 +11,30 @@ from typing import Any
 
 PAGE_SIZE = 50
 TIMEOUT_SECONDS = 60
+DIFF_HEADER = re.compile(r"^diff --git a/(.+) b/(.+)$")
+
+
+def files_from_diff(diff: str) -> list[dict[str, Any]]:
+    """The file list of a unified diff, in the shape `pr` returns: path (the new path of a rename), additions, deletions
+    and changeType (ADDED, DELETED, RENAMED or CHANGED)."""
+    files: list[dict[str, Any]] = []
+    for line in diff.splitlines():
+        header: re.Match[str] | None = DIFF_HEADER.match(line)
+        if header:
+            files.append({"path": header.group(2), "additions": 0, "deletions": 0, "changeType": "CHANGED"})
+        elif not files:
+            continue
+        elif line.startswith("new file mode"):
+            files[-1]["changeType"] = "ADDED"
+        elif line.startswith("deleted file mode"):
+            files[-1]["changeType"] = "DELETED"
+        elif line.startswith("rename to "):
+            files[-1].update(path=line.removeprefix("rename to "), changeType="RENAMED")
+        elif line.startswith("+") and not line.startswith("+++ "):
+            files[-1]["additions"] += 1
+        elif line.startswith("-") and not line.startswith("--- "):
+            files[-1]["deletions"] += 1
+    return files
 
 
 class Forgejo:
@@ -57,7 +82,11 @@ class Forgejo:
         base: str = f"/repos/{owner}/{repo}/pulls/{n}"
         pull: dict[str, Any] = json.loads(self._get(base))
         commits: list[dict[str, Any]] = self._pages(f"{base}/commits")
-        files: list[dict[str, Any]] = self._pages(f"{base}/files")
+        listed: list[dict[str, Any]] = [
+            {"path": f["filename"], "additions": f["additions"], "deletions": f["deletions"], "changeType": f["status"].upper()}
+            for f in self._pages(f"{base}/files")]
+        # A closed pull request whose head has moved can list no files here while its diff still has them.
+        files: list[dict[str, Any]] = listed or files_from_diff(self.diff(owner, repo, n))
         return {
             "title": pull["title"],
             "body": pull.get("body") or "",
@@ -66,8 +95,7 @@ class Forgejo:
             "baseRefOid": pull.get("merge_base") or pull["base"]["sha"],
             "headRefOid": pull["head"]["sha"],
             "commits": [{"oid": c["sha"], "messageHeadline": c["commit"]["message"].split("\n", 1)[0]} for c in commits],
-            "files": [{"path": f["filename"], "additions": f["additions"], "deletions": f["deletions"],
-                       "changeType": f["status"].upper()} for f in files],
+            "files": files,
         }
 
     def head_sha(self, owner: str, repo: str, n: int | str) -> str:

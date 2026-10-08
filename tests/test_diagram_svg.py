@@ -204,6 +204,21 @@ class Render(unittest.TestCase):
         self.assertIn("run `npm ci`", (self.run_dir / "error.txt").read_text())
         self.assertFalse(set(BRIEF_FILES) & self.files())
 
+    def test_a_pr_with_no_files_fails_the_run(self) -> None:
+        (self.run_dir / "pr.json").write_text(json.dumps({**PR, "files": []}))
+        self.assertEqual(self.main(), 1)
+        self.assertIn("has no files", (self.run_dir / "error.txt").read_text())
+        self.assertFalse(set(BRIEF_FILES) & self.files())
+
+    def test_a_walkthrough_whose_every_stop_is_dropped_fails_the_run(self) -> None:
+        render.os.environ[render.CHROME_ENV] = str(script(self.dir, "chrome", f"echo '{SVG_DOM}'"))
+        (self.run_dir / "answer.yaml").write_text(ANSWER.replace("    a.py\n  title", "    elsewhere.py\n  title"))
+        self.assertEqual(self.main(), 1)
+        error = (self.run_dir / "error.txt").read_text()
+        self.assertIn("no stop left", error)
+        self.assertIn("elsewhere.py", error)
+        self.assertFalse(set(BRIEF_FILES) & self.files())
+
     def test_an_answer_with_no_diagram_still_renders_without_chrome(self) -> None:
         (self.run_dir / "answer.yaml").write_text(re.sub(r"changes_diagram: \|\n(?:  .*\n)+", "", ANSWER))
         self.assertEqual(self.main(), 0)

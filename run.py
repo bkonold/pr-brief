@@ -160,6 +160,8 @@ def execute(progress: Progress) -> int:
     host = get_host(a.host, local)
     pr: dict[str, Any] = host.pr(owner, name, a.pr)
     diff: str = host.diff(owner, name, a.pr)
+    if not pr["files"]:
+        raise SystemExit(f"{a.host} lists no files for PR {a.pr}, in its file list or its diff, so there is nothing to describe")
     pack: Pack | None = None
     if variant.get("context"):
         progress.stage("context")

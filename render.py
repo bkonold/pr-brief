@@ -420,6 +420,8 @@ class Brief:
 def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
                notes: list[str], contract: dict[str, Any] | None = None, diff_text: str = "") -> Brief:
     paths: list[str] = [f["path"] for f in pr["files"]]
+    if not paths:
+        raise AnswerError("The pull request has no files, so no stop can point at one.")
 
     ordered: dict[str, Any] = {}
     if run["with_body"] and (pr["body"] or "").strip():
@@ -439,6 +441,9 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         notes.append("no changes_diagram")
     stops, stop_notes = resolve_stops(data.get("walkthrough"), paths, diff_lines, node_files)
     notes.extend(stop_notes)
+    if not stops:
+        raise AnswerError("The walkthrough has no stop left, so there is nothing to guide a reviewer through:\n"
+                          + "\n".join(f"- {note}" for note in stop_notes))
     stops_on: dict[str, list[int]] = {node: [stop["i"] for stop in stops if stop["node"] == node] for node in node_files}
     nodes: dict[str, dict[str, Any]] = {node: {"title": titles.get(node, node), "files": files, "stops": stops_on[node]}
                                         for node, files in node_files.items()}

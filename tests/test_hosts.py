@@ -20,6 +20,13 @@ HEAD_SHA = "c" * 40
 MERGE_BASE = "a" * 40
 DIFF = "diff --git a/src/Widget.java b/src/Widget.java\n--- a/src/Widget.java\n+++ b/src/Widget.java\n@@ -1 +1 @@\n-old\n+new\n"
 FILE_COUNT = PAGE_SIZE + 3
+MOVED_DIFF = (
+    "diff --git a/src/Changed.java b/src/Changed.java\n--- a/src/Changed.java\n+++ b/src/Changed.java\n@@ -1,2 +1,3 @@\n"
+    "-old\n+new\n+newer\n context\n"
+    "diff --git a/src/Added.java b/src/Added.java\nnew file mode 100644\n--- /dev/null\n+++ b/src/Added.java\n@@ -0,0 +1 @@\n+first\n"
+    "diff --git a/src/Gone.java b/src/Gone.java\ndeleted file mode 100644\n--- a/src/Gone.java\n+++ /dev/null\n@@ -1 +0,0 @@\n-bye\n"
+    "diff --git a/src/Before.java b/src/After.java\nsimilarity index 90%\nrename from src/Before.java\nrename to src/After.java\n"
+    "--- a/src/Before.java\n+++ b/src/After.java\n@@ -1 +1 @@\n-a\n+b\n")
 
 
 class FakeForgejo(BaseHTTPRequestHandler):
@@ -33,6 +40,9 @@ class FakeForgejo(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         query = parse_qs(url.query)
         prefix = "/api/v1/repos/acme/widgets/pulls/7"
+        if url.path.startswith("/api/v1/repos/acme/widgets/pulls/8"):
+            self.answer_moved_pr(url.path.removeprefix("/api/v1/repos/acme/widgets/pulls/8"))
+            return
         if url.path == prefix:
             body = {"title": "Add widget", "body": None, "head": {"ref": "feature/widget", "sha": HEAD_SHA},
                     "base": {"ref": "main", "sha": BASE_SHA}, "merge_base": MERGE_BASE}
@@ -57,6 +67,24 @@ class FakeForgejo(BaseHTTPRequestHandler):
         payload = json.dumps(body).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+
+    def answer_moved_pr(self, rest: str) -> None:
+        """A closed pull request whose head moved: its files list is empty but its diff is not."""
+        if rest == ".diff":
+            payload, kind = MOVED_DIFF.encode(), "text/plain; charset=utf-8"
+        elif rest in ("", "/commits", "/files"):
+            body = {"title": "Moved", "body": None, "head": {"ref": "feature/moved", "sha": HEAD_SHA},
+                    "base": {"ref": "main", "sha": BASE_SHA}, "merge_base": MERGE_BASE} if rest == "" else []
+            payload, kind = json.dumps(body).encode(), "application/json"
+        else:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
@@ -95,6 +123,18 @@ class ForgejoTest(unittest.TestCase):
         self.assertEqual(files[0], {"path": "src/File0.java", "additions": 0, "deletions": 0, "changeType": "ADDED"})
         self.assertEqual(files[-1]["path"], f"src/File{FILE_COUNT - 1}.java")
         self.assertEqual(files[1]["changeType"], "CHANGED")
+
+    def test_an_empty_files_list_falls_back_to_the_files_of_the_diff(self) -> None:
+        files = self.host().pr("acme", "widgets", 8)["files"]
+        self.assertEqual(files, [
+            {"path": "src/Changed.java", "additions": 2, "deletions": 1, "changeType": "CHANGED"},
+            {"path": "src/Added.java", "additions": 1, "deletions": 0, "changeType": "ADDED"},
+            {"path": "src/Gone.java", "additions": 0, "deletions": 1, "changeType": "DELETED"},
+            {"path": "src/After.java", "additions": 1, "deletions": 1, "changeType": "RENAMED"},
+        ])
+
+    def test_a_files_list_that_has_entries_is_used_as_it_is(self) -> None:
+        self.assertEqual(self.host().pr("acme", "widgets", 7)["files"][0]["path"], "src/File0.java")
 
     def test_diff_is_the_unified_diff(self) -> None:
         self.assertEqual(self.host().diff("acme", "widgets", 7), DIFF)

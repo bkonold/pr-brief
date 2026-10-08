@@ -240,6 +240,15 @@ class RunTest(unittest.TestCase):
         self.assertEqual(self.calls[0]["argv"][-2:], ["--model", "claude-from-local"])
         self.assertEqual(json.loads((self.home / "runs" / "7" / "v" / "run.json").read_text())["model"], "claude-from-local")
 
+    def test_a_pr_with_no_files_stops_before_the_model_is_called(self) -> None:
+        empty = FakeHost()
+        empty.pr = lambda *args: {**FakeHost.pr(empty, *args), "files": []}
+        with mock.patch.object(run, "get_host", lambda *args: empty):
+            with self.assertRaises(SystemExit) as stopped:
+                self.execute()
+        self.assertIn("lists no files for PR 7", str(stopped.exception))
+        self.assertEqual(self.calls, [])
+
     def test_a_claude_run_keeps_its_folder_and_its_command(self) -> None:
         with mock.patch.object(run.subprocess, "run", lambda argv, **kwargs: (self.calls.append({"argv": argv, **kwargs}), subprocess.CompletedProcess(argv, 0, ANSWER, ""))[1]):
             self.assertEqual(self.execute(), 0)
