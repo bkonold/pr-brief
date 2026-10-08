@@ -25,7 +25,8 @@ import yaml
 
 from config import ROOT, config_file, load_local, variant_file
 import layout
-from contract_block import contract_block, contract_rows, file_diff_lines, migration_rows
+from contract_block import contract_block, contract_rows, migration_rows
+from diff_lines import file_diff_lines
 from contract_lines import CALLERS, CONSUMERS, CONTRACT_LEVELS, Line, contract_lines
 from data_lines import DATA_LEVELS, DESTRUCTIVE, data_lines
 from hosts import get_host

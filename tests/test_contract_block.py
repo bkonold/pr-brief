@@ -9,7 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from context_pack import contract_breaks, contract_changes  # noqa: E402
-from contract_block import contract_block, contract_rows, file_diff_lines, migration_rows  # noqa: E402
+from contract_block import contract_block, contract_rows, migration_rows
+from diff_lines import file_diff_lines  # noqa: E402
 
 SPEC = "api/openapi.json"
 MIGRATION = "db/V9__orders.sql"

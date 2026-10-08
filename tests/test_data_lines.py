@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from contract_block import file_diff_lines  # noqa: E402
+from diff_lines import file_diff_lines  # noqa: E402
 from data_lines import (  # noqa: E402
     ADDITIVE, DATA_LEVELS, DESTRUCTIVE, REWRITES, classify_statement, data_lines, narrows, split_statements,
 )

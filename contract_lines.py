@@ -7,14 +7,14 @@ collapses repeated changes: the same change to the same property across several 
 operation that are one move, new operations under one base path, the same parameter change across several operations,
 and added enum values. `contract_lines` runs both and returns the lines, worst impact first.
 
-The lines are placed in chunks and drawn by layout.py. Older variants build their rows with contract_block.py instead.
+The lines are placed in chunks and drawn by layout.py.
 """
 import re
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
 
-from contract_block import (
+from diff_lines import (
     ENUM_REMOVED, FIELD_REMOVED, FIELD_REQUIRED, PARAMETER_REQUIRED, REMOVED_OPERATION, SCHEMA_REMOVED, DiffLine,
     SpecDiff,
 )

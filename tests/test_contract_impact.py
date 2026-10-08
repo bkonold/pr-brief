@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from contract_block import file_diff_lines  # noqa: E402
+from diff_lines import file_diff_lines  # noqa: E402
 from contract_lines import (  # noqa: E402
     ADDITIVE, CALLERS, CONSUMERS, CONTRACT_LEVELS, DEPRECATED, REQUEST, RESPONSE, collect_changes, contract_impact,
     side_phrase,

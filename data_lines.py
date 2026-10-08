@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from contract_block import SQL_NAME, DiffLine, sql_name
+from diff_lines import SQL_NAME, DiffLine, sql_name
 from contract_lines import SWEEP_MINIMUM, Line, Member, code, names_text, plural, several
 
 DESTRUCTIVE = "destructive"
