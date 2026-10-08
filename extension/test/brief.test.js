@@ -689,13 +689,6 @@ test("a fresh load selects stop 1 as a click on it would: box, pan, list and a j
   assert.equal(callouts.at(-1).length, 4);
 });
 
-test("a fresh load in GitHub's own mode selects nothing", async () => {
-  const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "github", selectedNode: null, selectedStop: null, variant: "v24" }) };
-  const { renders, centered, jumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
-  await settle();
-  assert.deepEqual(plain([renders.at(-1).state.selectedStop, centered, jumps]), [null, [], []]);
-});
-
 test("a page URL naming a diff line other than a stop's keeps the diff where it is and only follows stop 1 in the diagram", async () => {
   for (const hash of ["#diff-abc123R7", "#r123456", "#discussion_r98765"]) {
     const { renders, emphasized, centered, jumps, fileJumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash });
@@ -721,17 +714,17 @@ test("choosing a stop in the list goes to it and makes it the current stop", asy
   assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1)]), [3, ["a"]]);
 });
 
-test("the current stop and its box are restored after a reload of the same run, and dropped for another run", async () => {
+test("a reload lands on stop 1 again, whatever was selected before, and nothing is remembered", async () => {
   const first = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  await first.renders.at(-1).handlers.onSelectStop(2);
-  const same = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
+  await first.renders.at(-1).handlers.onSelectStop(3);
+  first.diagramHandlers.at(-1).onNode("b");
   await settle();
-  assert.deepEqual(plain([same.renders.at(-1).state.selectedStop, same.emphasized.at(-1)]), [2, ["c"]]);
-  assert.deepEqual(plain([same.centered, same.jumps]), [[["c"]], []]);
-  const other = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, variant: "v25" }, stored: first.stored });
+  await first.renders.at(-1).handlers.onMode("github");
+  assert.deepEqual(plain(first.stored), {});
+  const again = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
   await settle();
-  assert.deepEqual(plain([other.renders.at(-1).state.selectedStop, other.emphasized.at(-1)]), [1, ["a"]]);
+  assert.deepEqual(plain([again.renders.at(-1).state.mode, again.renders.at(-1).state.selectedStop, again.emphasized.at(-1), again.centered]), ["review", 1, ["a"], [["a"]]]);
 });
 
 test("every action that focuses a box centres the diagram on it", async () => {
@@ -767,24 +760,19 @@ test("every way into a stop zooms the diagram to it, and a click on a diagram bo
   assert.deepEqual(plain(centeredWith), [{ zoom: false }]);
 });
 
-test("opening a stop's anchor, or restoring the saved stop, zooms to it", async () => {
+test("opening a stop's anchor zooms to it", async () => {
   const linked = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
   await settle();
   assert.deepEqual(plain([linked.centered, linked.centeredWith]), [[["b"]], [{ zoom: true }]]);
-  const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "review", selectedNode: "c", selectedStop: 2, variant: "v24" }) };
-  const saved = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
-  await settle();
-  assert.deepEqual(plain([saved.centered, saved.centeredWith]), [[["c"]], [{ zoom: true }]]);
 });
 
-test("the diagram's Reset restores the load-time state: nothing selected, no box marked, nothing saved", async () => {
-  const { renders, callouts, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+test("the diagram's Reset restores the load-time state: nothing selected and no box marked", async () => {
+  const { renders, callouts, emphasized, lineEvents, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("c");
   await settle();
   await renders.at(-1).handlers.onSelectStop(2);
   assert.deepEqual(renders.at(-1).state.selectedStop, 2);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedNode: "c", selectedStop: 2, variant: "v24" });
 
   lineEvents.length = 0;
   const shownBefore = callouts.length;
@@ -795,7 +783,6 @@ test("the diagram's Reset restores the load-time state: nothing selected, no box
   assert.equal(emphasized.at(-1), null);
   assert.deepEqual(lineEvents.slice(0, 2), ["cancelJump", "clearLineTarget"]);
   assert.equal(callouts.length > shownBefore, true);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedNode: null, selectedStop: null, variant: "v24" });
 });
 
 test("Reset also clears a mode of GitHub's own tree", async () => {
@@ -871,13 +858,4 @@ test("the sidebar's state and handlers are the stops and the mode", async () => 
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onMode", "onSelectStop"]);
-});
-
-test("a saved box that the run no longer has is ignored, and the saved state keeps no tab", async () => {
-  const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "review", tab: "chunks", selectedNode: "gone", selectedStop: 2, variant: "v24" }) };
-  const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
-  await settle();
-  assert.deepEqual(plain(emphasized.at(-1)), ["c"]);
-  await renders.at(-1).handlers.onSelectStop(1);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedNode: "a", selectedStop: 1, variant: "v24" });
 });

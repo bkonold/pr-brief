@@ -287,43 +287,23 @@
   let shownText = null;
   let emphasis = null;
   let canvas = null;
-  let panelWidth = defaultWidth(globalThis.innerWidth);
-  // The width the reader dragged the panel to, which wins over the default; null until they do.
-  let chosenWidth = null;
+  // The width the reader dragged the panel to, kept for as long as the page lives; null until they drag.
+  let draggedWidth = null;
   let boxWidth = 0;
   let caption = "";
 
-  // The remembered width is read once when the script loads, so it is usually known before the first render.
-  function readStoredWidth() {
-    if (!ns.alive?.() || !globalThis.chrome?.storage?.local) return;
-    chrome.storage.local
-      .get(WIDTH_KEY)
-      .then((stored) => {
-        if (stored[WIDTH_KEY] === undefined) return;
-        chosenWidth = Number.isFinite(Number(stored[WIDTH_KEY])) ? Number(stored[WIDTH_KEY]) : null;
-        if (root) setWidth(root, chosenWidth);
-      })
-      .catch(() => {});
-  }
-
-  // Remembers the reader's width, or forgets it for `null`, which puts the default back.
-  function storeWidth(width) {
-    if (!ns.alive?.() || !globalThis.chrome?.storage?.local) return;
-    const stored = width === null ? chrome.storage.local.remove(WIDTH_KEY) : chrome.storage.local.set({ [WIDTH_KEY]: width });
-    stored.catch(() => {});
-  }
-
-  // Sets the panel's width: `width` clamped, or the default for the diagram on show for `null`.
+  // Sets the panel's width: `width` clamped, or the default for the diagram on show for `null`. A dragged width lasts
+  // until the page is left; every load starts at the default.
   function setWidth(panel, width) {
-    panelWidth = width === null ? defaultWidth(innerWidth, boxWidth) : clampWidth(width, innerWidth);
-    panel.style.setProperty("--prd-width", `${panelWidth}px`);
+    const next = width === null ? defaultWidth(innerWidth, boxWidth) : clampWidth(width, innerWidth);
+    panel.style.setProperty("--prd-width", `${next}px`);
   }
 
   // Dragging the right edge rightwards widens the panel, and the file pane and diff column, its flex siblings,
   // narrow to match.
   function resizeHandle(panel) {
     const handle = make("div", "prd-handle");
-    handle.title = "Drag to resize; double-click to reset";
+    handle.title = "Drag to resize";
     let drag = null;
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
@@ -333,22 +313,17 @@
       event.preventDefault();
     });
     handle.addEventListener("pointermove", (event) => {
-      if (drag) setWidth(panel, drag.width + event.clientX - drag.x);
+      if (!drag) return;
+      draggedWidth = drag.width + event.clientX - drag.x;
+      setWidth(panel, draggedWidth);
     });
     const end = () => {
       if (!drag) return;
       drag = null;
       panel.classList.remove("prd-dragging");
-      chosenWidth = panelWidth;
-      storeWidth(chosenWidth);
     };
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
-    handle.addEventListener("dblclick", () => {
-      chosenWidth = null;
-      setWidth(panel, null);
-      storeWidth(null);
-    });
     return handle;
   }
 
@@ -679,7 +654,7 @@
     zoom.reset.addEventListener("click", resetAction(() => canvas, handlers));
     panel.classList.toggle("prd-collapsed", collapsed);
     panel.append(resizeHandle(panel), header, cardElement, ...(caption ? [buildCaption(caption)] : []));
-    setWidth(panel, chosenWidth);
+    setWidth(panel, draggedWidth);
     return panel;
   }
 
@@ -738,7 +713,8 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  readStoredWidth();
+  // Cleans up the width an earlier version saved.
+  if (ns.alive?.() && globalThis.chrome?.storage?.local) chrome.storage.local.remove(WIDTH_KEY).catch(() => {});
 
   ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor, clampScale, contentSize, restingView, walkScale, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
 })();

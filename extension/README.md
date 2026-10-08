@@ -61,8 +61,8 @@ variant) is not shown: see "Older runs".
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-The mode, selected box and current stop are remembered per PR in `sessionStorage`. The box and the stop come back
-only for the variant they were chosen in, and a saved box the run no longer has is dropped.
+Nothing about the review's state is remembered: every load and every navigation into the files page starts in "By review"
+on stop 1, with the default variant. The one thing kept is whether the diagram panel is collapsed (see below).
 
 ## When the page server is down
 
@@ -77,7 +77,7 @@ server's `GET /api/config` (`{default_variant, variants}`). The run shown is, in
 the PR has it; the newest active variant the PR has (active: listed in the config's `variants`); the newest variant the PR
 has at all. If the server's config can't be read (server down, token missing), the newest variant the PR has is shown.
 Without `variants.json`, only the server's default is tried. "Newest" compares variant names with digit runs as numbers
-(`v9` < `v10`). The saved per-PR selection is restored only for the variant it was made in. The files view has no variant
+(`v9` < `v10`). The files view has no variant
 control; the PR brief card on the conversation page names the variant it shows.
 
 ## Boxes and files
@@ -107,7 +107,7 @@ that expands it.
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
   250ms. The emphasized box gets a concentric 8px halo (22% of the accent, `#534ab7` in the light theme and `#9d94f5` in the dark), an 11% accent tint over its fill and an accent-dark title, and keeps its own stroke. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
-  the viewport, a fifth of the viewport by default, or wider to fit the widest box (double-click the handle to reset), and is remembered in `chrome.storage.local`.
+  the viewport, a fifth of the viewport by default, or wider to fit the widest box. A width dragged to lasts until the page is left and is not stored, so every load starts at the default; the extension removes the `diagramWidth` key an earlier version saved in `chrome.storage.local`.
 - Each box shows the numbers of the stops that land on it as a purple badge (`2 · 5`) before its bold title, and a
   box with no stop has no badge. A box covering no changed file is dashed and muted. When the diagram has one, a line
   under the card reads "Dashed boxes are unchanged context".
@@ -123,7 +123,7 @@ that expands it.
   is over the canvas. Pressing and dragging anywhere on the canvas pans it; a drag that starts on a box pans once it
   moves more than 4px, and a shorter press is a box click. The header has −, the current zoom (click it for 100%), +
   and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop
-  callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas
+  callout highlighted, GitHub's tree swapped back out for the review list, and the canvas
   back at its resting view. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge
   reaches the middle of the canvas.
 - Focusing a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas over about
@@ -140,8 +140,7 @@ that expands it.
   centred horizontally when it is narrower than the pane, else at the left edge, at the top. Resizing the panel keeps
   a focused position, and a diagram still at rest stays at rest. Zoom and position are not saved.
 - Loading the files page in "By review" mode selects stop 1 as a click on it would: its box is highlighted, the canvas
-  pans to it, its callout shows and the diff scrolls to it. A saved selection of the same run is restored instead,
-  and so is a stop the URL links to; the saved one only pans the diagram and leaves the diff where it is. When the URL
+  pans to it, its callout shows and the diff scrolls to it. A stop the URL links to is opened instead. When the URL
   already names a diff line or review comment (`#diff-…`, `#r…`, `#discussion_r…`) that is not a stop's, stop 1 is
   highlighted and panned to but the diff does not scroll, so the line the URL names stays in view.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.

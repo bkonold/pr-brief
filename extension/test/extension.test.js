@@ -1125,3 +1125,32 @@ test("a newer markBox wins over an older one that is still looking for its heade
     if (saved.document === undefined) delete globalThis.document;
   }
 });
+
+test("loading the diagram script removes the width an earlier version saved and stores nothing", async () => {
+  const path = require.resolve("../diagram.js");
+  const calls = [];
+  const originalChrome = globalThis.chrome;
+  const originalPrFocus = globalThis.prFocus;
+  const cached = require.cache[path];
+  delete require.cache[path];
+  globalThis.prFocus = { alive: () => true };
+  globalThis.chrome = {
+    storage: {
+      local: {
+        get: async (...args) => (calls.push(["get", ...args]), {}),
+        set: async (...args) => (calls.push(["set", ...args]), undefined),
+        remove: async (...args) => (calls.push(["remove", ...args]), undefined),
+      },
+    },
+  };
+  try {
+    require("../diagram.js");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls, [["remove", "diagramWidth"]]);
+  } finally {
+    delete require.cache[path];
+    if (cached) require.cache[path] = cached;
+    globalThis.chrome = originalChrome;
+    globalThis.prFocus = originalPrFocus;
+  }
+});

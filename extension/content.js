@@ -92,27 +92,8 @@
     if (status.ok && status.state === "running") controller.adopt(status);
   }
 
-  function storageKey(pr) {
-    return `prFocus:${pr.owner}/${pr.repo}#${pr.pr}`;
-  }
-
-  function readSaved(pr) {
-    try {
-      return JSON.parse(sessionStorage.getItem(storageKey(pr)) ?? "{}") ?? {};
-    } catch {
-      return {};
-    }
-  }
-
-  function save(session) {
-    try {
-      sessionStorage.setItem(
-        storageKey(session.pr),
-        JSON.stringify({ mode: session.mode, selectedNode: session.selectedNode, selectedStop: session.selectedStop, variant: session.review?.variant }),
-      );
-    } catch {
-      // The choice just isn't remembered.
-    }
+  function sessionKey(pr) {
+    return `${pr.owner}/${pr.repo}#${pr.pr}`;
   }
 
   // MutationObserver bursts coalesce into one refresh through the single pending timer.
@@ -260,8 +241,7 @@
     if (scroll) await jumpToStop(session, stop, Object.keys(jump).length ? jump : undefined);
   }
 
-  // Puts the review back as it was when it loaded: no box or stop selected and no line or box marked. The saved
-  // selection is cleared with it.
+  // Puts the review back as it was when it loaded: no box or stop selected and no line or box marked.
   function resetReview(session) {
     return change(
       session,
@@ -305,7 +285,6 @@
   function change(session, update) {
     if (current !== session || !live()) return Promise.resolve();
     update();
-    save(session);
     return refresh();
   }
 
@@ -340,24 +319,15 @@
     return null;
   }
 
-  // What the page shows on load in the walkthrough: a linked stop is opened as a click on it would. Otherwise the
-  // diagram follows the saved selection, or stop 1 when there is none: a saved one or one on a diff line the URL names
-  // leaves the diff where it is, and a fresh load opens stop 1 as a click on it would.
+  // What the page shows on load: a linked stop is opened as a click on it would. Otherwise stop 1 is: as a click on it
+  // would, or, when the URL names a diff line that is not a stop's, in the diagram only, so that line stays in view.
   async function selectInitialStop(session) {
-    if (!session?.review || session.mode !== "review" || !live()) return;
+    if (!session?.review || !live()) return;
     const wanted = location.hash.slice(1);
     const linked = wanted.startsWith("diff-") ? await stopLinkedBy(session, wanted) : null;
     if (current !== session || !live()) return;
     if (linked) {
       selectStop(session, linked);
-      return;
-    }
-    if (session.selectedStop !== null) {
-      selectStop(session, session.stops.find((stop) => stop.i === session.selectedStop), { scroll: false });
-      return;
-    }
-    if (session.selectedNode) {
-      diagram.centerOn([session.selectedNode]);
       return;
     }
     const first = session.stops[0];
@@ -462,7 +432,7 @@
       if (current || stopObserving) teardown();
       return;
     }
-    const key = storageKey(pr);
+    const key = sessionKey(pr);
     if (current?.key === key) return;
     teardown();
     current = { key };
@@ -481,20 +451,15 @@
       return;
     }
     if (token !== loadToken || !review) return;
-    const saved = readSaved(pr);
-    const sameRun = saved.variant === review.variant;
-    const selectedNode = sameRun && Object.hasOwn(review.nodes, saved.selectedNode) ? saved.selectedNode : null;
-    const stops = tree.stopsOf(review);
-    const selectedStop = sameRun && stops.some((stop) => stop.i === saved.selectedStop) ? saved.selectedStop : null;
     current = {
       key,
       pr,
       review,
-      mode: saved.mode === "github" ? "github" : "review",
-      selectedNode,
+      mode: "review",
+      selectedNode: null,
       startedAt: Date.now(),
-      stops,
-      selectedStop,
+      stops: tree.stopsOf(review),
+      selectedStop: null,
       selection: 0,
       callouts: [],
     };
