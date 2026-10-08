@@ -20,12 +20,12 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from config import HOME, config_file, variant_file
+from config import HOME, config_section, variant_file
 from hosts import run_label, run_order
 from runners import CLAUDE, COPILOT, run_dir_name
 
 RUNS = HOME / "runs"
-ARCHETYPES: Path | None = config_file("archetypes")
+ARCHETYPES: dict[str, Any] | None = config_section("archetypes")
 UNCLASSIFIED = "Unclassified"
 
 # The labels the browser extension's dropdown shows; a variant without one is listed under its name.
@@ -102,7 +102,7 @@ def pr_author(pr_dir: Path) -> str:
 
 
 def archetype_table(prs: list[Path]) -> str:
-    config: dict[str, Any] = tomllib.loads(ARCHETYPES.read_text())
+    config: dict[str, Any] = ARCHETYPES
     assigned: dict[str, str] = config["prs"]
     groups: list[str] = [*config["order"], UNCLASSIFIED]
     rows: list[str] = []
