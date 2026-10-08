@@ -240,9 +240,10 @@
   }
 
   // Makes the stop's file the active one, gives the stop's box the diagram's halo and jumps to the stop's line, or to its
-  // file's header when the stop has no line. A stop on no box selects no box. `jump` passes on to the jump, e.g.
-  // `{ pulse: false }`.
-  async function selectStop(session, stop, jump = undefined) {
+  // file's header when the stop has no line. A stop on no box selects no box. `scroll: false` leaves the diff where it
+  // is, so only the box, the list and the highlight follow; any other option, e.g. `{ pulse: false }`, passes on to the
+  // jump.
+  async function selectStop(session, stop, { scroll = true, ...jump } = {}) {
     const mine = startSelection(session);
     await change(session, () => {
       leaveLine();
@@ -255,7 +256,7 @@
     if (current !== session || !live() || session.selection !== mine) return;
     if (stop.node) diagram.centerOn([stop.node]);
     tree.revealStop(stop.i);
-    await jumpToStop(session, stop, jump);
+    if (scroll) await jumpToStop(session, stop, Object.keys(jump).length ? jump : undefined);
   }
 
   // Puts the review back as it was when it loaded: no box or stop selected and no line or box marked. The saved
@@ -326,17 +327,40 @@
     return tree.owns(node) || diagram.owns(node) || page.ownsLine(node);
   }
 
+  // A fragment that names a place in the diff: a file or line (`diff-…`) or a review comment (`r…`, `discussion_r…`).
+  const DIFF_FRAGMENT = /^(?:diff-|r\d+|discussion_r\d+)/;
+
   // A link to a stop, such as the PR brief card's, carries the anchor of that line or file in the URL fragment. Opening
   // the files page on it goes to that stop. Any other fragment is left to the page.
-  async function jumpToLinkedStop(session) {
-    const wanted = location.hash.slice(1);
-    if (!wanted.startsWith("diff-") || !session?.review || !live()) return;
+  async function stopLinkedBy(session, wanted) {
     for (const stop of session.stops) {
-      if ((await stopAnchor(stop)) === wanted) {
-        if (current === session && live()) selectStop(session, stop);
-        return;
-      }
+      if ((await stopAnchor(stop)) === wanted) return stop;
     }
+    return null;
+  }
+
+  // What the page shows on load in the walkthrough: a linked stop is opened as a click on it would. Otherwise the
+  // diagram follows the saved selection, or stop 1 when there is none: a saved one or one on a diff line the URL names
+  // leaves the diff where it is, and a fresh load opens stop 1 as a click on it would.
+  async function selectInitialStop(session) {
+    if (!session?.review || session.mode !== "review" || !live()) return;
+    const wanted = location.hash.slice(1);
+    const linked = wanted.startsWith("diff-") ? await stopLinkedBy(session, wanted) : null;
+    if (current !== session || !live()) return;
+    if (linked) {
+      selectStop(session, linked);
+      return;
+    }
+    if (session.selectedStop !== null) {
+      selectStop(session, session.stops.find((stop) => stop.i === session.selectedStop), { scroll: false });
+      return;
+    }
+    if (session.selectedNode) {
+      diagram.centerOn([session.selectedNode]);
+      return;
+    }
+    const first = session.stops[0];
+    if (first) selectStop(session, first, { scroll: !DIFF_FRAGMENT.test(wanted) });
   }
 
   // A PR with no run: the list's place holds one line that generates the brief, then follows the run. When it is done
@@ -478,7 +502,7 @@
     if (current !== session || !live()) return;
     stopObserving = page.onChange(onMutations);
     refresh();
-    jumpToLinkedStop(current);
+    selectInitialStop(current);
   }
 
   stopNavigating = page.onNavigate(start);

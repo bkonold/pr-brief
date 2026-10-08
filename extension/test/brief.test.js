@@ -627,6 +627,7 @@ test("a walkthrough run has a callout for every stop and a file stop anchored at
 test("walking the stops with a callout's buttons gives each stop's box the halo and centres on it", async () => {
   const { callouts, jumps, fileJumps, centered, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
+  jumps.length = 0;
   const { onGo, stops } = callouts.at(-1)[0].render();
   const walked = [];
   for (const stop of stops) {
@@ -647,6 +648,7 @@ test("a stop on no box selects no box but still jumps there", async () => {
   const outside = { ...WALK_REVIEW, walkthrough: [{ i: 1, title: "Docs", why: "w", path: "docs/readme.md", side: "R", line: 3, node: null }] };
   const { callouts, jumps, renders, emphasized, centered } = loadContent({ run: null, view: "files", review: outside });
   await settle();
+  jumps.length = 0;
   await callouts.at(-1)[0].render().onGo(outside.walkthrough[0]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["docs/readme.md", "R", 3, { pulse: false }]]));
   assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1), centered]), [1, null, []]);
@@ -655,6 +657,7 @@ test("a stop on no box selects no box but still jumps there", async () => {
 test("clicking Previous or Next quickly ends at the last stop clicked, jumping only there", async () => {
   const { callouts, jumps, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
+  jumps.length = 0;
   const { onGo, stops } = callouts.at(-1)[0].render();
   await Promise.all([onGo(stops[1]), onGo(stops[2])]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["src/ui.js", "R", 30, { pulse: false }]]));
@@ -668,18 +671,49 @@ test("opening the files page on a stop's diff anchor goes to that stop", async (
   assert.deepEqual(plain(emphasized.at(-1)), ["b"]);
 });
 
-test("the sidebar opens with every stop listed and none current", async () => {
+test("the sidebar opens with every stop listed and the first one current", async () => {
   const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const { state } = renders.at(-1);
-  assert.deepEqual([state.stops.map((stop) => stop.i), state.selectedStop], [[1, 2, 3, 4], null]);
+  assert.deepEqual([state.stops.map((stop) => stop.i), state.selectedStop], [[1, 2, 3, 4], 1]);
   assert.deepEqual(Object.keys(state).sort(), ["mode", "note", "pageSha", "selectedStop", "stops"]);
-  assert.equal(emphasized.at(-1), null);
+  assert.deepEqual(plain(emphasized.at(-1)), ["a"]);
+});
+
+test("a fresh load selects stop 1 as a click on it would: box, pan, list and a jump to its line", async () => {
+  const { renders, emphasized, centered, revealed, jumps, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1), centered, revealed]), [1, ["a"], [["a"]], [1]]);
+  assert.deepEqual(jumps, [["src/ui.js", "R", 4, undefined]]);
+  assert.equal(callouts.at(-1).length, 4);
+});
+
+test("a fresh load in GitHub's own mode selects nothing", async () => {
+  const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "github", selectedNode: null, selectedStop: null, variant: "v24" }) };
+  const { renders, centered, jumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
+  await settle();
+  assert.deepEqual(plain([renders.at(-1).state.selectedStop, centered, jumps]), [null, [], []]);
+});
+
+test("a page URL naming a diff line other than a stop's keeps the diff where it is and only follows stop 1 in the diagram", async () => {
+  for (const hash of ["#diff-abc123R7", "#r123456", "#discussion_r98765"]) {
+    const { renders, emphasized, centered, jumps, fileJumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash });
+    await settle();
+    assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1), centered, jumps, fileJumps]), [1, ["a"], [["a"]], [], []], hash);
+  }
+});
+
+test("a fragment that names no diff line does not stop the load from jumping to stop 1", async () => {
+  const { jumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#files_bucket" });
+  await settle();
+  assert.equal(jumps.length, 1);
 });
 
 test("choosing a stop in the list goes to it and makes it the current stop", async () => {
   const { renders, jumps, revealed, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
+  jumps.length = 0;
+  revealed.length = 0;
   await renders.at(-1).handlers.onSelectStop(3);
   assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/ui.js", "R", 30]]);
   assert.deepEqual(revealed, [3]);
@@ -693,15 +727,17 @@ test("the current stop and its box are restored after a reload of the same run, 
   const same = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
   await settle();
   assert.deepEqual(plain([same.renders.at(-1).state.selectedStop, same.emphasized.at(-1)]), [2, ["c"]]);
+  assert.deepEqual(plain([same.centered, same.jumps]), [[["c"]], []]);
   const other = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, variant: "v25" }, stored: first.stored });
   await settle();
-  assert.deepEqual([other.renders.at(-1).state.selectedStop, other.emphasized.at(-1)], [null, null]);
+  assert.deepEqual(plain([other.renders.at(-1).state.selectedStop, other.emphasized.at(-1)]), [1, ["a"]]);
 });
 
 test("every action that focuses a box centres the diagram on it", async () => {
   const { renders, callouts, centered, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(plain(centered), []);
+  assert.deepEqual(plain(centered), [["a"]]);
+  centered.length = 0;
   diagramHandlers.at(-1).onNode("b");
   await settle();
   assert.deepEqual(plain(centered), [["b"]]);
@@ -772,6 +808,7 @@ test("a diagram box click goes to the first stop on that box, jumping again on e
 test("a box with files and no stop scrolls to its first file header and marks it", async () => {
   const { jumps, fileJumps, diagramHandlers, renders, scrolled, boxes, emphasized } = loadContent({ run: null, view: "files", review: NO_STOP_REVIEW });
   await settle();
+  jumps.length = 0;
   diagramHandlers.at(-1).onNode("b");
   await settle();
   assert.deepEqual([jumps, fileJumps, scrolled], [[], [], ["src/api.js"]]);
@@ -796,6 +833,7 @@ test("a context box, which covers no file, and a box the review does not list do
   const { jumps, scrolled, diagramHandlers, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const before = renders.length;
+  jumps.length = 0;
   diagramHandlers.at(-1).onNode("d");
   diagramHandlers.at(-1).onNode("zzz");
   await settle();
@@ -812,7 +850,7 @@ test("a saved box that the run no longer has is ignored, and the saved state kee
   const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "review", tab: "chunks", selectedNode: "gone", selectedStop: 2, variant: "v24" }) };
   const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
   await settle();
-  assert.equal(emphasized.at(-1), null);
+  assert.deepEqual(plain(emphasized.at(-1)), ["c"]);
   await renders.at(-1).handlers.onSelectStop(1);
   assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedNode: "a", selectedStop: 1, variant: "v24" });
 });

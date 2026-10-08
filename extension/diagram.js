@@ -25,7 +25,7 @@
   const MIN_SCALE = 0.25;
   const MAX_SCALE = 4;
   const ZOOM_STEP = 1.25;
-  const FIT_MARGIN = 8;
+  const REST_MARGIN = 8;
   const BOX_MARGIN = 16;
   const DRAG_THRESHOLD = 4;
   const WHEEL_ZOOM_RATE = 0.0025;
@@ -48,11 +48,10 @@
     return w > 0 && h > 0 ? { w, h } : { ...FALLBACK_SIZE };
   }
 
-  // The view (scale, plus the translation of the diagram's top-left corner in viewport pixels) that fits the
-  // diagram's width to the viewport with a margin, top-aligned and horizontally centred.
-  function fitView(content, viewport, margin = FIT_MARGIN) {
-    const scale = clampScale((viewport.w - 2 * margin) / content.w);
-    return { scale, x: (viewport.w - content.w * scale) / 2, y: margin };
+  // The view a diagram rests in when nothing has been focused or moved: 1:1, centred horizontally when it fits the viewport
+  // and else left-aligned, at the top.
+  function restingView(content, viewport) {
+    return { scale: 1, x: content.w <= viewport.w ? (viewport.w - content.w) / 2 : REST_MARGIN, y: REST_MARGIN };
   }
 
   // The view after zooming to `scale` with the viewport point (px, py) staying put.
@@ -68,9 +67,9 @@
   }
 
   // Keeps part of the diagram visible: a diagram edge can be panned to the middle of the viewport, no further. A
-  // diagram shorter than half the viewport still rests at the fit margin.
+  // diagram shorter than half the viewport still rests at the rest margin.
   function clampView(view, content, viewport) {
-    const clampAxis = (offset, size, span) => Math.max(Math.min(span / 2 - size, FIT_MARGIN), Math.min(span / 2, offset));
+    const clampAxis = (offset, size, span) => Math.max(Math.min(span / 2 - size, REST_MARGIN), Math.min(span / 2, offset));
     return {
       scale: view.scale,
       x: clampAxis(view.x, content.w * view.scale, viewport.w),
@@ -78,18 +77,17 @@
     };
   }
 
-  // The view that follows `rect` (a box's bounds in diagram units, its halo included). The zoom is the largest at which
-  // the rect fits the viewport's width inside `margin`, capped so its height fits too and kept within the zoom limits.
-  // The rect is centred horizontally. Vertically the box keeps the on-screen position it has now at the new zoom, and
-  // the view moves only as far as it takes to bring `band` (the bounds of the box and the boxes it is joined to) inside
-  // the margin, staying put when the band already is. A band taller than the viewport inside the margin is pinned to the
-  // side of it the box is nearer, then moved just enough to keep the box in view. The result keeps clampView's limits.
+  // The view that follows `rect` (a box's bounds in diagram units, its halo included) without changing the zoom. The rect is
+  // centred horizontally, or, when it is wider than the viewport inside `margin`, its left edge sits at the margin. Vertically
+  // the view moves only as far as it takes to bring `band` (the bounds of the box and the boxes it is joined to) inside the
+  // margin, staying put when the band already is. A band taller than the viewport inside the margin is pinned to the side of
+  // it the box is nearer, then moved just enough to keep the box in view. The result keeps clampView's limits.
   function followBoxView(view, rect, band, content, viewport, margin = BOX_MARGIN) {
-    const scale = clampScale(Math.min((viewport.w - 2 * margin) / rect.w, (viewport.h - 2 * margin) / rect.h));
+    const scale = view.scale;
     const centre = rect.y + rect.h / 2;
     const low = viewport.h - margin;
     const bandEnd = band.y + band.h;
-    let y = centre * view.scale + view.y - centre * scale;
+    let y = view.y;
     if (band.h * scale > viewport.h - 2 * margin) {
       y = centre - band.y <= bandEnd - centre ? margin - band.y * scale : low - bandEnd * scale;
       const boxBottom = (rect.y + rect.h) * scale + y;
@@ -102,7 +100,8 @@
       if (top < margin) y += margin - top;
       else if (bottom > low) y -= bottom - low;
     }
-    return clampView({ scale, x: viewport.w / 2 - (rect.x + rect.w / 2) * scale, y }, content, viewport);
+    const x = rect.w * scale > viewport.w - 2 * margin ? margin - rect.x * scale : viewport.w / 2 - (rect.x + rect.w / 2) * scale;
+    return clampView({ scale, x, y }, content, viewport);
   }
 
   function wheelUnit(event) {
@@ -354,12 +353,12 @@
   }
 
   // The pan-and-zoom canvas: `svg` is absolutely positioned in `viewport` and moved by a translate + scale
-  // transform. The view is a { scale, x, y } in viewport pixels; `fitted` keeps it matched to the viewport width
-  // until the user zooms or pans. Any wheel event, pinch included, zooms around the pointer and never scrolls the
+  // transform. The view is a { scale, x, y } in viewport pixels; `resting` keeps it in its resting view
+  // (restingView) until the user zooms or pans or a box is focused. Any wheel event, pinch included, zooms around the pointer and never scrolls the
   // page, a drag anywhere pans, and a press that stays under DRAG_THRESHOLD is a click on the box under it.
-  // `centerOn` glides to a box list, zoomed to the viewport's width at that moment with its halo inside the margin and
-  // followed vertically through the boxes joined to it (followBoxView); any wheel or press interrupts the glide, and
-  // panning and zooming stay free until the next call. While
+  // `centerOn` glides to a box list at the current zoom, with its halo inside the margin and followed vertically through
+  // the boxes joined to it (followBoxView); any wheel or press interrupts the glide, and panning and zooming stay free
+  // until the next call. While
   // the viewport is hidden (the panel is collapsed) it remembers the latest target and moves to it once the viewport has
   // a size again.
   function createCanvas(viewport, svg, { onNode, onView }) {
@@ -367,7 +366,7 @@
     svg.style.width = `${content.w}px`;
     svg.style.height = `${content.h}px`;
     let view = { scale: 1, x: 0, y: 0 };
-    let fitted = true;
+    let resting = true;
     let drag = null;
     let glideFrame = null;
     let pending = null;
@@ -379,15 +378,15 @@
       onView(view);
     }
 
-    function show(next, isFit) {
+    function show(next, isResting) {
       view = clampView(next, content, size());
-      fitted = isFit;
+      resting = isResting;
       paint();
     }
 
-    function fit() {
+    function rest() {
       if (size().w <= 0) return;
-      show(fitView(content, size()), true);
+      show(restingView(content, size()), true);
     }
 
     function zoomTo(scale, px = size().w / 2, py = size().h / 2) {
@@ -472,6 +471,7 @@
       pending = null;
       const rect = boundsOf(ids);
       if (!rect) return;
+      resting = false;
       const own = grown(rect);
       const joined = boundsOf(neighboursOf(ids));
       const band = joined ? union(own, joined) : own;
@@ -534,11 +534,17 @@
       if (drag.moved) show({ ...drag.from, x: drag.from.x + dx, y: drag.from.y + dy }, false);
     }
 
+    let observed = size();
+    if (observed.w > 0) rest();
     const resizeObserver = globalThis.ResizeObserver
       ? new ResizeObserver(() => {
-          if (size().w <= 0) return;
+          const now = size();
+          if (now.w <= 0) return;
+          const changed = now.w !== observed.w || now.h !== observed.h;
+          observed = now;
+          if (!changed) return;
           cancelGlide();
-          if (fitted) fit();
+          if (resting) rest();
           else show(view, false);
           if (pending) centerOn(pending);
         })
@@ -553,7 +559,7 @@
     paint();
 
     return {
-      fit,
+      rest,
       actualSize: () => zoomTo(1),
       zoomIn: () => zoomTo(stepScale(view.scale, 1)),
       zoomOut: () => zoomTo(stepScale(view.scale, -1)),
@@ -577,16 +583,15 @@
     const out = button("prd-zoom-out", "−", "Zoom out");
     const percent = button("prd-zoom-percent", "100%", "Reset to 100%");
     const zoomIn = button("prd-zoom-in", "+", "Zoom in");
-    const fit = button("prd-zoom-fit", "Fit", "Fit the diagram to the pane width");
     const reset = button("prd-zoom-reset", "↺", "Reset");
-    group.append(out, percent, zoomIn, fit, reset);
-    return { group, out, percent, zoomIn, fit, reset };
+    group.append(out, percent, zoomIn, reset);
+    return { group, out, percent, zoomIn, reset };
   }
 
-  // The Reset button's click: fits the canvas to the pane, then lets the host put the rest of the review back.
+  // The Reset button's click: returns the canvas to its resting view, then lets the host put the rest of the review back.
   function resetAction(canvasOf, handlers) {
     return () => {
-      canvasOf().fit();
+      canvasOf().rest();
       handlers.onReset?.();
     };
   }
@@ -625,7 +630,6 @@
     zoom.out.addEventListener("click", () => canvas.zoomOut());
     zoom.zoomIn.addEventListener("click", () => canvas.zoomIn());
     zoom.percent.addEventListener("click", () => canvas.actualSize());
-    zoom.fit.addEventListener("click", () => canvas.fit());
     zoom.reset.addEventListener("click", resetAction(() => canvas, handlers));
     panel.classList.toggle("prd-collapsed", collapsed);
     panel.append(resizeHandle(panel), header, cardElement, ...(caption ? [buildCaption(caption)] : []));
@@ -635,7 +639,7 @@
 
   // Docks the diagram as the leftmost pane, right before the host's file pane in its own flex row, so the file
   // pane and the diff column narrow to make room. Safe to call repeatedly: it re-mounts only when the panel is
-  // gone. handlers: { onNode(nodeId), onReset() }; the Reset button refits the canvas and then calls onReset.
+  // gone. handlers: { onNode(nodeId), onReset() }; the Reset button returns the canvas to its resting view and then calls onReset.
   function render(svgText, handlers) {
     const host = ns.page.diagramHost();
     if (!host) return;
@@ -689,7 +693,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, captionFor, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, captionFor, clampScale, contentSize, restingView, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

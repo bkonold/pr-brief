@@ -117,22 +117,29 @@ that expands it.
   not part of the box's bounds, so centring and following measure the box itself. A selection with no box leaves the
   diagram as it was; "GitHub tree" mode or no selection restores it.
 - Clicking a box goes to its first stop (see "Boxes and files").
-- The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Any scroll wheel or trackpad
-  scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
-  Ctrl + wheel); the page does not scroll while the pointer is over the canvas. Pressing and dragging anywhere on
-  the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
-  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
-  a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas, over about 200ms (at once under reduced motion). The stop's box
-  and its halo are zoomed to the pane's width with a 16px margin and centred horizontally, within the 25% to 400% zoom
-  range, and the zoom drops further if the box's own height would not fit. The box keeps the vertical position it has
-  on screen, and the canvas moves vertically only as far as it takes to bring the box and the boxes joined to it by
-  solid arrows into view (dotted return arrows count for nothing); when they already are, it does not move vertically.
-  When they are taller than the pane, the side the box is nearer shows, and the box stays in view. The pane's size is
-  read at that moment, so a resized pane fits too. Panning
-  and zooming by hand work until the next stop is focused. A stop on no box leaves the canvas
-  where it is, and a collapsed panel moves to the focused box when it is expanded again. Each
-  new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
-  position are not saved.
+- The diagram draws at 1:1, so text on screen is the size it was rendered at (16px). Nothing zooms it to fit the pane.
+  It is a pan-and-zoom canvas: any scroll wheel or trackpad scroll over the canvas zooms around the pointer (25% to
+  400%), as does a pinch (Chrome reports a trackpad pinch as Ctrl + wheel); the page does not scroll while the pointer
+  is over the canvas. Pressing and dragging anywhere on the canvas pans it; a drag that starts on a box pans once it
+  moves more than 4px, and a shorter press is a box click. The header has −, the current zoom (click it for 100%), +
+  and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop
+  callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas
+  back at its resting view. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge
+  reaches the middle of the canvas.
+- Focusing a stop, whether from a stop row, a callout's Previous/Next or a click on its box, pans the canvas over about
+  200ms (at once under reduced motion) and never changes the zoom. The box is centred horizontally; a box wider than
+  the pane has its left edge at a 16px margin instead. The canvas moves vertically only as far as it takes to bring the
+  box and the boxes joined to it by solid arrows into view (dotted return arrows count for nothing); when they already
+  are, it does not move vertically. When they are taller than the pane, the side the box is nearer shows, and the box
+  stays in view. The pane's size is read at that moment. A stop on no box leaves the canvas where it is, and a
+  collapsed panel moves to the focused box when it is expanded again. A new diagram opens at its resting view: 1:1,
+  centred horizontally when it is narrower than the pane, else at the left edge, at the top. Resizing the panel keeps
+  a focused position, and a diagram still at rest stays at rest. Zoom and position are not saved.
+- Loading the files page in "By review" mode selects stop 1 as a click on it would: its box is highlighted, the canvas
+  pans to it, its callout shows and the diff scrolls to it. A saved selection of the same run is restored instead,
+  and so is a stop the URL links to; the saved one only pans the diagram and leaves the diff where it is. When the URL
+  already names a diff line or review comment (`#diff-…`, `#r…`, `#discussion_r…`) that is not a stop's, stop 1 is
+  highlighted and panned to but the diff does not scroll, so the line the URL names stays in view.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.
   GitHub's CSP allows the SVG's own `<style>` and inline `style` attributes, so no restyling is needed.
 - Mermaid 11 ids: a node is `<g class="node" id="pr-diagram-flowchart-<nodeId>-<n>">`; an edge is a `path` with
