@@ -3,7 +3,7 @@
 
 usage: serve.py [--port 8765]
 
-Binds to 127.0.0.1 only. Serves $PR_DESCRIBE_HOME (default: the tool's folder) as static files, so the
+Binds to 127.0.0.1 only. Serves $PR_BRIEF_HOME (default: the tool's folder) as static files, so the
 extension finds runs/<key>/<variant>/..., and adds an API under /api/ that starts `run.py` for one PR:
 
     POST /api/run     {host, owner, repo, n}  ->  {key, state}   start a run (or report the one in progress)
@@ -17,8 +17,8 @@ Forgejo), for an allow-listed repository only, and remembers each answer for 30 
 
 `state` is idle, running, done, failed or canceled; `status` reads runs/<key>/status.json, which run.py
 writes at each stage (see run_status.py). `allowed` is only present when host, owner and repo are given.
-Every /api/ request must carry the server token in `X-PR-Describe-Token`, and any `Origin` it carries must start
-with chrome-extension://, or it gets 403. The token is created on first start in ~/.config/pr-describe/token
+Every /api/ request must carry the server token in `X-PR-Brief-Token`, and any `Origin` it carries must start
+with chrome-extension://, or it gets 403. The token is created on first start in ~/.config/pr-brief/token
 (mode 0600) and never logged. Static files need neither.
 
 local.toml sets `default_variant` (the variant a run uses) and `serve_repos`, the repositories a run may be
@@ -54,8 +54,8 @@ from hosts import get_host, host_names, parse_run_key, run_key
 ADDRESS = "127.0.0.1"
 PORT = 8765
 MAX_RUNNING = 2
-TOKEN_FILE = Path("~/.config/pr-describe/token").expanduser()
-TOKEN_HEADER = "X-PR-Describe-Token"
+TOKEN_FILE = Path("~/.config/pr-brief/token").expanduser()
+TOKEN_HEADER = "X-PR-Brief-Token"
 EXTENSION_ORIGIN = "chrome-extension://"
 MAX_BODY_BYTES = 4096
 KILL_GRACE_SECONDS = 5
@@ -243,7 +243,7 @@ class Runner:
                     process: subprocess.Popen[bytes] = subprocess.Popen(
                         self.argv_for(host, owner, repo, number),
                         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                        env={**os.environ, "PR_DESCRIBE_HOME": str(self.home)},
+                        env={**os.environ, "PR_BRIEF_HOME": str(self.home)},
                         start_new_session=True,
                     )
             except OSError as error:

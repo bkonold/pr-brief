@@ -1,6 +1,6 @@
 """ensure_commits: where a commit missing from the mirror is fetched from, per host. Uses throwaway git
 repositories with invented content. context_pack reads its settings when imported, so each check runs in a
-subprocess with its own PR_DESCRIBE_HOME. Run with `python3 -m unittest discover -s tests`."""
+subprocess with its own PR_BRIEF_HOME. Run with `python3 -m unittest discover -s tests`."""
 import os
 import subprocess
 import sys
@@ -49,7 +49,7 @@ class EnsureCommitsTest(unittest.TestCase):
     def check(self, sha: str, host: str) -> bool:
         code = CHECK.format(tool=str(TOOL), sha=sha, host=host)
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                             env={**os.environ, "PR_DESCRIBE_HOME": str(self.home)})
+                             env={**os.environ, "PR_BRIEF_HOME": str(self.home)})
         self.assertEqual(out.returncode, 0, out.stderr)
         return out.stdout.strip() == "True"
 

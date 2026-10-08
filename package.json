@@ -1,5 +1,5 @@
 {
-  "name": "pr-describe",
+  "name": "pr-brief",
   "private": true,
   "description": "Pinned Mermaid build that render.py loads from node_modules when it draws diagram.svg",
   "dependencies": {

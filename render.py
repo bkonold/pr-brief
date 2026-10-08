@@ -510,7 +510,7 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
 DIAGRAM_SVG = "diagram.svg"
 SVG_ID = "pr-diagram"
 CHROME_TIMEOUT_SECONDS = 90
-CHROME_ENV = "PR_DESCRIBE_CHROME"
+CHROME_ENV = "PR_BRIEF_CHROME"
 CHROME_PATH_NAMES: tuple[str, ...] = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
 CHROME_MACOS = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 MERMAID_PACKAGE = ROOT / "node_modules" / "mermaid" / "package.json"

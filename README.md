@@ -1,4 +1,4 @@
-# pr-describe
+# pr-brief
 
 Helps a reviewer who did not write a change orient in under a minute: what kind of change it is, its shape,
 the contract and data it touches, a diagram of the change and a walkthrough of where to read, in order. It sends a modified PR-Agent
@@ -24,7 +24,7 @@ You also need:
 - the `gh` CLI, signed in, which reads a GitHub PR and its diff (not needed for Forgejo, which is read
   through its REST API with a token file named in `local.toml`);
 - Google Chrome or Chromium, which draws the diagram to `diagram.svg`. `render.py` takes the first of: the
-  `PR_DESCRIBE_CHROME` environment variable, the `chrome` key in `local.toml`, `google-chrome`,
+  `PR_BRIEF_CHROME` environment variable, the `chrome` key in `local.toml`, `google-chrome`,
   `google-chrome-stable`, `chromium` or `chromium-browser` on `PATH`, then the macOS install in
   `/Applications`. A path that is set but is not an executable file is an error, not a reason to try the next place.
   With none found, or when the drawing fails (also when `npm ci` has not been run), the run fails with a message that
@@ -51,10 +51,10 @@ the context-pack section that needs it is skipped, with the reason recorded unde
 
 ### Keeping settings and runs outside the tool
 
-Set `PR_DESCRIBE_HOME` to a folder and the tool reads and writes everything there instead of in its own
+Set `PR_BRIEF_HOME` to a folder and the tool reads and writes everything there instead of in its own
 folder: `local.toml`, `reach.toml`, `archetypes.toml` (and their `.example.toml`
 fallbacks), `compare.toml`, `runs/` and the `.cache/` mirror. Variants are looked up in
-`$PR_DESCRIBE_HOME/variants/` first, then in the tool's own `variants/`, so a variant of the same name there
+`$PR_BRIEF_HOME/variants/` first, then in the tool's own `variants/`, so a variant of the same name there
 shadows the tool's. Code, `vendor/` and `extension/` always come from the tool. Unset, the variable defaults
 to the tool's folder and nothing changes. This lets a repository-specific overlay hold its config and runs
 and carry this tool as a submodule.
@@ -116,7 +116,7 @@ python3 serve.py        # from the repository root; an overlay's own wrapper doe
 
 `serve.py` binds to 127.0.0.1:8765 only, uses the standard library, and does two things:
 
-- it serves `$PR_DESCRIBE_HOME` (default: the tool's folder) as static files, so the extension can read the runs;
+- it serves `$PR_BRIEF_HOME` (default: the tool's folder) as static files, so the extension can read the runs;
 - it lets the extension start a brief on demand and read which variant to show, through the endpoints under `/api/`.
 
 | Endpoint | Input | Output |
@@ -133,8 +133,8 @@ request for a running key returns it), at most two runs at once (a third gets 42
 server that died is marked `failed` ("server restarted") at startup. `local.toml` needs `default_variant` and
 `serve_repos` (the repositories a run may be started for); a request for any other repository is refused.
 
-Every `/api/` request must carry the server token in an `X-PR-Describe-Token` header and an `Origin` starting with
-`chrome-extension://`, or it gets 403. The token is created on first start in `~/.config/pr-describe/token`
+Every `/api/` request must carry the server token in an `X-PR-Brief-Token` header and an `Origin` starting with
+`chrome-extension://`, or it gets 403. The token is created on first start in `~/.config/pr-brief/token`
 (mode 0600) and is never logged; paste it into the extension's options page ("Server token"). Static files need
 neither.
 
@@ -147,7 +147,7 @@ server (`<key>` is `<n>` on GitHub and `fj-<n>` on Forgejo); for a PR with no ru
 
 ## Variants
 
-One TOML per variant in `variants/` (see `PR_DESCRIBE_HOME` for adding your own). Keys: `description`, `context` (see
+One TOML per variant in `variants/` (see `PR_BRIEF_HOME` for adding your own). Keys: `description`, `context` (see
 Context packs), `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example) and `[context_options]`. The renderer has one set of settings and a variant
 cannot change them.
@@ -320,8 +320,8 @@ which upstream commits they come from.
 ## Variant history
 
 The variants before v25 (v10 to v24, with v11b and v15_nocontext) and their render options are gone from the tree. The
-last commit that has v23, with its chunks, floors, levels and labels, is `56ad3d2`: `git show 56ad3d2:variants/` lists
-the variants and `git show 56ad3d2:README.md` describes each. In short, v10 to v15 grouped files into review chunks with
+last commit that has v23, with its chunks, floors, levels and labels, is `c886d91`: `git show c886d91:variants/` lists
+the variants and `git show c886d91:README.md` describes each. In short, v10 to v15 grouped files into review chunks with
 a start line to read first; v16 added `step` and a Contract and data block; v17 to v20 changed what a start line anchors
 and capped the diagram at 10 boxes with one box per chunk; v21 added effort levels and check labels; v22 split the block
 into Contract and Data sections and dropped the review order; v23 replaced the start lines with the walkthrough; v24

@@ -1,4 +1,4 @@
-# Review focus extension
+# PR Brief extension
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
 (`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 4,
@@ -157,7 +157,7 @@ that expands it.
 `serve.py` (see the top-level README) can start a run for the PR on the page. The extension never talks to it from a
 page script: `background.js` makes the calls (`startRun`, `runStatus`, `cancelRun` to `/api/run`, `/api/status`,
 `/api/cancel`) and adds the server token, which the options page keeps in `chrome.storage.local` ("Server token":
-paste the contents of `~/.config/pr-describe/token`). The server also requires an `Origin` of `chrome-extension://`,
+paste the contents of `~/.config/pr-brief/token`). The server also requires an `Origin` of `chrome-extension://`,
 which only the background script sends.
 
 `run_control.js` owns one run's progress for a PR page: it starts the run, asks `/api/status` every 3 seconds, ticks
@@ -221,7 +221,7 @@ the page's data, and its header links to the files view. Without a run it is the
 
 ## Load it
 
-1. From the `pr-describe` root, serve the runs and the API: `python3 serve.py` (an overlay's wrapper: `pd serve`).
+1. From the `pr-brief` root, serve the runs and the API: `python3 serve.py` (an overlay's wrapper: `pd serve`).
 2. Open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick this `extension/` folder.
 3. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
    `http://localhost:3300/<owner>/<repo>/pulls/<n>/files`.

@@ -195,7 +195,7 @@
     root.classList.remove("prf-review");
     host.classList.remove(HOST_HIDDEN);
     const note = make("div", "prf-banner prf-offline");
-    note.append(make("p", undefined, `pr-describe server isn't running at ${baseUrl}`));
+    note.append(make("p", undefined, `pr-brief server isn't running at ${baseUrl}`));
     const command = make("p");
     command.append("Start it with ", make("code", undefined, SERVER_COMMAND));
     note.append(command, button("prf-retry", "Retry", handlers.onRetry));

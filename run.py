@@ -11,7 +11,7 @@ local.toml's [model] table, else claude-opus-5-5 for claude and claude-opus-5.5 
 --host defaults to local.toml's `host`, else github. --repo is the host's `owner/name` and is required
 unless local.toml sets `repo` for that host (`repo` applies to the host named by `host`, github by default).
 
-Reads from the host only (see hosts/). Writes runs/<key>/<variant>/ under PR_DESCRIBE_HOME (default: the tool's
+Reads from the host only (see hosts/). Writes runs/<key>/<variant>/ under PR_BRIEF_HOME (default: the tool's
 folder), where <key> is the PR number on GitHub and `fj-<number>` on Forgejo.
 """
 import argparse

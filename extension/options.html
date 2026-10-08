@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PR Describe Review Focus</title>
+  <title>PR Brief</title>
   <style>
     body { font: 14px/1.5 system-ui, sans-serif; max-width: 480px; margin: 24px auto; padding: 0 16px; }
     label { display: block; margin: 16px 0 4px; font-weight: 600; }
@@ -13,14 +13,14 @@
   </style>
 </head>
 <body>
-  <h1>Review focus</h1>
+  <h1>PR Brief</h1>
   <form id="form">
     <label for="baseUrl">Server base URL</label>
     <input id="baseUrl" type="url" required>
     <small>The extension may only reach http://127.0.0.1:8765; another origin needs a matching entry in manifest.json host_permissions.</small>
     <label for="token">Server token</label>
     <input id="token" type="password" autocomplete="off" spellcheck="false">
-    <small>The contents of ~/.config/pr-describe/token, which <code>pd serve</code> creates on first start. It is kept in this browser only and sent only to the server above, to start briefs.</small>
+    <small>The contents of ~/.config/pr-brief/token, which <code>pd serve</code> creates on first start. It is kept in this browser only and sent only to the server above, to start briefs.</small>
     <div><button type="submit">Save</button> <span id="status" role="status"></span></div>
   </form>
   <script type="module" src="options.js"></script>

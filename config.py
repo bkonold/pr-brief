@@ -1,8 +1,8 @@
 """Per-machine settings, kept out of git.
 
-Settings, runs and the mirror live under HOME: the folder named by the PR_DESCRIBE_HOME environment
+Settings, runs and the mirror live under HOME: the folder named by the PR_BRIEF_HOME environment
 variable, or the tool's own folder (ROOT) when it is unset. A repository can therefore keep its own
-config, variants and runs outside the tool and point PR_DESCRIBE_HOME at itself. Code, `vendor/` and the
+config, variants and runs outside the tool and point PR_BRIEF_HOME at itself. Code, `vendor/` and the
 tool's own `variants/` always come from ROOT.
 
 `local.toml` holds the settings that name one repository (see `local.example.toml`). `reach.toml`
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).parent
-HOME = Path(os.environ["PR_DESCRIBE_HOME"]).expanduser() if os.environ.get("PR_DESCRIBE_HOME") else ROOT
+HOME = Path(os.environ["PR_BRIEF_HOME"]).expanduser() if os.environ.get("PR_BRIEF_HOME") else ROOT
 LOCAL = HOME / "local.toml"
 
 KEYS: frozenset[str] = frozenset({

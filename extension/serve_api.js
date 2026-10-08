@@ -10,4 +10,4 @@ export function describeResponse(response, failure, data) {
   return { ok: true, ...data };
 }
 
-export const TOKEN_HEADER = "X-PR-Describe-Token";
+export const TOKEN_HEADER = "X-PR-Brief-Token";
