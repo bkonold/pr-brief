@@ -407,6 +407,87 @@ test("a hidden viewport keeps the latest target and centres on it once it has a 
   }
 });
 
+function observedCanvas(options) {
+  const original = globalThis.ResizeObserver;
+  const originalRaf = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  const frames = [];
+  let notify = null;
+  globalThis.ResizeObserver = class {
+    constructor(callback) {
+      notify = callback;
+    }
+    observe() {}
+    disconnect() {}
+  };
+  globalThis.requestAnimationFrame = (callback) => frames.push(callback);
+  globalThis.cancelAnimationFrame = (id) => (frames[id - 1] = null);
+  const runFrames = () => {
+    for (let time = 1000; frames.length > 0; time += 100) {
+      const frame = frames.shift();
+      frame?.(time);
+    }
+  };
+  const restore = () => {
+    globalThis.ResizeObserver = original;
+    globalThis.requestAnimationFrame = originalRaf;
+    globalThis.cancelAnimationFrame = originalCancel;
+  };
+  return { ...boxCanvas(options), notify: () => notify(), runFrames, restore };
+}
+
+test("a canvas built before its viewport has a size ends on the focused box when the observer first reports the size", () => {
+  const { canvas, views, viewport, notify, runFrames, restore } = observedCanvas({ viewportSize: { w: 0, h: 0 } });
+  try {
+    Object.assign(viewport, { clientWidth: 400, clientHeight: 500 });
+    canvas.centerOn(["a"]);
+    notify();
+    runFrames();
+    assert.deepEqual(views.at(-1), { scale: 1, x: 200 - 550, y: 8 });
+  } finally {
+    restore();
+  }
+});
+
+test("a canvas whose viewport appears before it is asked to focus rests, then glides to the box", () => {
+  const { canvas, views, viewport, notify, runFrames, restore } = observedCanvas({ viewportSize: { w: 0, h: 0 } });
+  try {
+    Object.assign(viewport, { clientWidth: 400, clientHeight: 500 });
+    notify();
+    assert.deepEqual(views.at(-1), { scale: 1, x: 8, y: 8 });
+    canvas.centerOn(["a"]);
+    runFrames();
+    assert.deepEqual(views.at(-1), { scale: 1, x: 200 - 550, y: 8 });
+  } finally {
+    restore();
+  }
+});
+
+test("a panel that is shown again is taken back to the focused box, unless the reader has zoomed since", () => {
+  const { canvas, views, viewport, notify, runFrames, restore } = observedCanvas();
+  try {
+    canvas.centerOn(["b"]);
+    runFrames();
+    const focusedView = views.at(-1);
+    viewport.clientWidth = 0;
+    notify();
+    viewport.clientWidth = 400;
+    notify();
+    runFrames();
+    assert.deepEqual(views.at(-1), focusedView);
+    canvas.zoomIn();
+    const zoomed = views.at(-1);
+    viewport.clientWidth = 0;
+    notify();
+    viewport.clientWidth = 400;
+    notify();
+    runFrames();
+    assert.deepEqual(views.at(-1), zoomed);
+  } finally {
+    restore();
+  }
+});
+
 test("centerOn glides to the target over about 200ms, moving only the translation, and a wheel interrupts it", () => {
   const frames = [];
   const originalRaf = globalThis.requestAnimationFrame;

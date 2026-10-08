@@ -369,7 +369,8 @@
     let resting = true;
     let drag = null;
     let glideFrame = null;
-    let pending = null;
+    let target = null;
+    let placed = false;
 
     const size = () => ({ w: viewport.clientWidth, h: viewport.clientHeight });
 
@@ -390,6 +391,7 @@
     }
 
     function zoomTo(scale, px = size().w / 2, py = size().h / 2) {
+      target = null;
       show(zoomAround(view, scale, px, py), false);
     }
 
@@ -457,18 +459,12 @@
       return [...found];
     }
 
-    // `ids` is a list of box ids; an empty list leaves the canvas as it is, and drops any target waiting for the viewport
-    // to be shown, as does a list of boxes that are not drawn.
+    // `ids` is a list of box ids; an empty list leaves the canvas as it is and forgets the boxes it was following. The
+    // boxes stay the canvas's target until the reader pans or zooms: a viewport that has no size yet, or gets its first
+    // one after this call, is taken to them once it has one.
     function centerOn(ids) {
-      if (ids.length === 0) {
-        pending = null;
-        return;
-      }
-      if (size().w <= 0) {
-        pending = ids;
-        return;
-      }
-      pending = null;
+      target = ids.length > 0 ? ids : null;
+      if (!target || size().w <= 0) return;
       const rect = boundsOf(ids);
       if (!rect) return;
       resting = false;
@@ -531,22 +527,32 @@
         drag.moved = true;
         viewport.classList.add("prd-panning");
       }
-      if (drag.moved) show({ ...drag.from, x: drag.from.x + dx, y: drag.from.y + dy }, false);
+      if (drag.moved) {
+        target = null;
+        show({ ...drag.from, x: drag.from.x + dx, y: drag.from.y + dy }, false);
+      }
     }
 
+    // The canvas is built before its panel is in the page, so its viewport has no size until the panel is attached, and
+    // the observer's first report of a size is the viewport appearing: the diagram takes its resting view then, or is
+    // taken to the boxes it was asked to follow, rather than carrying on a glide that began against an unplaced view.
     let observed = size();
-    if (observed.w > 0) rest();
+    placed = observed.w > 0;
+    if (placed) rest();
     const resizeObserver = globalThis.ResizeObserver
       ? new ResizeObserver(() => {
           const now = size();
-          if (now.w <= 0) return;
+          const appeared = observed.w <= 0 && now.w > 0;
           const changed = now.w !== observed.w || now.h !== observed.h;
           observed = now;
-          if (!changed) return;
+          if (now.w <= 0 || !changed) return;
           cancelGlide();
-          if (resting) rest();
+          if (appeared && !placed) {
+            placed = true;
+            rest();
+          } else if (resting) rest();
           else show(view, false);
-          if (pending) centerOn(pending);
+          if (appeared && target) centerOn(target);
         })
       : null;
     resizeObserver?.observe(viewport);
