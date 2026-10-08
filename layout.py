@@ -1,4 +1,4 @@
-"""Where the contract and data lines of a v22 brief go, and how they are drawn.
+"""Where the contract and data lines of a brief go, and how they are drawn.
 
 `place` gives each line (from contract_lines.py or data_lines.py) the review chunk that owns it:
 

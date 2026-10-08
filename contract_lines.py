@@ -1,4 +1,4 @@
-"""The "Contract" lines of a v22 brief: what a PR changes in the OpenAPI document, one line per pattern, each with an
+"""The "Contract" lines of a brief: what a PR changes in the OpenAPI document, one line per pattern, each with an
 impact level.
 
 `collect_changes` reads a run's contract.json and the spec's diff and yields one `Change` per atomic difference, each

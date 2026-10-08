@@ -1,4 +1,4 @@
-"""The "Data" lines of a v22 brief: what a PR's migration files do to the database, one line per change, each with an
+"""The "Data" lines of a brief: what a PR's migration files do to the database, one line per change, each with an
 impact level.
 
 `split_statements` cuts a migration's added lines into SQL statements, ignoring comments and keeping string literals and

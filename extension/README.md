@@ -1,8 +1,8 @@
 # Review focus extension
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
-(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes for a
-chunked variant and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 3,
+variant v23) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
 where it describes the page, and the Forgejo selectors are in their own table at the end.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
@@ -16,12 +16,10 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 ## The walkthrough
 
-`review.json`'s `walkthrough` (variant v23) is an ordered list of stops, each `{i, title, why, path, side, line,
+`review.json`'s `walkthrough` is an ordered list of stops, each `{i, title, why, path, side, line,
 chunk}`: the model's reading order through the change, which can cross chunks and come back to one. `line` is null for a
 stop that names only a file. `chunk` is the chunk whose files hold the stop's file, or null for a file no chunk lists.
-A run made before walkthroughs (v22 and older) has none, so the extension makes one stop per chunk that has a `start`, in
-chunk order: titled by its file's basename and giving the start's reason (else the chunk's), so older runs read as they
-did. A chunk with no start gets no stop.
+A run that is not schema 3 with a `walkthrough` (made by an earlier variant) is not shown: see "Older runs".
 
 - The list has one row per stop: its number, its title and, right-aligned, its chunk's step word (else its name). The
   current stop is highlighted and scrolled into view. A row goes to its stop: it marks the stop's chunk and its files in
@@ -68,8 +66,7 @@ only for the variant they were chosen in.
 
 If fetching `review.json` fails outright (connection refused, a network error), the list's place above GitHub's tree shows a
 note with the base URL, the command to start the server (`pd serve`) and a Retry button; GitHub's tree stays visible. Retry
-fetches again and mounts the full list on success. A 404 or an unusable review shows the "Generate brief" line below,
-unless the run server says it will not run that repository.
+fetches again and mounts the full list on success. A 404 shows the "Generate brief" line below, and an older run shows the "Older runs" line, unless the run server says it will not run that repository.
 
 ## Which variant is shown
 
@@ -109,12 +106,12 @@ that expands it.
   250ms. The emphasized box gets a halo in `#534ab7` (`#b26a00` on save boxes) and keeps its own stroke and fill. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
   the viewport, 280px by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
-- In a v21 diagram each box shows `<n> · title` in bold at its top left, its effort level as a small secondary word at its
+- Each box shows `<n> · title` in bold at its top left, its effort level as a small secondary word at its
   top right and its chips along the bottom (the effort level and check chips), and its border follows the level: `verify`
   2px in the text colour, `read` 1px, `skim` dashed and muted. 
-- A legend under the card lists only the styles the SVG uses (changed step, verify, read, skim,
-  writes data, unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected
-  chunk" (the halo) and, when the diagram has lanes, a note that columns are code layers.
+- A legend under the card lists only the styles the SVG uses (verify, read, skim, writes data,
+  unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected chunk" (the
+  halo).
 - Selecting a chunk (a stop or a box click) highlights its `nodes` and dims nothing. Each highlighted
   box keeps its own stroke and fill and gains a halo: a 5px ring in the accent colour at 30% opacity, 6px outside the
   box (amber on save boxes). Every edge with an end on a highlighted box, incoming or outgoing and dashed return edges
@@ -171,6 +168,13 @@ a one-second clock between polls and reports to the page. The card and the files
 - Both are offered only where the server may run that repository: `/api/status` is asked with the host, owner and repo
   and says `allowed`. When it cannot be asked (server down, wrong token) they are shown anyway, so the reason can be.
 
+## Older runs
+
+A run whose `review.json` names this PR but is not schema 3 with `chunks` and a `walkthrough` was made by an earlier
+variant. `background.js` answers it with `{error: "old"}` and the files view shows one line, "This brief predates v1;
+re-run it.", with a "Re-run" button that starts a run with the server's `default_variant` like "Generate brief". Nothing
+else of the old run is shown.
+
 ## The PR brief card
 
 On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR brief"
@@ -184,32 +188,18 @@ the page's data, and its header links to the files view. Without a run it is the
   script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
   `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
-  description's bullets (above the review order, when the body has one), with the legend under it, on a white panel in both themes. The
+  description's bullets, with the legend under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
-- A "Contract and data" section, when the run has one (v16), is a list of API operations and tables with badges; each
-  line and badge is a link to the diff line it names, rewritten to this host's files view like the other links.
-- A v22 run has two sections instead, "Contract" and "Data". Each is a closed block like the Diagram's, its summary the
-  section's name in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible
-  while it is collapsed. Opened it is one table of
-  every line (Contract: Impact, Side, Change, On, ↗; Data: Impact, Change, Table, ↗), with no grouping by chunk. The
-  body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its own container, and a name cut in the
-  middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's files view like the others. The chips
-  come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a filled chip, the second a bold outlined
-  one and the rest outlined, drawn by the card's own style.
-- A run whose body still has a review-order table (variants before v22; v22 and later leave it out of the brief, since the
-  files view lists the chunks) shows it after the diagram. When the run's chunks carry steps, it has the same "Order: by
-  flow | by risk" switch under its heading, ordered by the files view's own rules over `review.json`'s chunks (flow is
-  their order, risk their effort level, the catch-all chunk last). A row is matched to its chunk by its `data-flow`,
-  which holds the chunk number; a row `review.json` does not name goes last. When the card has no `review.json` chunks
-  it falls back to the rows' own `data-flow` and `data-risk`. The switch reorders the rows in place (their numbers stay
-  the flow numbers, which are the diagram's labels), keeps the review order open, and is not remembered. A body with no
-  `data-flow` rows shows no switch, and a body with no table shows no review order.
-- The review order shows with its `<details>` closed, and each chunk's file list is a closed `<details>` headed by the
-  file count. A chunk's start (the file:line link and the quoted line, or the file link and the reason for a file start) sits in a closed "Start here" `<details>` under
-  the chunk name. Links into the PR's files view are rewritten to this host's files view, fragment kept.
-- A chunk's start link opens the files view with that line's anchor (a file start's, the file's diff id) in the fragment. When the files page loads with a
-  fragment that is a stop's anchor, `content.js` goes to that stop; any other
-  fragment is left to the page.
+- The brief's "Contract" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
+  in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is
+  collapsed. Opened it is one table of every line (Contract: Impact, Side, Change, On, ↗; Data: Impact, Change, Table,
+  ↗), with no grouping by chunk. The body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its
+  own container, and a name cut in the middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's
+  files view like the others. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a
+  filled chip, the second a bold outlined one and the rest outlined, drawn by the card's own style. The brief has no
+  review-order table; the files view lists the chunks and stops.
+- Links into the PR's files view are rewritten to this host's files view, fragment kept. When the files page loads with a
+  fragment that is a stop's anchor, `content.js` goes to that stop; any other fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,
   the way it fetches `review.json` (and the run's `head_sha`, and each chunk's `n`, `name`, `review` and `step`). With no run, or the page server down, the card is the
   "Generate brief" bar, except where the server says it will not run the PR's repository: then nothing is mounted.
@@ -240,7 +230,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `background.js` | Fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers |
 | `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
 | `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
-| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the start-line callouts, change watching. `createPage(spec)` builds an adapter from a host's spec |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, change watching. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
@@ -251,7 +241,7 @@ Run the pure tests with `node --test test/*.test.js`.
 | `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
 | `source.js` | Content-script side of the fetch |
-| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML, and reorders the review-order rows of an older body (pure string work, tested without a DOM) |
+| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
 | `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |
 
 The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in the order listed in `manifest.json`.

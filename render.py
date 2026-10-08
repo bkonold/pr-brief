@@ -806,7 +806,7 @@ def build_lineset(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, A
 
 
 def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, unchecked: list[str]) -> tuple[str, str]:
-    """The Contract and Data sections of a v22 body, each one closed block with a table of all its lines. A section with
+    """The Contract and Data sections of a body, each one closed block with a table of all its lines. A section with
     no lines says so, and says when its side could not be checked."""
     repo: str = run["repo"]
     number: str = str(run["pr"])

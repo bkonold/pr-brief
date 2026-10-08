@@ -39,8 +39,8 @@ openapi_path = "api/openapi.json"
 # Section "migrations": a new file whose path contains one of these is scanned for destructive SQL.
 migration_dirs = ["db/migrations/"]
 
-# The "Contract and data" block of a brief (variants with `contract_block = true`) lists the tables these files touch.
-# Globs over repository paths, `*` within a folder and `**` across folders. Without it the block says the database
+# The brief's Data section lists the tables these files touch.
+# Globs over repository paths, `*` within a folder and `**` across folders. Without it the section says the database
 # side was not checked.
 migration_globs = ["db/migrations/*.sql"]
 
@@ -59,18 +59,13 @@ workspace_root = "web"
 test_dirs = ["/src/integrationTest/"]
 
 # Globs over repository paths (`*` within a folder, `**` across folders) that make a file a test when the renderer
-# orders the files inside a chunk: the chunk's start file first, then the other files in the model's order, test files
-# last. Optional; without it the built-in globs apply (`**/test/**`, `**/tests/**`, `**/*Test.*`, `**/*Tests.*`,
+# orders the files inside a chunk: the files in the model's order, test files last. Optional; without it the built-in globs apply (`**/test/**`, `**/tests/**`, `**/*Test.*`, `**/*Tests.*`,
 # `**/*.test.*`, `**/*_test.*`). Setting it replaces them. `test_dirs` above also counts.
 # test_globs = ["**/__tests__/**", "**/*.spec.*"]
 
 # Pathspec globs (git grep syntax without the leading ":!") excluded from the callers search when a
 # variant sets callers_code_only, in addition to markdown, lock and similar files.
 callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
-
-# A React Router flat-routes folder. Files under it are labelled by their route URL
-# (`_layout.items.$id` becomes /items/:id) in the grouped file list. Leave unset for other layouts.
-routes_dir = "web/app/routes/"
 
 # How an OpenAPI operation tag names the file that implements it, for placing a contract line in the chunk that holds
 # that file. Each template may use {pascal} (`ItemList`), {camel} (`itemList`) and {kebab} (`item-list`); a file matches
@@ -82,7 +77,7 @@ routes_dir = "web/app/routes/"
 # default_variant is the variant a started run uses. serve_repos is the only list of repositories a run may be
 # started for, per host, as "owner/name"; a request for any other repository is refused. Both are required to
 # start runs; without serve_repos the server still serves the runs but refuses every request to start one.
-default_variant = "one_path_risk_chunked_v15_nocontext"
+default_variant = "one_path_risk_chunked_v23"
 
 [serve_repos]
 github = ["example-org/example-repo"]

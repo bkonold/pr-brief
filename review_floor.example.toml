@@ -1,4 +1,4 @@
-# Minimum review level per changed file, used by the `chunks` render.
+# Minimum review level per changed file, used when the renderer groups files into chunks.
 # A chunk's level is the highest of the model's level and the floors of its files.
 # Levels, lowest to highest: skim, read, verify.
 # A breaking API change or a destructive migration also raises a chunk to verify, whatever the floors say; the
