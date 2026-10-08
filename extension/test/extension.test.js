@@ -8,7 +8,7 @@ const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, calloutDelta, holdPlace, correctLanding } = githubPage;
 const { staleMessage, revealTarget } = require("../tree.js");
-const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, captionFor } = require("../diagram.js");
+const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
   const expected = { owner: "example-org", repo: "example-repo", pr: 42, view: "files" };
@@ -114,6 +114,32 @@ test("the default width is a fifth of the viewport and never below 220px", () =>
   assert.equal(defaultWidth(2560), 512);
   assert.equal(defaultWidth(300), 220);
   assert.equal(defaultWidth(undefined), 220);
+});
+
+test("defaultWidth widens to the widest box plus its halo, a 16px margin each side and the panel's 14px chrome", () => {
+  assert.equal(defaultWidth(1440, 340), 406);
+  assert.equal(defaultWidth(1512, 340), 406);
+  assert.equal(defaultWidth(2560, 340), 512);
+  assert.equal(defaultWidth(1680, 340), 406);
+  assert.equal(defaultWidth(1680, 100), 336);
+  assert.equal(defaultWidth(1680, 0), 336);
+  assert.equal(defaultWidth(1680, 340.2), 407);
+});
+
+test("defaultWidth never takes more than 40% of the viewport, and never less than 220px", () => {
+  assert.equal(defaultWidth(1000, 340), 400);
+  assert.equal(defaultWidth(900, 340), 360);
+  assert.equal(defaultWidth(700, 340), 280);
+  assert.equal(defaultWidth(500, 340), 220);
+});
+
+test("widestBox is the widest node's own rectangle, in diagram units", () => {
+  const node = (width) => ({ querySelector: () => (width === null ? null : { getAttribute: () => width }) });
+  const svg = (...nodes) => ({ querySelectorAll: () => nodes });
+  assert.equal(widestBox(svg(node("300"), node("340"), node("320"))), 340);
+  assert.equal(widestBox(svg(node(null), node("150.5"))), 150.5);
+  assert.equal(widestBox(svg(node(null))), 0);
+  assert.equal(widestBox(svg()), 0);
 });
 
 test("clampWidth keeps the panel between 220px and 65% of the viewport", () => {

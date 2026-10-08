@@ -9,11 +9,29 @@
   const WIDTH_KEY = "diagramWidth";
   const DEFAULT_VIEWPORT_SHARE = 0.2;
   const MIN_WIDTH = 220;
+  const MAX_DEFAULT_SHARE = 0.4;
   const MAX_VIEWPORT_SHARE = 0.65;
+  const PANE_CHROME = 14;
 
-  // The width of a panel nobody has resized: a fifth of the viewport, at least MIN_WIDTH.
-  function defaultWidth(viewportWidth) {
-    return Math.max(MIN_WIDTH, Math.round(viewportWidth * DEFAULT_VIEWPORT_SHARE) || 0);
+  // The width of a panel nobody has resized: a fifth of the viewport, widened to take the diagram's widest box at 1:1 with
+  // its focus halo, BOX_MARGIN on each side and the panel's own chrome, so a focused box is centred rather than pushed
+  // against the left edge; but never past MAX_DEFAULT_SHARE of the viewport, and at least MIN_WIDTH. `boxWidth` is 0 when
+  // the diagram has no box to size by.
+  function defaultWidth(viewportWidth, boxWidth = 0) {
+    const share = Math.round(viewportWidth * DEFAULT_VIEWPORT_SHARE) || 0;
+    const wanted = boxWidth > 0 ? Math.max(share, Math.ceil(boxWidth) + 2 * (HALO_REACH + BOX_MARGIN) + PANE_CHROME) : share;
+    const cap = Math.round(viewportWidth * MAX_DEFAULT_SHARE) || 0;
+    return Math.max(MIN_WIDTH, Math.min(wanted, cap));
+  }
+
+  // The width of the diagram's widest box in diagram units, which are pixels at 1:1; 0 when it draws none.
+  function widestBox(svg) {
+    let widest = 0;
+    for (const group of svg.querySelectorAll("g.node")) {
+      const width = Number(group.querySelector(":scope > rect")?.getAttribute("width"));
+      if (Number.isFinite(width) && width > widest) widest = width;
+    }
+    return widest;
   }
 
   // A usable panel width for this viewport: at least MIN_WIDTH, at most MAX_VIEWPORT_SHARE of the viewport.
@@ -261,6 +279,9 @@
   let emphasis = null;
   let canvas = null;
   let panelWidth = defaultWidth(globalThis.innerWidth);
+  // The width the reader dragged the panel to, which wins over the default; null until they do.
+  let chosenWidth = null;
+  let boxWidth = 0;
   let caption = "";
 
   // The remembered width is read once when the script loads, so it is usually known before the first render.
@@ -270,19 +291,22 @@
       .get(WIDTH_KEY)
       .then((stored) => {
         if (stored[WIDTH_KEY] === undefined) return;
-        panelWidth = clampWidth(Number(stored[WIDTH_KEY]), innerWidth);
-        root?.style.setProperty("--prd-width", `${panelWidth}px`);
+        chosenWidth = Number.isFinite(Number(stored[WIDTH_KEY])) ? Number(stored[WIDTH_KEY]) : null;
+        if (root) setWidth(root, chosenWidth);
       })
       .catch(() => {});
   }
 
+  // Remembers the reader's width, or forgets it for `null`, which puts the default back.
   function storeWidth(width) {
     if (!ns.alive?.() || !globalThis.chrome?.storage?.local) return;
-    chrome.storage.local.set({ [WIDTH_KEY]: width }).catch(() => {});
+    const stored = width === null ? chrome.storage.local.remove(WIDTH_KEY) : chrome.storage.local.set({ [WIDTH_KEY]: width });
+    stored.catch(() => {});
   }
 
+  // Sets the panel's width: `width` clamped, or the default for the diagram on show for `null`.
   function setWidth(panel, width) {
-    panelWidth = clampWidth(width, innerWidth);
+    panelWidth = width === null ? defaultWidth(innerWidth, boxWidth) : clampWidth(width, innerWidth);
     panel.style.setProperty("--prd-width", `${panelWidth}px`);
   }
 
@@ -306,13 +330,15 @@
       if (!drag) return;
       drag = null;
       panel.classList.remove("prd-dragging");
-      storeWidth(panelWidth);
+      chosenWidth = panelWidth;
+      storeWidth(chosenWidth);
     };
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
     handle.addEventListener("dblclick", () => {
-      setWidth(panel, defaultWidth(innerWidth));
-      storeWidth(panelWidth);
+      chosenWidth = null;
+      setWidth(panel, null);
+      storeWidth(null);
     });
     return handle;
   }
@@ -639,7 +665,7 @@
     zoom.reset.addEventListener("click", resetAction(() => canvas, handlers));
     panel.classList.toggle("prd-collapsed", collapsed);
     panel.append(resizeHandle(panel), header, cardElement, ...(caption ? [buildCaption(caption)] : []));
-    setWidth(panel, panelWidth);
+    setWidth(panel, chosenWidth);
     return panel;
   }
 
@@ -655,6 +681,7 @@
       canvas?.destroy();
       root?.remove();
       caption = captionFor(svg);
+      boxWidth = widestBox(svg);
       root = build(svg, handlers, readCollapsed());
       card = root.querySelector(".prd-card");
       found = index(svg);
@@ -699,7 +726,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, captionFor, clampScale, contentSize, restingView, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor, clampScale, contentSize, restingView, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;
