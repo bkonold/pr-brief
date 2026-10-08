@@ -1,132 +1,22 @@
-"""Where the contract and data lines of a brief go, and how they are drawn.
+"""How the contract and data lines of a brief are drawn.
 
-`place` gives each line (from contract_lines.py or data_lines.py) the review chunk that owns it:
-
-1. A line goes to the chunk holding the file that its subject is named after: an operation's OpenAPI tag turned into a
-   file name (`dynamic-attribute-enum-value-controller` -> `DynamicAttributeEnumValueController`, or each of the
-   `tag_file_templates` in local.toml), a schema's own name, or a migration file's path.
-2. A subject with no such file goes to the chunk whose hand-written code names it, found with the same probes as the
-   breaking-change placement (a schema's name as a word, an operation's last literal path segment).
-3. A line about several subjects goes where most of them do. A chunk that holds only generated files never owns a line.
-
-A line that no chunk owns is "not in any chunk"; the review.json keeps those apart from each chunk's own. `section`
-draws one section (Contract or Data) of the brief without them: a closed `<details>` whose summary holds the section's
-name and the count at each impact level, and whose body is one table with a row per line, wherever the line was placed.
-The markup is HTML and GitHub-flavoured markdown tables, so it survives both GitHub and the extension's brief pane;
-GitHub drops the `class` attributes, which leaves the top level bold and the others plain.
+`section` draws one section (Contract or Data) of the brief: a closed `<details>` whose summary holds the section's name
+and the count at each impact level, and whose body is one table with a row per line of the whole PR. The markup is HTML
+and GitHub-flavoured markdown tables, so it survives both GitHub and the extension's brief pane; GitHub drops the
+`class` attributes, which leaves the top level bold and the others plain.
 """
 import html
 import re
-from collections import Counter
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
 
-from contract_lines import Line, Member, plural, rank_of
+from contract_lines import Line, plural, rank_of
 
-DEFAULT_TAG_TEMPLATES: list[str] = ["{pascal}"]
 CONTRACT_COLUMNS: tuple[str, ...] = ("Impact", "Side", "Change", "On", "↗")
 DATA_COLUMNS: tuple[str, ...] = ("Impact", "Change", "Table", "↗")
 # A schema, table or controller name longer than this is cut in its middle on screen, with the whole name as the
 # element's title. An endpoint (`GET /path`) is never cut: it wraps in its cell.
 NAME_LIMIT = 40
 SIDE_ORDER: tuple[str, ...] = ("request", "response", "both")
-
-
-@dataclass
-class LineSet:
-    """The lines of a PR's contract and data, and where they landed: each chunk keeps its own (`Chunk.contract`,
-    `Chunk.data`) and the ones no chunk owns are here."""
-    contract: list[Line]
-    data: list[Line]
-    spec: str = ""
-    templates: list[str] = field(default_factory=lambda: list(DEFAULT_TAG_TEMPLATES))
-    loose_contract: list[Line] = field(default_factory=list)
-    loose_data: list[Line] = field(default_factory=list)
-
-
-def words_of(name: str) -> list[str]:
-    return [word for word in re.split(r"[^A-Za-z0-9]+", name) if word]
-
-
-def tag_stems(tag: str, templates: list[str]) -> set[str]:
-    """The file names (lowercase, without extension) an operation tag may stand for. A template can use `{pascal}`
-    (`DynamicAttribute`), `{camel}` (`dynamicAttribute`) and `{kebab}` (`dynamic-attribute`)."""
-    words: list[str] = words_of(tag)
-    pascal: str = "".join(word[:1].upper() + word[1:] for word in words)
-    camel: str = pascal[:1].lower() + pascal[1:]
-    forms: dict[str, str] = {"pascal": pascal, "camel": camel, "kebab": "-".join(word.lower() for word in words)}
-    return {template.format(**forms).lower() for template in templates}
-
-
-def stem(path: str) -> str:
-    """The file's name up to its first dot, lowercase: `ItemList.test.tsx` -> `itemlist`."""
-    return Path(path).name.split(".")[0].lower()
-
-
-def schema_probe(name: str) -> re.Pattern[str]:
-    return re.compile(rf"\b{re.escape(name)}\b")
-
-
-def operation_probe(path: str) -> re.Pattern[str] | None:
-    """The last literal segment of an endpoint's path between quotes or slashes, or None when it has none."""
-    literal: list[str] = [part for part in path.split("/") if part and not part.startswith("{")]
-    return re.compile(r'(?<=["/])' + re.escape(literal[-1]) + r'(?=["/{])') if literal else None
-
-
-def probe_of(member: Member) -> re.Pattern[str] | None:
-    if member.schema:
-        return schema_probe(member.schema)
-    if member.operation:
-        found: re.Match[str] | None = re.match(r"[A-Z]+\s+(/\S*)", member.operation)
-        return operation_probe(found.group(1)) if found else None
-    return None
-
-
-def stems_of(member: Member, templates: list[str]) -> set[str]:
-    if member.schema:
-        return {member.schema.lower()}
-    if member.tag:
-        return tag_stems(member.tag, templates)
-    return set()
-
-
-def place(lines: list[Line], held: list[set[str]], stems: list[set[str]], code: dict[int, list[str]],
-          preferred: set[int], templates: list[str]) -> tuple[dict[int, list[Line]], list[Line]]:
-    """The lines each chunk owns, by chunk index, and the lines no chunk owns.
-
-    `held[i]` is the paths chunk i holds, `stems[i]` the stems (see `stem`) of its hand-written non-test files, `code[i]`
-    the text that it contains (file stems and added lines) for the probes, and `preferred` the chunks the model flagged
-    for this kind of change, which win a tie. A chunk with no `code` entry (it holds only generated files) owns nothing."""
-    eligible: list[int] = sorted(code)
-
-    def best(hits: Counter[int]) -> int:
-        return max(hits, key=lambda i: (i in preferred, hits[i], -i))
-
-    def home(member: Member) -> int | None:
-        if member.file:
-            holders: list[int] = [i for i in eligible if member.file in held[i]]
-            return min(holders) if holders else None
-        wanted: set[str] = stems_of(member, templates)
-        named: Counter[int] = Counter({i: 1 for i in eligible if wanted & stems[i]})
-        if named:
-            return best(named)
-        probe: re.Pattern[str] | None = probe_of(member)
-        if probe is None:
-            return None
-        hits: Counter[int] = Counter({i: sum(bool(probe.search(text)) for text in code[i]) for i in eligible})
-        hits = Counter({i: count for i, count in hits.items() if count})
-        return best(hits) if hits else None
-
-    owned: dict[int, list[Line]] = {}
-    loose: list[Line] = []
-    for line in lines:
-        votes: Counter[int] = Counter(chunk for chunk in (home(member) for member in line.members) if chunk is not None)
-        if votes:
-            owned.setdefault(best(votes), []).append(line)
-        else:
-            loose.append(line)
-    return owned, loose
 
 
 # ---------------------------------------------------------------- drawing

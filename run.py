@@ -36,7 +36,6 @@ from runners import CLAUDE, DEFAULT_MODELS, RUNNERS, clean_answer, invocation, r
 from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
-COLLAPSIBLE_FILE_LIST_THRESHOLD = 6
 
 # The schema field and the example YAML key that the variant's additions are inserted after.
 # Both end with the `{%- endif %}` that closes the diagram block.
@@ -77,8 +76,7 @@ def build_prompts(variant: dict[str, Any], pr: dict[str, Any], diff: str, with_b
         "related_tickets_omitted": 0,
         "enable_custom_labels": False,
         "custom_labels_class": "",
-        "enable_semantic_files_types": True,
-        "include_file_summary_changes": len(pr["files"]) <= COLLAPSIBLE_FILE_LIST_THRESHOLD,
+        "enable_semantic_files_types": False,
         "enable_pr_diagram": True,
         "enable_pr_description": True,
         "duplicate_prompt_examples": False,

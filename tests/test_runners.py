@@ -68,8 +68,8 @@ class CommandTest(unittest.TestCase):
 
 class RunDirTest(unittest.TestCase):
     def test_a_claude_run_keeps_the_variant_name_and_a_copilot_run_sits_beside_it(self) -> None:
-        self.assertEqual(runners.run_dir_name("one_path_risk_chunked_v23", "claude"), "one_path_risk_chunked_v23")
-        self.assertEqual(runners.run_dir_name("one_path_risk_chunked_v23", "copilot"), "one_path_risk_chunked_v23_copilot")
+        self.assertEqual(runners.run_dir_name("diagram_walkthrough_v24", "claude"), "diagram_walkthrough_v24")
+        self.assertEqual(runners.run_dir_name("diagram_walkthrough_v24", "copilot"), "diagram_walkthrough_v24_copilot")
 
 
 class CleanAnswerTest(unittest.TestCase):

@@ -7,7 +7,7 @@ collapses repeated changes: the same change to the same property across several 
 operation that are one move, new operations under one base path, the same parameter change across several operations,
 and added enum values. `contract_lines` runs both and returns the lines, worst impact first.
 
-The lines are placed in chunks and drawn by layout.py.
+The lines are drawn by layout.py.
 """
 import re
 from dataclasses import dataclass, field
@@ -38,8 +38,7 @@ TYPE_KEYS: frozenset[str] = frozenset({"type", "format", "$ref", "items", "oneOf
 
 @dataclass(frozen=True)
 class Member:
-    """What a line is about, which is how it finds its chunk: a schema, an operation and its controller tag, or a
-    migration file."""
+    """What a line is about: a schema, an operation and its controller tag, or a migration file."""
     schema: str | None = None
     operation: str | None = None
     tag: str | None = None

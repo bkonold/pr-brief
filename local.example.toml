@@ -58,26 +58,15 @@ workspace_root = "web"
 # "/src/test/", ".test." and "Test.java". Test files are never listed as callers.
 test_dirs = ["/src/integrationTest/"]
 
-# Globs over repository paths (`*` within a folder, `**` across folders) that make a file a test when the renderer
-# orders the files inside a chunk: the files in the model's order, test files last. Optional; without it the built-in globs apply (`**/test/**`, `**/tests/**`, `**/*Test.*`, `**/*Tests.*`,
-# `**/*.test.*`, `**/*_test.*`). Setting it replaces them. `test_dirs` above also counts.
-# test_globs = ["**/__tests__/**", "**/*.spec.*"]
-
 # Pathspec globs (git grep syntax without the leading ":!") excluded from the callers search when a
 # variant sets callers_code_only, in addition to markdown, lock and similar files.
 callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
-
-# How an OpenAPI operation tag names the file that implements it, for placing a contract line in the chunk that holds
-# that file. Each template may use {pascal} (`ItemList`), {camel} (`itemList`) and {kebab} (`item-list`); a file matches
-# when its name before the first dot equals any result, ignoring case. The default is ["{pascal}"], which turns the tag
-# `item-list-controller` into ItemListController.
-# tag_file_templates = ["{pascal}", "{pascal}Controller"]
 
 # serve.py (`serve.py`, or `pd serve` in an overlay) starts briefs on demand for the browser extension.
 # default_variant is the variant a started run uses. serve_repos is the only list of repositories a run may be
 # started for, per host, as "owner/name"; a request for any other repository is refused. Both are required to
 # start runs; without serve_repos the server still serves the runs but refuses every request to start one.
-default_variant = "one_path_risk_chunked_v23"
+default_variant = "diagram_walkthrough_v24"
 
 [serve_repos]
 github = ["example-org/example-repo"]

@@ -1,4 +1,4 @@
-"""Tests for the catch-all chunk and for the floor rules and contract breaks that raise a chunk. All data here is invented.
+"""Tests for the removals and newly required fields that a contract comparison lists. All data here is invented.
 Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import sys
 import unittest
@@ -7,61 +7,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from context_pack import contract_breaks, contract_lines  # noqa: E402
-from layout import LineSet  # noqa: E402
-from render import build_chunks, file_floor  # noqa: E402
-
-FLOORS = {"floor": [{"name": "schema file", "level": "verify", "globs": ["**/schema.json"]}]}
-PATHS = ["src/a.js", "src/b.js", "src/c.js", "src/d.js", "api/schema.json"]
-COUNTS = {path.lower(): (1, 0) for path in PATHS}
-
-
-def raw(name: str, review: str, path: str) -> dict:
-    return {"name": name, "review": review, "why": "w", "files": [path]}
-
-
-def build(chunks: list[dict], paths: list[str] = PATHS) -> list:
-    return build_chunks(chunks, COUNTS, paths, FLOORS, [], {}, None, LineSet([], []))
-
-
-class CatchAllChunk(unittest.TestCase):
-    def test_files_the_model_left_out_stay_last(self) -> None:
-        chunks = build([raw("A", "skim", "src/a.js")], ["src/a.js", "src/b.js"])
-        self.assertEqual([c.name for c in chunks], ["A", "Unchunked"])
-
-
-SPEC = "api/openapi.json"
-RULE = {"name": "OpenAPI spec", "level": "read", "level_if_deleted": "verify", "globs": [SPEC]}
-
-
-class ContractFloor(unittest.TestCase):
-    def level(self, rule: dict, contract: dict | None, deletions: int = 12) -> str:
-        floor = file_floor({"floor": [rule]}, SPEC, deletions, contract)
-        return floor[0] if floor else ""
-
-    def test_an_edited_spec_with_no_removals_is_not_raised(self) -> None:
-        contract = {"path": SPEC, "removals": []}
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read")
-
-    def test_a_spec_with_a_listed_removal_is_raised(self) -> None:
-        contract = {"path": SPEC, "removals": ["removed operation GET /widgets"]}
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "verify")
-
-    def test_a_rule_without_the_key_counts_deleted_lines_as_before(self) -> None:
-        contract = {"path": SPEC, "removals": []}
-        self.assertEqual(self.level(RULE, contract), "verify")
-        self.assertEqual(self.level(RULE, contract, deletions=0), "read")
-
-    def test_a_run_with_no_contract_json_counts_deleted_lines_as_before(self) -> None:
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None), "verify")
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, None, deletions=0), "read")
-
-    def test_a_newly_required_field_raises_the_spec(self) -> None:
-        contract = {"path": SPEC, "removals": [], "newly_required": ["Widget.size (now required)"]}
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "verify")
-
-    def test_a_removal_listed_for_another_file_does_not_raise_this_one(self) -> None:
-        contract = {"path": "other/openapi.json", "removals": ["removed operation GET /widgets"]}
-        self.assertEqual(self.level({**RULE, "deleted_from": "contract"}, contract), "read")
 
 
 class ContractRemovals(unittest.TestCase):
@@ -120,9 +65,3 @@ class NewlyRequired(unittest.TestCase):
         head = document({"id": {}, "size": {"description": "b"}}, ["id"], [{"name": "limit", "in": "query", "required": True}])
         breaks = contract_breaks(base, head)
         self.assertEqual(breaks, {"removals": [], "newly_required": []})
-        floor = file_floor({"floor": [{**RULE, "deleted_from": "contract"}]}, SPEC, 9, {"path": SPEC, **breaks})
-        self.assertEqual(floor[0], "read")
-
-
-if __name__ == "__main__":
-    unittest.main()

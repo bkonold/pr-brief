@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Render a run's answer.yaml as the PR body, and as a standalone HTML page.
 
-usage: render.py <run dir>      e.g. runs/42/one_path_risk_chunked_v23
+usage: render.py <run dir>      e.g. runs/42/diagram_walkthrough_v24
 
-Reads answer.yaml, run.json and pr.json from the run dir and the variant's [render] settings.
+Reads answer.yaml, run.json and pr.json from the run dir.
 Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.
-The body is the PR's title, the model's description, the Contract and Data sections, the diagram and its legend; the
-chunks, walkthrough stops and contract lines go to review.json.
+The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
+diagram's boxes, the walkthrough stops and the contract and data lines go to review.json.
 """
 import html
 import json
@@ -14,18 +14,17 @@ import re
 import subprocess
 import sys
 import tempfile
-import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 
-from config import ROOT, config_file, load_local, variant_file
+from config import ROOT, load_local
 import layout
 from diff_lines import file_diff_lines
-from contract_lines import CALLERS, CONSUMERS, CONTRACT_LEVELS, Line, contract_lines
-from data_lines import DATA_LEVELS, DESTRUCTIVE, data_lines
+from contract_lines import CONTRACT_LEVELS, Line, contract_lines
+from data_lines import DATA_LEVELS, data_lines
 from hosts import get_host
 from hosts.github import GitHub
 
@@ -34,29 +33,9 @@ from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: 
 
 DIAGRAM_THRESHOLD = 5
 DIAGRAM_WRAPPING_WIDTH = 400
-# The `[render]` table a variant may carry: each key has the one value the renderer works with. A variant that
-# sets a key to another value, or sets any other key, is refused.
-RENDER_SETTINGS: dict[str, Any] = {
-    "diagram": "force_td", "wrapping_width": DIAGRAM_WRAPPING_WIDTH, "files": "chunks", "numbering": "flow",
-    "chunk_order": "flow", "chunk_box_fallback": True, "one_box_per_chunk": True, "contract_block": True,
-    "review_labels": True, "contract_layout": "by_chunk", "review_order": False, "walkthrough": True,
-}
-SAVE_CLASS_DEF = "classDef save fill:#fff4e5,stroke:#b26a00"
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
-LEVEL_CLASS = "lv-"
-CHECK_CLASS = "chk-"
-ALSO_ID = "also"
-ALSO_SUBGRAPH = f'subgraph {ALSO_ID}["Also in this PR"]'
-LEVELS: list[str] = ["skim", "read", "verify"]
-CHECK_ORDER: list[str] = ["logic", "contract", "breaking", "data", "destructive", "access", "generated"]
-# The labels the model sets; the renderer sets the others (`breaking`, `destructive`, `generated`).
-MODEL_CHECKS: list[str] = ["logic", "contract", "data", "access"]
-MAX_MODEL_CHECKS = 3
+CONTEXT_CAPTION = "Dashed boxes are unchanged context"
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
-DEFAULT_TEST_GLOBS: list[str] = ["**/test/**", "**/tests/**", "**/*Test.*", "**/*Tests.*", "**/*.test.*", "**/*_test.*"]
-TEST_GLOBS: list[str] = load_local().get("test_globs", DEFAULT_TEST_GLOBS)
-TEST_DIRS: list[str] = load_local().get("test_dirs", [])
-TAG_FILE_TEMPLATES: list[str] = load_local().get("tag_file_templates", layout.DEFAULT_TAG_TEMPLATES)
 
 
 class AnswerError(Exception):
@@ -64,16 +43,6 @@ class AnswerError(Exception):
 
 
 # ---------------------------------------------------------------- diagram
-
-def check_render_settings(cfg: dict[str, Any]) -> None:
-    """Refuses a variant's `[render]` table that sets a key the renderer does not have, or a key to a value other than
-    the one it works with."""
-    for key, value in cfg.items():
-        if key not in RENDER_SETTINGS:
-            raise AnswerError(f"unknown render setting {key!r}")
-        if value != RENDER_SETTINGS[key]:
-            raise AnswerError(f"render setting {key!r} can only be {RENDER_SETTINGS[key]!r}, not {value!r}")
-
 
 def render_diagram(raw: Any) -> str:
     """The diagram top-down, with its labels wrapped at DIAGRAM_WRAPPING_WIDTH."""
@@ -85,8 +54,6 @@ def render_diagram(raw: Any) -> str:
     init: str = '%%{init: {"flowchart": {"wrappingWidth": ' + str(DIAGRAM_WRAPPING_WIDTH) + '}}}%%'
     fence: int = next(i for i, line in enumerate(lines) if line.strip().startswith("```mermaid"))
     lines.insert(fence + 1, init)
-    if ":::save" in diagram and not re.search(r"^\s*classDef\s+save\b", diagram, re.MULTILINE):
-        lines.insert(len(lines) - 1, "  " + SAVE_CLASS_DEF)
     return "\n".join(lines)
 
 
@@ -162,7 +129,7 @@ def line_link(repo: str, pr: str, start: dict[str, Any]) -> str:
     return LINK_HOST.line_link(repo, pr, start)
 
 
-# ---------------------------------------------------------------- review floor
+# ---------------------------------------------------------------- globs
 
 def glob_to_regex(glob: str) -> re.Pattern[str]:
     out: str = ""
@@ -188,78 +155,6 @@ def glob_to_regex(glob: str) -> re.Pattern[str]:
 
 def matches(globs: list[str], path: str) -> bool:
     return any(glob_to_regex(g).match(path) for g in globs)
-
-
-def is_test_path(path: str, globs: list[str] | None = None, dirs: list[str] | None = None) -> bool:
-    """Whether the path is a test file: it matches a test glob (`test_globs` in local.toml, else the generic
-    folder and name patterns) or contains one of the repository's `test_dirs` markers."""
-    return matches(TEST_GLOBS if globs is None else globs, path) or any(d in path for d in (TEST_DIRS if dirs is None else dirs))
-
-
-def breaking_change_counts(rule: dict[str, Any], path: str, deletions: int, contract: dict[str, Any] | None) -> bool:
-    """Whether `level_if_deleted` applies to the file. By default any deleted line counts; a rule with
-    `deleted_from = "contract"` counts only a breaking change (a removal or a newly required field) that the run's
-    contract.json lists for the file, and falls back to the deleted-line count for a run that saved no contract.json."""
-    if "level_if_deleted" not in rule:
-        return False
-    if rule.get("deleted_from") == "contract" and contract is not None:
-        return contract.get("path") == path and bool(contract.get("removals") or contract.get("newly_required"))
-    return deletions > 0
-
-
-def normalize_level(raw: Any) -> str | None:
-    """The review level a word names: one of LEVELS; None for anything else."""
-    word: str = " ".join(str(raw or "").lower().split())
-    return word if word in LEVELS else None
-
-
-def file_floor(floor_cfg: dict[str, Any], path: str, deletions: int,
-               contract: dict[str, Any] | None = None) -> tuple[str, str] | None:
-    """The highest (level, rule name) among the rules that match the file, or None."""
-    best: tuple[str, str] | None = None
-    for rule in floor_cfg.get("floor", []):
-        if not matches(rule["globs"], path):
-            continue
-        word: str = rule["level_if_deleted"] if breaking_change_counts(rule, path, deletions, contract) else rule["level"]
-        level: str | None = normalize_level(word)
-        if level is None:
-            raise AnswerError(f"review floor {rule['name']!r} has an unknown level {word!r}")
-        if best is None or LEVELS.index(level) > LEVELS.index(best[0]):
-            best = (level, rule["name"])
-    return best
-
-
-def file_tags(floor_cfg: dict[str, Any], path: str) -> list[str]:
-    return [tag["name"] for tag in floor_cfg.get("tag", []) if matches(tag["globs"], path)]
-
-
-# ---------------------------------------------------------------- check labels
-
-GENERATED_TAG = "generated"
-
-def clean_checks(raw: Any, name: str, notes: list[str]) -> list[str]:
-    """The labels the model gave the chunk, in display order: only logic, contract, data and access, at most
-    MAX_MODEL_CHECKS of them."""
-    items: list[Any] = re.split(r"[,\s]+", raw) if isinstance(raw, str) else raw if isinstance(raw, list) else []
-    given: set[str] = set()
-    for item in items:
-        check: str = str(item).strip().strip("`'\"").lower()
-        if not check:
-            continue
-        if check in MODEL_CHECKS:
-            given.add(check)
-        else:
-            notes.append(f"chunk '{name}': unknown check {check!r}, dropped")
-    ordered: list[str] = [check for check in CHECK_ORDER if check in given]
-    if len(ordered) > MAX_MODEL_CHECKS:
-        notes.append(f"chunk '{name}': {len(ordered)} checks, kept the first {MAX_MODEL_CHECKS}")
-    return ordered[:MAX_MODEL_CHECKS]
-
-
-def generated_share(floor_cfg: dict[str, Any], files: list[str]) -> str:
-    """"all" when every file carries the `generated` tag, "none" when no file does, else "mixed"."""
-    tagged: int = sum(GENERATED_TAG in file_tags(floor_cfg, path) for path in files)
-    return "all" if tagged == len(files) else "none" if tagged == 0 else "mixed"
 
 
 # ---------------------------------------------------------------- diff lines and walkthrough stops
@@ -324,13 +219,34 @@ STOP_WHY_MAX_WORDS = 20
 STOPS_RANGE = (3, 10)
 
 
+def clean_path(raw: Any) -> str:
+    return str(raw).strip().strip("`'\"").removeprefix("./")
+
+
+def stop_node(raw: Any, path: str, node_files: dict[str, list[str]], label: str, notes: list[str]) -> str | None:
+    """The diagram box a stop belongs to: the box the answer names when the diagram has it and it covers files, else the
+    first box, in diagram order, whose files include the stop's file, else None. Each fallback is noted."""
+    named: str = str(raw or "").strip().strip("`'\"")
+    if node_files.get(named):
+        return named
+    found: str | None = next((node for node, files in node_files.items() if path in files), None)
+    problem: str = ("no node" if not named else f"node {named!r} covers no files" if named in node_files
+                    else f"node {named!r} is not a box in the diagram")
+    if found is None:
+        notes.append(f"{label}: {problem}, and no box holds {path}")
+    else:
+        notes.append(f"{label}: {problem}, using {found}")
+    return found
+
+
 def resolve_stops(raw: Any, files: list[str], diff_lines: dict[str, list[DiffLine]],
-                  chunk_of: dict[str, int]) -> tuple[list[dict[str, Any]], list[str]]:
+                  node_files: dict[str, list[str]]) -> tuple[list[dict[str, Any]], list[str]]:
     """The walkthrough's stops, numbered from 1 in the model's order, and the notes about what was fixed.
 
     A stop quoting a line found exactly once in its file's diff points at that line; any other stop points at its file
     alone (side and line None). A stop in a file outside the diff, or at a place an earlier stop already has, is
-    dropped. `chunk` is the number of the chunk that holds the stop's file, from `chunk_of`."""
+    dropped. `node` is the diagram box the stop belongs to (see `stop_node`); `node_files` maps each box on the diagram,
+    in diagram order, to its files, and is empty when there is no diagram, which leaves every stop's node None."""
     notes: list[str] = []
     if not isinstance(raw, list):
         return [], ["no walkthrough"]
@@ -366,122 +282,12 @@ def resolve_stops(raw: Any, files: list[str], diff_lines: dict[str, list[DiffLin
             notes.append(f"{label}: no reason")
         elif len(why.split()) > STOP_WHY_MAX_WORDS:
             notes.append(f"{label}: reason is longer than {STOP_WHY_MAX_WORDS} words")
-        stops.append({"i": len(stops) + 1, "title": title, "why": why, "path": path, "side": side, "line": number,
-                      "chunk": chunk_of.get(path)})
+        node: str | None = stop_node(item.get("node"), path, node_files, label, notes) if node_files else None
+        stops.append({"i": len(stops) + 1, "title": title, "why": why, "path": path, "side": side, "line": number, "node": node})
     low, high = STOPS_RANGE
     if not low <= len(stops) <= high:
         notes.append(f"{len(stops)} stops, expected {low} to {high}")
     return stops, notes
-
-
-STEP_MAX_WORDS = 2
-
-
-def clean_step(raw: Any, name: str, notes: list[str]) -> str | None:
-    """The chunk's stage along the data path when it is one or two words; None when absent or invalid."""
-    if raw is None:
-        return None
-    step: str = " ".join(str(raw).split()).strip(".:,;")
-    if not step:
-        notes.append(f"chunk '{name}': step is empty, dropped")
-        return None
-    if len(step.split()) > STEP_MAX_WORDS:
-        notes.append(f"chunk '{name}': step is longer than {STEP_MAX_WORDS} words, dropped")
-        return None
-    return step
-
-
-# ---------------------------------------------------------------- review chunks
-
-@dataclass
-class Chunk:
-    name: str
-    review: str
-    why: str
-    files: list[str]
-    nodes: list[str] = field(default_factory=list)
-    number: int = 0
-    raised_by: list[str] = field(default_factory=list)
-    step: str | None = None
-    checks: list[str] = field(default_factory=list)
-    labels: list[str] = field(default_factory=list)
-    contract: list[Line] = field(default_factory=list)
-    data: list[Line] = field(default_factory=list)
-
-
-def clean_path(raw: Any) -> str:
-    return str(raw).strip().strip("`'\"").removeprefix("./")
-
-
-def clean_nodes(raw: Any) -> list[str]:
-    items: list[Any] = re.split(r"[,\s]+", raw) if isinstance(raw, str) else raw if isinstance(raw, list) else []
-    return list(dict.fromkeys(n for n in (str(item).strip().strip("`'\"") for item in items) if n))
-
-
-UNCHUNKED = "Unchunked"
-
-
-def order_files(files: list[str]) -> list[str]:
-    """The files in the model's order, test files last."""
-    return [p for p in files if not is_test_path(p)] + [p for p in files if is_test_path(p)]
-
-
-def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
-                 notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None,
-                 lineset: layout.LineSet) -> list[Chunk]:
-    chunks: list[Chunk] = []
-    seen: set[str] = set()
-    for item in raw_chunks if isinstance(raw_chunks, list) else []:
-        if not isinstance(item, dict):
-            continue
-        name: str = str(item.get("name", "")).strip()
-        files: list[str] = []
-        for raw_path in item.get("files") or []:
-            path: str = clean_path(raw_path)
-            if path not in paths:
-                notes.append(f"chunk '{name}': dropped a path that is not in the PR: {path}")
-            elif path not in seen:
-                seen.add(path)
-                files.append(path)
-        if not files:
-            notes.append(f"chunk '{name}': dropped, it has no files")
-            continue
-        review: str | None = normalize_level(item.get("review"))
-        if review is None:
-            notes.append(f"chunk '{name}': unknown review level {str(item.get('review', '')).strip().lower()!r}, using 'read'")
-            review = "read"
-        step: str | None = clean_step(item.get("step"), name, notes)
-        if step is None and "step" not in item:
-            notes.append(f"chunk '{name}': no step")
-        chunk: Chunk = Chunk(name, review, str(item.get("why", "")).strip(), order_files(files),
-                             clean_nodes(item.get("nodes")), step=step)
-        chunk.checks = clean_checks(item.get("checks"), name, notes)
-        chunks.append(chunk)
-    missing: list[str] = [p for p in paths if p not in seen]
-    if missing:
-        notes.append("files the model left out of every chunk: " + ", ".join(missing))
-        chunks.append(Chunk(UNCHUNKED, "skim", "Not assigned to a chunk by the model", order_files(missing)))
-    place_lines(chunks, lineset, floor_cfg, diff_lines)
-    raising: dict[int, list[tuple[str, str]]] = apply_labels(chunks, floor_cfg, notes)
-    for index, chunk in enumerate(chunks):
-        apply_floor(chunk, counts, floor_cfg, contract, raising.get(index, []))
-    # The model's order is the flow of the change; the floors raise a level but do not move a chunk.
-    chunks.sort(key=lambda chunk: chunk.name == UNCHUNKED)
-    for number, chunk in enumerate(chunks, 1):
-        chunk.number = number
-    return chunks
-
-
-def build_walkthrough(raw: Any, chunks: list[Chunk], paths: list[str], diff_lines: dict[str, list[DiffLine]],
-                      notes: list[str]) -> list[dict[str, Any]]:
-    """The resolved stops, with a note for each `verify` chunk that no stop visits."""
-    chunk_of: dict[str, int] = {path: chunk.number for chunk in chunks for path in chunk.files}
-    stops, stop_notes = resolve_stops(raw, paths, diff_lines, chunk_of)
-    notes.extend(stop_notes)
-    visited: set[int | None] = {stop["chunk"] for stop in stops}
-    notes.extend(f"chunk '{chunk.name}': a verify chunk with no walkthrough stop"
-                 for chunk in chunks if chunk.review == "verify" and chunk.number not in visited)
-    return stops
 
 
 NODE_DECLARATION = re.compile(r'(?<![\w-])(?P<id>[A-Za-z0-9_][A-Za-z0-9_-]*)(?P<open>\s*\[")(?:\d+\s*·\s*|\d+[.:)]\s+)?')
@@ -497,130 +303,32 @@ def declaration_positions(lines: list[str]) -> dict[str, int]:
     return position
 
 
-def keep_diagram_nodes(chunks: list[Chunk], position: dict[str, int], notes: list[str]) -> dict[str, int]:
-    """Drop from every chunk the node ids that are not in the diagram, noting each in `notes`.
-    Returns node id -> index of the first chunk (in the model's order) that lists it."""
-    owner: dict[str, int] = {}
-    for index, chunk in enumerate(chunks):
-        known: list[str] = [node for node in chunk.nodes if node in position]
-        for node in chunk.nodes:
-            if node not in position:
-                notes.append(f"chunk '{chunk.name}': ignored node id that is not in the diagram: {node}")
-            else:
-                owner.setdefault(node, index)
-        chunk.nodes = known
-    return owner
-
-
-def note_box_sharing(diagram: str, chunks: list[Chunk], notes: list[str]) -> None:
-    """Note each box claimed by more than one chunk and each chunk with no box or with several, for variants that
-    ask for exactly one box per chunk. The diagram and the chunks are left as they are."""
-    keep_diagram_nodes(chunks, declaration_positions(diagram.split("\n")), notes)
-    claimed: dict[str, list[str]] = {}
-    for chunk in chunks:
-        for node in chunk.nodes:
-            claimed.setdefault(node, []).append(chunk.name)
-    for node, names in claimed.items():
-        if len(names) > 1:
-            notes.append(f"box {node} is claimed by {len(names)} chunks: " + ", ".join(f"'{name}'" for name in names))
-    for chunk in chunks:
-        if not chunk.nodes:
-            notes.append(f"chunk '{chunk.name}': has no box")
-        elif len(chunk.nodes) > 1:
-            notes.append(f"chunk '{chunk.name}': has {len(chunk.nodes)} boxes: " + ", ".join(chunk.nodes))
-
-
-def prefix_labels(lines: list[str], number_of: Callable[[str], int | None]) -> str:
-    """Prefix each labelled node declaration with `<n> · `, replacing any number the model wrote.
-    A node for which `number_of` returns None keeps no number."""
+def stop_badges(diagram: str, stops_on: dict[str, list[int]]) -> str:
+    """Prefix the label of every box that stops land on with their numbers, `2 · 5 · `, replacing any number the model
+    wrote; a box with no stops keeps no number."""
     def prefix(declaration: re.Match[str]) -> str:
-        number: int | None = number_of(declaration.group("id"))
-        label_number: str = f"{number} · " if number is not None else ""
-        return f"{declaration.group('id')}{declaration.group('open')}{label_number}"
+        numbers: list[int] = stops_on.get(declaration.group("id"), [])
+        badge: str = "".join(f"{number} · " for number in numbers)
+        return f"{declaration.group('id')}{declaration.group('open')}{badge}"
 
-    return "\n".join(line if NON_EDGE_LINE.match(line) else NODE_DECLARATION.sub(prefix, line) for line in lines)
-
-
-def number_by_flow(diagram: str, chunks: list[Chunk], notes: list[str]) -> str:
-    """Prefix every node label with the flow step (the number) of the first chunk, in flow order, that lists the node."""
-    lines: list[str] = diagram.split("\n")
-    owner: dict[str, int] = keep_diagram_nodes(chunks, declaration_positions(lines), notes)
-    return prefix_labels(lines, lambda node: chunks[owner[node]].number if node in owner else None)
+    return "\n".join(line if NON_EDGE_LINE.match(line) else NODE_DECLARATION.sub(prefix, line) for line in diagram.split("\n"))
 
 
-def also_block(lines: list[str]) -> tuple[int, int] | None:
-    """Indexes of the `subgraph also` line and of the `end` that closes it, or None when there is none."""
-    start: int | None = next((i for i, line in enumerate(lines) if re.match(rf"\s*subgraph\s+{ALSO_ID}\b", line)), None)
-    if start is None:
-        return None
-    depth: int = 0
-    for index in range(start, len(lines)):
-        if re.match(r"\s*subgraph\b", lines[index]):
-            depth += 1
-        elif re.match(r"\s*end\s*$", lines[index]):
-            depth -= 1
-            if depth == 0:
-                return start, index
-    return None
+BOX_LABEL = re.compile(r'(?<![\w-])(?P<id>[A-Za-z0-9_][A-Za-z0-9_-]*)\["(?P<label>[^"\n]*)"\]')
+LABEL_TAG = re.compile(r"<[^>]*>")
 
 
-def main_file(chunk: Chunk, counts: dict[str, tuple[int, int]]) -> str:
-    """The chunk's file with the most changed lines (the first one on a tie)."""
-    return max(chunk.files, key=lambda path: sum(counts[path.lower()]))
-
-
-def add_chunk_boxes(diagram: str, chunks: list[Chunk], node_files: dict[str, list[str]] | None,
-                    counts: dict[str, tuple[int, int]], notes: list[str]) -> str:
-    """Give every chunk that still lists no node on the diagram a box of its own in the `also` subgraph (the
-    model's, or one appended before the closing fence). The box is `chunk<n>["<chunk name><br/><main file>"]`; it
-    becomes the chunk's node and, in `node_files`, covers all the chunk's files."""
-    lines: list[str] = diagram.split("\n")
-    taken: set[str] = set(declaration_positions(lines))
-    keep_diagram_nodes(chunks, declaration_positions(lines), notes)
-    added: list[str] = []
-    for chunk in chunks:
-        if chunk.nodes:
+def node_titles(diagram: str) -> dict[str, str]:
+    """Box id -> the first line of its label (the step's title), as plain text, from the box's first declaration."""
+    titles: dict[str, str] = {}
+    for line in diagram.split("\n"):
+        if NON_EDGE_LINE.match(line):
             continue
-        node: str = f"chunk{chunk.number}"
-        while node in taken:
-            node += "x"
-        taken.add(node)
-        label: str = f"{chunk.name.replace(chr(34), '#quot;')}<br/>{main_file(chunk, counts).split('/')[-1]}"
-        added.append(f'    {node}["{label}"]')
-        chunk.nodes = [node]
-        if node_files is not None:
-            node_files[node] = list(chunk.files)
-    if not added:
-        return diagram
-    block: tuple[int, int] | None = also_block(lines)
-    if block:
-        lines[block[1]:block[1]] = added
-    else:
-        lines[len(lines) - 1:len(lines) - 1] = [f"  {ALSO_SUBGRAPH}", *added, "  end"]
-    return "\n".join(lines)
-
-
-def style_levels(diagram: str, chunks: list[Chunk], notes: list[str]) -> str:
-    """Give every box a chunk owns a class for its review level (`lv-<level>`, the highest level among its chunks)
-    and one class per label (`chk-<label>`, in the labels' display order), before the closing fence. A box that no
-    chunk owns gets none."""
-    lines: list[str] = diagram.split("\n")
-    positions: dict[str, int] = declaration_positions(lines)
-    keep_diagram_nodes(chunks, positions, notes)
-    by_level: dict[str, list[str]] = {level: [] for level in reversed(LEVELS)}
-    by_label: dict[str, list[str]] = {label: [] for label in CHECK_ORDER}
-    for node in positions:
-        owners: list[Chunk] = [chunk for chunk in chunks if node in chunk.nodes]
-        if not owners:
-            continue
-        by_level[max((chunk.review for chunk in owners), key=LEVELS.index)].append(node)
-        for label in CHECK_ORDER:
-            if any(label in chunk.labels for chunk in owners):
-                by_label[label].append(node)
-    statements: list[str] = [f"  class {','.join(nodes)} {LEVEL_CLASS}{level}" for level, nodes in by_level.items() if nodes]
-    statements += [f"  class {','.join(nodes)} {CHECK_CLASS}{label}" for label, nodes in by_label.items() if nodes]
-    lines[len(lines) - 1:len(lines) - 1] = statements
-    return "\n".join(lines)
+        for box in BOX_LABEL.finditer(line):
+            first: str = re.split(r"<br\s*/?>", box.group("label"))[0]
+            title: str = " ".join(LABEL_TAG.sub("", first).replace("#quot;", '"').split())
+            titles.setdefault(box.group("id"), re.sub(r"^(?:\d+\s*·\s*)+", "", title))
+    return titles
 
 
 def clean_node_files(raw: Any, position: dict[str, int], paths: list[str], notes: list[str]) -> dict[str, list[str]]:
@@ -653,138 +361,6 @@ def add_context_style(diagram: str, context_nodes: list[str]) -> str:
     return "\n".join(lines)
 
 
-# The border of an unstyled box in Mermaid's default theme, which the legend's "unchanged context" swatch copies.
-DEFAULT_STROKE = "#9370DB"
-SAVE_NODE = re.compile(r'(?<![\w-])(?P<id>[A-Za-z0-9_][A-Za-z0-9_-]*)\["[^\n]*?"\]:::save')
-SAVE_CLASS_LINE = re.compile(r"^\s*class\s+(?P<ids>[\w,\s-]+?)\s+save\s*$", re.MULTILINE)
-SAVE_CLASS_DEF_LINE = re.compile(r"^\s*classDef\s+save\s+(?P<props>[^\n]+)$", re.MULTILINE)
-
-
-def save_colors(diagram: str) -> tuple[str, str]:
-    """(fill, stroke) of the diagram's `save` class: the model's own classDef, else the renderer's default."""
-    found: re.Match[str] | None = SAVE_CLASS_DEF_LINE.search(diagram)
-    props: dict[str, str] = dict(p.split(":", 1) for p in re.split(r"[;,]", found.group("props")) if ":" in p) if found else {}
-    default: dict[str, str] = dict(p.split(":", 1) for p in SAVE_CLASS_DEF.split(" ", 2)[2].split(","))
-    return props.get("fill", default["fill"]).strip(), props.get("stroke", default["stroke"]).strip()
-
-
-# Box borders by review level, as the diagram's theme draws them: (stroke, width in px, dashed, fill).
-LEVEL_LOOKS: dict[str, tuple[str, int, bool, str]] = {
-    "verify": ("#1f2328", 2, False, "#fff"),
-    "read": ("#1f2328", 1, False, "#fff"),
-    "skim": ("#8c959f", 1, True, "#f6f8fa"),
-}
-LEVEL_CLASS_LINE = re.compile(rf"^\s*class\s+(?P<ids>[\w,\s-]+?)\s+{LEVEL_CLASS}(?P<level>\w+)\s*$", re.MULTILINE)
-
-
-def swatch(fill: str, stroke: str, dashed: bool = False, width: float = 1.5) -> str:
-    style: str = (f"display:inline-block;width:14px;height:9px;vertical-align:middle;border-radius:2px;"
-                  f"background:{fill};border:{width}px {'dashed' if dashed else 'solid'} {stroke}")
-    return f'<span style="{style}"></span>'
-
-
-def diagram_legend(diagram: str, context_nodes: list[str]) -> str:
-    """One line under the diagram naming only the box styles it uses, each with a swatch drawn like the boxes."""
-    lines: list[str] = diagram.split("\n")
-    nodes: set[str] = set(declaration_positions(lines))
-    saved: set[str] = set(SAVE_NODE.findall(diagram))
-    for found in SAVE_CLASS_LINE.finditer(diagram):
-        saved.update(re.split(r"[,\s]+", found.group("ids").strip()))
-    saved &= nodes
-    context: set[str] = set(context_nodes) & nodes
-    leveled: dict[str, set[str]] = {level: set() for level in reversed(LEVELS)}
-    for found in LEVEL_CLASS_LINE.finditer(diagram):
-        if found.group("level") in leveled:
-            leveled[found.group("level")].update(re.split(r"[,\s]+", found.group("ids").strip()))
-    entries: list[str] = []
-    for level, members in leveled.items():
-        if members & nodes:
-            border, width, dashed, level_fill = LEVEL_LOOKS[level]
-            entries.append(f"{swatch(level_fill, border, dashed, width)} {level}")
-    if saved:
-        entries.append(f"{swatch(*save_colors(diagram))} writes data")
-    if context:
-        entries.append(f"{swatch('#fff', DEFAULT_STROKE, dashed=True)} unchanged context")
-    return "Legend: " + " · ".join(entries) if entries else ""
-
-
-def apply_floor(chunk: Chunk, counts: dict[str, tuple[int, int]], floor_cfg: dict[str, Any],
-                contract: dict[str, Any] | None = None, extra: list[tuple[str, str]] | None = None) -> None:
-    """Raise the chunk's level to the highest floor of its files and of `extra` (level, reason) pairs, and record
-    in `raised_by` the names behind the new level."""
-    floors: list[tuple[str, str]] = list(extra or [])
-    for path in chunk.files:
-        found: tuple[str, str] | None = file_floor(floor_cfg, path, counts[path.lower()][1], contract)
-        if found:
-            floors.append(found)
-    top: int = max([LEVELS.index(chunk.review)] + [LEVELS.index(level) for level, _ in floors])
-    if top > LEVELS.index(chunk.review):
-        chunk.raised_by = list(dict.fromkeys(name for level, name in floors if LEVELS.index(level) == top))
-        chunk.review = LEVELS[top]
-
-
-def derive_labels(checks: list[str], breaking: bool, destructive: bool, generated: bool) -> list[str]:
-    """A chunk's labels in display order: the model's checks, `breaking` in place of `contract` and `destructive` in
-    place of `data`, then `generated`."""
-    present: set[str] = set(checks)
-    if breaking:
-        present.discard("contract")
-        present.add("breaking")
-    if destructive:
-        present.discard("data")
-        present.add("destructive")
-    if generated:
-        present.add(GENERATED_TAG)
-    return [label for label in CHECK_ORDER if label in present]
-
-
-def hand_written_paths(files: list[str], spec: str, floor_cfg: dict[str, Any]) -> list[str]:
-    """The files that are neither the spec, generated nor tests: the code that a contract change is traced to."""
-    return [p for p in files if p != spec and GENERATED_TAG not in file_tags(floor_cfg, p) and not is_test_path(p)]
-
-
-def hand_written_code(files: list[str], spec: str, floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]]) -> list[str]:
-    """The file stems and diff lines of the hand-written files, which the probes search."""
-    paths: list[str] = hand_written_paths(files, spec, floor_cfg)
-    return [Path(p).stem for p in paths] + [text for p in paths for _, _, text in diff_lines.get(p, [])]
-
-
-def place_lines(chunks: list[Chunk], lineset: layout.LineSet, floor_cfg: dict[str, Any],
-                diff_lines: dict[str, list[DiffLine]]) -> None:
-    """Give each chunk the contract and data lines it owns (`Chunk.contract`, `Chunk.data`) and keep the rest in
-    `lineset`. A chunk of only generated files owns none."""
-    eligible: list[int] = [i for i, chunk in enumerate(chunks) if generated_share(floor_cfg, chunk.files) != "all"]
-    held: list[set[str]] = [set(chunk.files) for chunk in chunks]
-    stems: list[set[str]] = [{layout.stem(p) for p in hand_written_paths(chunk.files, lineset.spec, floor_cfg)} for chunk in chunks]
-    code: dict[int, list[str]] = {i: hand_written_code(chunks[i].files, lineset.spec, floor_cfg, diff_lines) for i in eligible}
-    for kind, lines in (("contract", lineset.contract), ("data", lineset.data)):
-        preferred: set[int] = {i for i in eligible if kind in chunks[i].checks}
-        owned, loose = layout.place(lines, held, stems, code, preferred, lineset.templates)
-        for index, found in owned.items():
-            setattr(chunks[index], kind, found)
-        setattr(lineset, f"loose_{kind}", loose)
-
-
-def apply_labels(chunks: list[Chunk], floor_cfg: dict[str, Any], notes: list[str]) -> dict[int, list[tuple[str, str]]]:
-    """Set every chunk's `labels` and return, by chunk index, the (level, reason) pairs that raise a chunk to `verify`:
-    a breaking API change or a destructive migration. A chunk is breaking when it owns a contract line at the top two
-    levels and destructive when it owns a destructive data line."""
-    raising: dict[int, list[tuple[str, str]]] = {}
-    for index, chunk in enumerate(chunks):
-        breaking: bool = any(line.impact in (CALLERS, CONSUMERS) for line in chunk.contract)
-        destructive: bool = any(line.impact == DESTRUCTIVE for line in chunk.data)
-        share: str = generated_share(floor_cfg, chunk.files)
-        if share == "mixed":
-            notes.append(f"chunk '{chunk.name}': mixes generated and hand-written files")
-        chunk.labels = derive_labels(chunk.checks, breaking, destructive, share == "all")
-        reasons: list[tuple[str, str]] = [("verify", reason) for reason, applies in
-                                          (("breaking change", breaking), ("destructive migration", destructive))
-                                          if applies]
-        if reasons:
-            raising[index] = reasons
-    return raising
-
-
 # ---------------------------------------------------------------- contract and data block
 
 def unchecked_sides(run: dict[str, Any], contract: dict[str, Any] | None) -> list[str]:
@@ -798,14 +374,14 @@ def migration_paths(pr: dict[str, Any]) -> list[str]:
     return [f["path"] for f in pr["files"] if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"]
 
 
-def build_lineset(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: str) -> layout.LineSet:
-    """The run's contract and data lines, before any chunk owns them."""
+def build_lines(pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: str) -> tuple[list[Line], list[Line]]:
+    """The run's contract lines and data lines."""
     api: list[Line] = contract_lines(contract, file_diff_lines(diff_text, contract["path"]), contract["path"]) if contract else []
     data: list[Line] = data_lines({path: file_diff_lines(diff_text, path) for path in migration_paths(pr)}) if MIGRATION_GLOBS else []
-    return layout.LineSet(api, data, contract["path"] if contract else "", TAG_FILE_TEMPLATES)
+    return api, data
 
 
-def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, unchecked: list[str]) -> tuple[str, str]:
+def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str]) -> tuple[str, str]:
     """The Contract and Data sections of a body, each one closed block with a table of all its lines. A section with
     no lines says so, and says when its side could not be checked."""
     repo: str = run["repo"]
@@ -821,17 +397,26 @@ def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, unchecked: li
             return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
         return layout.section(kind, kind.capitalize(), levels, lines, link_of)
 
-    return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", lineset.contract),
-            draw("database", "No database changes", DATA_LEVELS, "data", lineset.data))
+    return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", api),
+            draw("database", "No database changes", DATA_LEVELS, "data", data))
 
 
 # ---------------------------------------------------------------- body
 
-def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], floor_cfg: dict[str, Any],
-               diff_lines: dict[str, list[DiffLine]], notes: list[str], contract: dict[str, Any] | None = None,
-               diff_text: str = "") -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None,
-                                            layout.LineSet]:
-    counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
+@dataclass
+class Brief:
+    """What a run's answer renders to: the body, the diagram's arrow counts, its boxes by id (`title`, `files` and the
+    numbers of the `stops` that land on it, in diagram order), the walkthrough's stops, and the contract and data lines."""
+    body: str
+    edges: tuple[int, int]
+    nodes: dict[str, dict[str, Any]]
+    stops: list[dict[str, Any]]
+    contract: list[Line]
+    data: list[Line]
+
+
+def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
+               notes: list[str], contract: dict[str, Any] | None = None, diff_text: str = "") -> Brief:
     paths: list[str] = [f["path"] for f in pr["files"]]
 
     ordered: dict[str, Any] = {}
@@ -840,32 +425,32 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], fl
     for key in ("type", "description"):
         if key in data:
             ordered[key] = data[key]
-    lineset: layout.LineSet = build_lineset(run, pr, contract, diff_text)
-    ordered["contract"] = ordered["data"] = ""
-    chunks: list[Chunk] = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, lineset)
-    ordered["contract"], ordered["data"] = chunked_sections(run, lineset, unchecked_sides(run, contract))
+    api, rows = build_lines(pr, contract, diff_text)
+    ordered["contract"], ordered["data"] = sections(run, api, rows, unchecked_sides(run, contract))
     diagram: str = render_diagram(data.get("changes_diagram"))
-    node_files: dict[str, list[str]] | None = None
-    if diagram and "node_files" in data:
-        node_files = clean_node_files(data["node_files"], declaration_positions(diagram.split("\n")), paths, notes)
-        diagram = add_context_style(diagram, [node for node, files in node_files.items() if not files])
-    if diagram and chunks:
-        note_box_sharing(diagram, chunks, notes)
-        diagram = add_chunk_boxes(diagram, chunks, node_files, counts, notes)
+    node_files: dict[str, list[str]] = {}
+    titles: dict[str, str] = {}
     if diagram:
-        diagram = style_levels(diagram, chunks, notes)
-        diagram = number_by_flow(diagram, chunks, notes)
-    edges: tuple[int, int] = count_diagram_edges(diagram)
-    legend: str = ""
+        node_files = clean_node_files(data.get("node_files"), declaration_positions(diagram.split("\n")), paths, notes)
+        titles = node_titles(diagram)
+    else:
+        notes.append("no changes_diagram")
+    stops, stop_notes = resolve_stops(data.get("walkthrough"), paths, diff_lines, node_files)
+    notes.extend(stop_notes)
+    stops_on: dict[str, list[int]] = {node: [stop["i"] for stop in stops if stop["node"] == node] for node in node_files}
+    nodes: dict[str, dict[str, Any]] = {node: {"title": titles.get(node, node), "files": files, "stops": stops_on[node]}
+                                        for node, files in node_files.items()}
+    caption: str = ""
     if diagram:
-        context_nodes: list[str] = [node for node, files in (node_files or {}).items() if not files]
-        legend = diagram_legend(diagram, context_nodes)
+        context_nodes: list[str] = [node for node, files in node_files.items() if not files]
+        diagram = stop_badges(add_context_style(diagram, context_nodes), stops_on)
+        caption = CONTEXT_CAPTION if context_nodes else ""
         ordered["changes_diagram"] = diagram
 
     body: str = ""
     for idx, (key, value) in enumerate(ordered.items()):
         if key == "changes_diagram":
-            body += f"### Diagram Walkthrough\n\n{value}\n\n{legend + chr(10) * 2 if legend else ''}"
+            body += f"### Diagram Walkthrough\n\n{value}\n\n{caption + chr(10) * 2 if caption else ''}"
             continue
         if key in ("contract", "data") and value.startswith("<details"):
             body += f"{value}\n"
@@ -879,10 +464,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], fl
         if idx < len(ordered) - 1:
             body += "\n\n" if key in ("contract", "data") else "\n\n___\n\n"
     body += "\n\n___\n\n"
-    nodes: list[dict[str, Any]] | None = None
-    if node_files is not None:
-        nodes = [{"id": node, "files": files} for node, files in node_files.items()]
-    return f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", edges, chunks, nodes, lineset
+    return Brief(f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", count_diagram_edges(diagram), nodes, stops, api, rows)
 
 
 # ---------------------------------------------------------------- review.json
@@ -895,31 +477,20 @@ def line_json(line: Line) -> dict[str, Any]:
             "path": line.path, "side": side, "line": number}
 
 
-def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], has_diagram: bool,
-                nodes: list[dict[str, Any]] | None, lineset: layout.LineSet,
-                walkthrough: list[dict[str, Any]]) -> dict[str, Any]:
-    """The chunks in flow order, for the browser extension that groups the Files changed page by chunk. Each chunk
-    lists the contract and data lines it owns and `unchunked` the ones no chunk owns; the `walkthrough` lists the
-    stops in reading order beside the chunks."""
-    counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
+def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[str, Any]:
+    """What the browser extension reads: the diagram's boxes with the stops that land on each, the walkthrough's stops
+    in reading order, and the contract and data lines of the tables."""
     return {
-        "schema": 3,
+        "schema": 4,
         "repo": run["repo"],
         "pr": run["pr"],
         "head_sha": run["pr_head_sha"],
         "variant": run["variant"],
         **({"diagram": DIAGRAM_SVG} if has_diagram else {}),
-        **({"nodes": nodes} if nodes is not None else {}),
-        "unchunked": {"contract": [line_json(line) for line in lineset.loose_contract],
-                      "data": [line_json(line) for line in lineset.loose_data]},
-        "walkthrough": walkthrough,
-        "chunks": [{"n": c.number, "name": c.name, "review": c.review, "raised_by": c.raised_by, "why": c.why,
-                    "nodes": c.nodes,
-                    "labels": c.labels,
-                    "contract": [line_json(line) for line in c.contract], "data": [line_json(line) for line in c.data],
-                    "files": [{"path": path, "additions": counts[path.lower()][0], "deletions": counts[path.lower()][1]}
-                              for path in c.files],
-                    **({"step": c.step} if c.step else {})} for c in chunks],
+        "nodes": brief.nodes,
+        "walkthrough": brief.stops,
+        "contract": [line_json(line) for line in brief.contract],
+        "data": [line_json(line) for line in brief.data],
     }
 
 
@@ -937,31 +508,13 @@ const DIAGRAM_CONFIG = {
   themeVariables: { fontFamily: '-apple-system, "Segoe UI", sans-serif' },
   themeCSS: `
     .node rect.label-container { rx: 14px; ry: 14px; fill: none; stroke: #9370db; stroke-width: 1px; }
-    .node.save rect.label-container { fill: #fff4e5; stroke: #b26a00; }
     .node.context rect.label-container { fill: none; stroke: #b4b2a9; stroke-dasharray: 4 4; }
-    .node.lv-verify rect.label-container { stroke: #1f2328; stroke-width: 2px; stroke-dasharray: none; }
-    .node.lv-read rect.label-container { stroke: #1f2328; stroke-width: 1px; stroke-dasharray: none; }
-    .node.lv-skim rect.label-container { fill: #f6f8fa; stroke: #8c959f; stroke-width: 1px; stroke-dasharray: 4 3; }
-    .node.lv-skim .nodeLabel, .node.lv-skim .label div { color: #6e7781; }
-    .node.lv-skim .nodeLabel .t { font-weight: 600; }
-    .node.lv-skim .nodeLabel .eh .n, .node.lv-skim .nodeLabel .s { color: #8c959f; }
-    .nodeLabel .eh { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; text-align: left; }
-    .nodeLabel .es { display: block; margin-top: 2px; text-align: left; }
-    .nodeLabel .ec { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-    .node .nodeLabel .lv { flex: none; font-size: 11px; font-weight: 400; color: #57606a; }
-    .node .nodeLabel .eh .n { color: #57606a; }
-    .node .nodeLabel .chip { display: inline-block; padding: 0 8px; font-size: 12px; line-height: 16px; font-weight: 400; color: #57606a; border: 1px solid #8c959f; border-radius: 9px; }
-    .node .nodeLabel .chip-breaking, .node .nodeLabel .chip-destructive { color: #fff; background: #1f2328; border-color: #1f2328; font-weight: 600; }
     .node .nodeLabel, .node .label div { color: #26215c; text-align: center; }
     .node .nodeLabel p { margin: 0; }
-    .nodeLabel .n { color: #9370db; }
+    .nodeLabel .badge { display: inline-block; margin-right: 4px; padding: 0 7px; font-size: 12px; line-height: 16px; font-weight: 600; color: #fff; background: #7f77dd; border-radius: 9px; }
     .nodeLabel .t { font-weight: 600; }
     .nodeLabel .s { color: #5f5e5a; font-weight: 400; }
-    .save .nodeLabel, .save .label div { color: #633806; }
-    .save .nodeLabel .n { color: #b26a00; }
-    .save .nodeLabel .s { color: #854f0b; }
     .context .nodeLabel, .context .label div { color: #5f5e5a; }
-    .context .nodeLabel .n { color: #b4b2a9; }
     path.flowchart-link { stroke: #9370db; stroke-width: 1px; fill: none; }
     .marker, .arrowMarkerPath { fill: none !important; stroke: #9370db !important; stroke-width: 1px; }
     .edgeLabel rect { fill: transparent !important; opacity: 0; }
@@ -971,47 +524,21 @@ const DIAGRAM_CONFIG = {
   `,
 };
 
-// The leading box number, the title and the second line of a node label each get a class the theme styles. A box
-// with a `lv-<level>` class statement is laid out as a header (number and title left, level word right), the second
-// line, and a row of chips, one per `chk-<label>` class statement, in the order the statements are written.
-// Node declarations only: subgraph titles and edge labels stay as written. The save, context and skim classDefs are
-// dropped because the theme styles those classes.
-function boxTraits(text) {
-  const traits = new Map();
-  for (const line of text.split('\n')) {
-    const found = /^\s*class\s+([\w,\s-]+?)\s+(lv|chk)-(\w+)\s*;?\s*$/.exec(line);
-    if (!found) continue;
-    for (const id of found[1].split(/[,\s]+/).filter(Boolean)) {
-      const entry = traits.get(id) ?? { level: null, checks: [] };
-      if (found[2] === 'lv') entry.level = found[3]; else entry.checks.push(found[3]);
-      traits.set(id, entry);
-    }
-  }
-  return traits;
-}
-
+// The stop numbers that lead a node label (`2 · 5 · Title`) become one badge, and the title and the second line each
+// get a class the theme styles. Node declarations only: subgraph titles and edge labels stay as written. The context
+// classDef is dropped because the theme styles that class.
 function styleDiagramText(text) {
   const skip = /^\s*(%%|classDef\b|class\b|style\b|linkStyle\b|subgraph\b|click\b|direction\b)/;
-  const themed = /^\s*classDef\s+(save|context|skim)\b/;
-  const traits = boxTraits(text);
+  const themed = /^\s*classDef\s+context\b/;
   return text.split('\n').filter((line) => !themed.test(line)).map((line) => skip.test(line) ? line : line.replace(
     /(^|[^\w-])([A-Za-z0-9_][\w-]*)\["([^"]*)"\]/g,
     (match, before, id, label) => {
       const [first, ...rest] = label.split(/<br\s*\/?>/);
-      const number = /^(\d+)\s*·\s*/.exec(first);
-      const title = number ? first.slice(number[0].length) : first;
-      const lead = number ? "<span class='n'>" + number[1] + " ·</span> " : '';
-      const box = traits.get(id);
-      if (box?.level) {
-        const second = rest.length ? "<span class='es s'>" + rest.join('<br/>') + '</span>' : '';
-        const chips = box.checks.length
-          ? "<span class='ec'>" + box.checks.map((check) => "<span class='chip chip-" + check + "'>" + check + '</span>').join('') + '</span>'
-          : '';
-        return before + id + '["' + "<span class='eh'><span>" + lead + "<span class='t'>" + title + "</span></span><span class='lv'>" + box.level +
-          '</span></span>' + second + chips + '"]';
-      }
+      const numbers = /^(?:\d+\s*·\s*)+/.exec(first);
+      const title = numbers ? first.slice(numbers[0].length) : first;
+      const badge = numbers ? "<span class='badge'>" + numbers[0].split('·').map((n) => n.trim()).filter(Boolean).join(' · ') + '</span>' : '';
       const second = rest.length ? "<br/><span class='s'>" + rest.join('<br/>') + '</span>' : '';
-      return before + id + '["' + lead + "<span class='t'>" + title + '</span>' + second + '"]';
+      return before + id + '["' + badge + "<span class='t'>" + title + '</span>' + second + '"]';
     })).join('\n');
 }
 
@@ -1028,27 +555,6 @@ function restyleDiagramSvg(svg) {
     path.setAttribute('stroke', '#9370db');
     path.parentElement.setAttribute('markerWidth', '11');
     path.parentElement.setAttribute('markerHeight', '11');
-  }
-}
-
-// body.md's legend swatches are drawn in the old box colours; this redraws them in the current look.
-function restyleLegend(root) {
-  const looks = [
-    [/^writes/, '#fff4e5', '#b26a00', 'solid'],
-    [/^unchanged/, 'none', '#b4b2a9', 'dashed'],
-    [/^verify/, '#fff', '#1f2328', 'solid', 2],
-    [/^read/, '#fff', '#1f2328', 'solid', 1],
-    [/^skim/, '#f6f8fa', '#8c959f', 'dashed', 1],
-  ];
-  for (const paragraph of root.querySelectorAll('p')) {
-    if (!paragraph.textContent.startsWith('Legend:')) continue;
-    for (const swatch of paragraph.querySelectorAll('span[style]')) {
-      const word = (swatch.nextSibling?.textContent ?? '').trim();
-      const look = looks.find(([pattern]) => pattern.test(word));
-      if (!look) continue;
-      swatch.style.cssText = 'display:inline-block;width:14px;height:9px;vertical-align:middle;border-radius:7px;' +
-        'background:' + look[1] + ';border:' + (look[4] ?? 1) + 'px ' + look[3] + ' ' + look[2];
-    }
   }
 }
 """
@@ -1135,7 +641,6 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
 __DIAGRAM_STYLE__
  const md = __MD__;
  document.getElementById('out').innerHTML = marked.parse(md, { gfm: true });
- restyleLegend(document.getElementById('out'));
  document.querySelectorAll('code.language-mermaid').forEach(c => {
    const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = styleDiagramText(c.textContent);
    c.parentElement.replaceWith(pre);
@@ -1172,11 +677,6 @@ def main() -> int:
     run: dict[str, Any] = json.loads((run_dir / "run.json").read_text())
     LINK_HOST = get_host(run.get("host", "github"), load_local())
     pr: dict[str, Any] = json.loads((run_dir / "pr.json").read_text())
-    variant_path: Path | None = variant_file(run["variant"])
-    if variant_path is None:
-        raise SystemExit(f"no variant {run['variant']!r} in $PR_DESCRIBE_HOME/variants or the tool's variants")
-    floor_file: Path | None = config_file("review_floor", fall_back_to_example=True)
-    floor_cfg: dict[str, Any] = tomllib.loads(floor_file.read_text()) if floor_file else {}
     raw: str = (run_dir / "answer.yaml").read_text()
     contract_file: Path = run_dir / "contract.json"
     contract: dict[str, Any] | None = json.loads(contract_file.read_text()) if contract_file.exists() else None
@@ -1191,22 +691,20 @@ def main() -> int:
         prompt_file: Path = run_dir / "prompt.txt"
         diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
         diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_text)
-        check_render_settings(tomllib.loads(variant_path.read_text()).get("render", {}))
-        md, (labelled, total), chunks, nodes, lineset = build_body(run, pr, data, floor_cfg, diff_lines, notes, contract, diff_text)
+        brief: Brief = build_body(run, pr, data, diff_lines, notes, contract, diff_text)
     except AnswerError as e:
         (run_dir / "error.txt").write_text(f"{e}\n")
         (run_dir / "body.html").write_text(ERROR_PAGE.replace("__ERROR__", html.escape(str(e))).replace("__RAW__", html.escape(raw)))
         print(f"{run_dir}: {e}", file=sys.stderr)
         return 1
 
+    labelled, total = brief.edges
     run["diagram_edges"] = {"labelled": labelled, "total": total}
     (run_dir / "run.json").write_text(json.dumps(run, indent=2) + "\n")
-    (run_dir / "body.md").write_text(md)
-    (run_dir / "body.html").write_text(markdown_page(md))
-    has_diagram: bool = write_diagram_svg(md, run_dir, notes)
-    walkthrough: list[dict[str, Any]] = build_walkthrough(data.get("walkthrough"), chunks, [f["path"] for f in pr["files"]], diff_lines, notes)
-    (run_dir / "review.json").write_text(
-        json.dumps(review_json(run, pr, chunks, has_diagram, nodes, lineset, walkthrough), indent=2) + "\n")
+    (run_dir / "body.md").write_text(brief.body)
+    (run_dir / "body.html").write_text(markdown_page(brief.body))
+    has_diagram: bool = write_diagram_svg(brief.body, run_dir, notes)
+    (run_dir / "review.json").write_text(json.dumps(review_json(run, brief, has_diagram), indent=2) + "\n")
     if notes:
         (run_dir / "error.txt").write_text("Rendered with these fixes:\n" + "\n".join(f"- {n}" for n in notes) + "\n")
     return 0

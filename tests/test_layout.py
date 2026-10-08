@@ -1,4 +1,4 @@
-"""Tests for placing contract and data lines in chunks and drawing the two sections. All data here is invented.
+"""Tests for drawing the Contract and Data sections. All data here is invented.
 Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import re
 import sys
@@ -9,77 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from contract_lines import ADDITIVE, CALLERS, CONSUMERS, CONTRACT_LEVELS, DEPRECATED, Line, Member  # noqa: E402
 from data_lines import DATA_LEVELS, DESTRUCTIVE, REWRITES  # noqa: E402
-from layout import DEFAULT_TAG_TEMPLATES, glance, middle, place, pill, section, stem, tag_stems  # noqa: E402
-
-FILES = ["api/ItemController.java", "api/models/Item.java", "db/V9__items.sql", "api/openapi.json", "web/WidgetPage.tsx"]
-HELD = [{FILES[0]}, {FILES[1]}, {FILES[2]}, {FILES[3]}, {FILES[4]}]
-STEMS = [{"itemcontroller"}, {"item"}, {"v9__items"}, set(), {"widgetpage"}]
-CODE = {0: ["ItemController", 'path = "/items"'], 1: ["Item"], 2: ["V9__items"], 4: ["WidgetPage", 'fetch("/widgets/stats")']}
+from layout import glance, middle, pill, section  # noqa: E402
 
 
 def line(text: str, impact: str | None, *members: Member, loc: tuple[str, int] | None = ("R", 3), path: str = "api/openapi.json",
          change: str = "", on: str = "", side: str = "") -> Line:
     return Line(impact, text, path, loc, list(members), change=change, on=on, side=side)
-
-
-def where(lines: list[Line], **overrides) -> tuple[dict[int, list[str]], list[str]]:
-    args = {"held": HELD, "stems": STEMS, "code": CODE, "preferred": set(), "templates": DEFAULT_TAG_TEMPLATES, **overrides}
-    owned, loose = place(lines, **args)
-    return {index: [l.text for l in found] for index, found in owned.items()}, [l.text for l in loose]
-
-
-class TagFiles(unittest.TestCase):
-    def test_a_tag_becomes_a_pascal_case_file_name(self) -> None:
-        self.assertEqual(tag_stems("dynamic-attribute-enum-value-controller", ["{pascal}"]),
-                         {"dynamicattributeenumvaluecontroller"})
-
-    def test_templates_may_add_a_suffix_or_use_other_cases(self) -> None:
-        self.assertEqual(tag_stems("item-list", ["{pascal}", "{pascal}Controller", "{camel}", "{kebab}"]),
-                         {"itemlist", "itemlistcontroller", "item-list"})
-
-    def test_a_stem_is_the_name_before_the_first_dot_in_lowercase(self) -> None:
-        self.assertEqual(stem("web/ItemList.test.tsx"), "itemlist")
-        self.assertEqual(stem("db/V9__items.sql"), "v9__items")
-
-
-class Placement(unittest.TestCase):
-    def test_an_operation_goes_to_the_chunk_holding_its_controller(self) -> None:
-        owned, loose = where([line("a", CALLERS, Member(operation="POST /items", tag="item-controller"))])
-        self.assertEqual((owned, loose), ({0: ["a"]}, []))
-
-    def test_a_schema_goes_to_the_chunk_holding_the_file_named_after_it(self) -> None:
-        self.assertEqual(where([line("a", CONSUMERS, Member(schema="Item"))]), ({1: ["a"]}, []))
-
-    def test_a_migration_line_goes_to_the_chunk_holding_its_file(self) -> None:
-        owned, _ = where([line("a", DESTRUCTIVE, Member(file="db/V9__items.sql", table="items"))])
-        self.assertEqual(owned, {2: ["a"]})
-
-    def test_a_subject_with_no_file_goes_to_the_chunk_whose_code_names_it(self) -> None:
-        owned, loose = where([line("a", CALLERS, Member(operation="GET /widgets/stats", tag="stats-controller"))])
-        self.assertEqual((owned, loose), ({4: ["a"]}, []))
-        owned, _ = where([line("b", CALLERS, Member(schema="Widget"))], code={**CODE, 4: ["Widget panel"]})
-        self.assertEqual(owned, {4: ["b"]})
-
-    def test_a_probe_does_not_match_part_of_a_longer_name(self) -> None:
-        owned, loose = where([line("a", CALLERS, Member(schema="Wid"))], code={**CODE, 4: ["Widget panel"]})
-        self.assertEqual((owned, loose), ({}, ["a"]))
-
-    def test_a_line_about_several_subjects_goes_where_most_of_them_do(self) -> None:
-        sweep = line("sweep", ADDITIVE, Member(schema="Item"), Member(schema="Item"), Member(schema="Other"))
-        self.assertEqual(where([sweep])[0], {1: ["sweep"]})
-
-    def test_a_chunk_with_only_generated_files_owns_nothing(self) -> None:
-        owned, loose = where([line("a", CALLERS, Member(schema="Spec"))], held=HELD, stems=[*STEMS[:3], {"spec"}, STEMS[4]])
-        self.assertEqual((owned, loose), ({}, ["a"]))
-
-    def test_a_line_nothing_matches_is_loose(self) -> None:
-        owned, loose = where([line("a", ADDITIVE, Member(operation="GET /nowhere", tag="orphan-controller"))])
-        self.assertEqual((owned, loose), ({}, ["a"]))
-
-    def test_the_chunk_the_model_flagged_wins_a_tie(self) -> None:
-        stems = [{"item"}, {"item"}, set(), set(), set()]
-        self.assertEqual(where([line("a", ADDITIVE, Member(schema="Item"))], stems=stems)[0], {0: ["a"]})
-        self.assertEqual(where([line("a", ADDITIVE, Member(schema="Item"))], stems=stems, preferred={1})[0], {1: ["a"]})
 
 
 def pills(text: str) -> list[str]:

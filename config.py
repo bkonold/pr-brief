@@ -5,8 +5,8 @@ variable, or the tool's own folder (ROOT) when it is unset. A repository can the
 config, variants and runs outside the tool and point PR_DESCRIBE_HOME at itself. Code, `vendor/` and the
 tool's own `variants/` always come from ROOT.
 
-`local.toml` holds the settings that name one repository (see `local.example.toml`). `reach.toml`,
-`archetypes.toml` and `review_floor.toml` describe one repository's layout; each ships as a
+`local.toml` holds the settings that name one repository (see `local.example.toml`). `reach.toml`
+and `archetypes.toml` describe one repository's layout; each ships as a
 `*.example.toml` and the real file is git-ignored. A missing file or an unset key switches off
 whatever depends on it.
 """
@@ -24,7 +24,7 @@ KEYS: frozenset[str] = frozenset({
     "wiki_repo", "wiki_dir",
     "openapi_path", "migration_dirs", "migration_globs",
     "sdk_dir", "sdk_specifier", "workspace_alias", "workspace_root",
-    "test_dirs", "test_globs", "callers_exclude_globs", "tag_file_templates",
+    "test_dirs", "callers_exclude_globs",
     "host", "forgejo_url", "forgejo_token_file",
     "default_variant", "serve_repos",
 })

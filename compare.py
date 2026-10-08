@@ -29,7 +29,7 @@ ARCHETYPES: Path | None = config_file("archetypes")
 UNCLASSIFIED = "Unclassified"
 
 # The labels the browser extension's dropdown shows; a variant without one is listed under its name.
-VARIANT_LABELS: dict[str, str] = {"one_path_risk_chunked_v23": "23: walkthrough stops"}
+VARIANT_LABELS: dict[str, str] = {"diagram_walkthrough_v24": "24: diagram and walkthrough"}
 
 STYLE = """
  :root { color-scheme: light; }

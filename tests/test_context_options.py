@@ -2,7 +2,7 @@ import unittest
 
 from context_pack import build
 
-V23_OPTIONS = {
+V24_OPTIONS = {
     "callers_code_only": True,
     "wiki_match": "exact",
     "callers_skip_new_files": True,
@@ -15,7 +15,7 @@ PR = {"baseRefOid": "a" * 40, "headRefOid": "b" * 40, "files": []}
 
 class ContextOptions(unittest.TestCase):
     def test_the_options_of_the_v23_variant_are_accepted(self) -> None:
-        self.assertEqual(build(PR, "", [], V23_OPTIONS).items, {})
+        self.assertEqual(build(PR, "", [], V24_OPTIONS).items, {})
 
     def test_no_options_are_accepted(self) -> None:
         self.assertEqual(build(PR, "", [], None).items, {})
