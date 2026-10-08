@@ -9,16 +9,6 @@
   const FOLDER_ICON = "M1.75 3.5h4.25l1.5 1.75h6.75v7.5h-12.5z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
-  const LEVEL_ORDER = ["verify", "read", "skim"];
-  const LEGACY_LEVELS = { "read carefully": "verify" };
-  // The effort level a review.json word names: verify, read or skim; the older "read carefully" is verify and an
-  // unknown word is read.
-  function normalizeLevel(review) {
-    const word = String(review ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-    const level = LEGACY_LEVELS[word] ?? word;
-    return LEVEL_ORDER.includes(level) ? level : "read";
-  }
-
   // The first chunk, in review.json's order, that lists the diagram box `nodeId`; null when none does.
   function chunkOfNode(chunks, nodeId) {
     return chunks.find((chunk) => chunk.nodes?.includes(nodeId)) ?? null;
@@ -26,10 +16,6 @@
 
   function chunkByNumber(chunks, n) {
     return chunks.find((chunk) => chunk.n === n) ?? null;
-  }
-
-  function baseNameOf(path) {
-    return path.slice(path.lastIndexOf("/") + 1);
   }
 
   function staleMessage(review, pageSha) {
@@ -73,27 +59,9 @@
     return svg;
   }
 
-  // Why to read the chunk's start (its line or file): the model's reason for it, else the chunk's own.
-  function readFirstReason(chunk) {
-    return chunk.start?.why?.trim() || chunk.why || "";
-  }
-
-  // The walkthrough's stops, in reading order: review.json's `walkthrough` when the run has one. A run made before
-  // walkthroughs has one stop per chunk that names a start, in chunk order, titled by its file and giving the chunk's
-  // reason for starting there.
+  // The walkthrough's stops, in reading order: review.json's `walkthrough`.
   function stopsOf(review) {
-    if (Array.isArray(review.walkthrough)) return review.walkthrough;
-    return review.chunks
-      .filter((chunk) => chunk.start)
-      .map((chunk, index) => ({
-        i: index + 1,
-        title: baseNameOf(chunk.start.path),
-        why: readFirstReason(chunk),
-        path: chunk.start.path,
-        side: chunk.start.side ?? null,
-        line: chunk.start.line ?? null,
-        chunk: chunk.n,
-      }));
+    return review.walkthrough;
   }
 
   // The first stop that lies in chunk `n`; null when the walkthrough never stops there.
@@ -227,6 +195,7 @@
   }
 
   const SERVER_COMMAND = "pd serve";
+  const OLD_BRIEF_MESSAGE = "This brief predates v1; re-run it.";
 
   // The note shown instead of the list while the page server is down. GitHub's own tree stays visible. handlers: onRetry()
   function renderServerNote(baseUrl, handlers) {
@@ -252,7 +221,7 @@
   }
 
   // The one line shown in the list's place when the PR has no brief yet, GitHub's own tree staying visible.
-  // view: { kind: "none" } | { kind: "running", stage, elapsed } | { kind: "error", message }
+  // view: { kind: "none" } | { kind: "old" } | { kind: "running", stage, elapsed } | { kind: "error", message }
   // handlers: onGenerate(), onCancel()
   function renderGenerateLine(view, handlers) {
     const mount = mountPoint();
@@ -268,6 +237,8 @@
       const text = make("span", "prf-generate-text");
       text.append(...messageNodes(view.message));
       line.append(text, button("prf-retry", "Retry", handlers.onGenerate));
+    } else if (view.kind === "old") {
+      line.append(make("span", "prf-generate-text", OLD_BRIEF_MESSAGE), button("prf-retry", "Re-run", handlers.onGenerate));
     } else {
       line.append(make("span", "prf-generate-text", "No brief for this PR yet"), button("prf-retry", "Generate brief", handlers.onGenerate));
     }
@@ -308,7 +279,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, readFirstReason, stopsOf, firstStopOf, stopCallout, bar, stopList, remove, owns, chunkOfNode, normalizeLevel, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, stopsOf, firstStopOf, stopCallout, bar, stopList, remove, owns, chunkOfNode, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

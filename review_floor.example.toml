@@ -1,6 +1,6 @@
 # Minimum review level per changed file, used by the `chunks` render.
 # A chunk's level is the highest of the model's level and the floors of its files.
-# Levels, lowest to highest: skim, read, verify. (Older variants' "read carefully" is read as verify.)
+# Levels, lowest to highest: skim, read, verify.
 # A breaking API change or a destructive migration also raises a chunk to verify, whatever the floors say; the
 # migration files are the ones matched by `migration_globs` in local.toml.
 # Globs: `*` matches within one path segment, `**/` matches any number of directories, `**` matches anything.

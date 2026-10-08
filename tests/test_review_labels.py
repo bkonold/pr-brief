@@ -34,23 +34,11 @@ class Levels(unittest.TestCase):
     def test_the_levels_run_from_skim_to_verify(self) -> None:
         self.assertEqual(LEVELS, ["skim", "read", "verify"])
 
-    def test_legacy_read_carefully_is_verify(self) -> None:
-        self.assertEqual(normalize_level("read carefully"), "verify")
-        self.assertEqual(normalize_level(" Read  Carefully "), "verify")
-
-    def test_the_new_words_map_to_themselves_and_others_to_none(self) -> None:
+    def test_a_level_word_maps_to_itself_and_others_to_none(self) -> None:
         for level in LEVELS:
             self.assertEqual(normalize_level(level.upper()), level)
         self.assertIsNone(normalize_level("careful"))
         self.assertIsNone(normalize_level(None))
-
-    def test_a_legacy_model_answer_renders_as_verify(self) -> None:
-        chunks = build_chunks([raw("A", "read carefully", [SERVICE])], COUNTS, [SERVICE], {}, [], {})
-        self.assertEqual(chunks[0].review, "verify")
-
-    def test_a_floor_may_use_a_legacy_level_word(self) -> None:
-        floors = {"floor": [{"name": "schema", "level": "read carefully", "globs": ["**/*.sql"]}]}
-        self.assertEqual(file_floor(floors, MIGRATION, 0), ("verify", "schema"))
 
     def test_an_unknown_level_falls_back_to_read_with_a_note(self) -> None:
         notes: list[str] = []

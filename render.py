@@ -41,7 +41,6 @@ ALSO_ID = "also"
 ALSO_SUBGRAPH = f'subgraph {ALSO_ID}["Also in this PR"]'
 LEVELS: list[str] = ["skim", "read", "verify"]
 # The level words that older variants ask the model for.
-LEGACY_LEVELS: dict[str, str] = {"read carefully": "verify"}
 CHECK_ORDER: list[str] = ["logic", "contract", "breaking", "data", "destructive", "access", "generated"]
 # The labels the model sets; the renderer sets the others (`breaking`, `destructive`, `generated`).
 MODEL_CHECKS: list[str] = ["logic", "contract", "data", "access"]
@@ -193,10 +192,8 @@ def breaking_change_counts(rule: dict[str, Any], path: str, deletions: int, cont
 
 
 def normalize_level(raw: Any) -> str | None:
-    """The review level a word names: one of LEVELS, with the words of older variants mapped to their level;
-    None for anything else."""
+    """The review level a word names: one of LEVELS; None for anything else."""
     word: str = " ".join(str(raw or "").lower().split())
-    word = LEGACY_LEVELS.get(word, word)
     return word if word in LEVELS else None
 
 
@@ -1038,10 +1035,8 @@ function restyleDiagramSvg(svg) {
 // body.md's legend swatches are drawn in the old box colours; this redraws them in the current look.
 function restyleLegend(root) {
   const looks = [
-    [/^changed/, 'none', '#9370db', 'solid'],
     [/^writes/, '#fff4e5', '#b26a00', 'solid'],
     [/^unchanged/, 'none', '#b4b2a9', 'dashed'],
-    [/^skim, off/, '#eef0f2', '#afb8c1', 'solid'],
     [/^verify/, '#fff', '#1f2328', 'solid', 2],
     [/^read/, '#fff', '#1f2328', 'solid', 1],
     [/^skim/, '#f6f8fa', '#8c959f', 'dashed', 1],

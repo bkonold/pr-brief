@@ -295,33 +295,26 @@
     return handle;
   }
 
-  const LEVEL_CLASSES = ":not(.lv-verify):not(.lv-read):not(.lv-skim)";
-  const PLAIN = `g.node:not(.save):not(.context):not(.skim)${LEVEL_CLASSES}`;
-  const LANES = 'g.cluster:not([id$="-also"])';
   const SHAPES = "rect, polygon, path, circle, ellipse";
   const LEGEND_LABELS = {
-    changed: "Changed step",
     verify: "Verify",
     read: "Read",
     skim: "Skim",
     save: "Writes data",
     context: "Unchanged context",
     selected: "Selected chunk",
-    layers: "Columns are code layers",
   };
 
   // The legend entries a diagram needs, given how many boxes of each style it has: only the styles it uses, plus
-  // the extension's own "selected chunk" state, and a note when the boxes are grouped in lanes.
-  function legendKinds({ plain, save, context, verify = 0, read = 0, skim = 0, clusters }) {
+  // the extension's own "selected chunk" state.
+  function legendKinds({ save, context, verify, read, skim }) {
     return [
-      ...(plain > 0 ? ["changed"] : []),
       ...(verify > 0 ? ["verify"] : []),
       ...(read > 0 ? ["read"] : []),
       ...(skim > 0 ? ["skim"] : []),
       ...(save > 0 ? ["save"] : []),
       ...(context > 0 ? ["context"] : []),
       "selected",
-      ...(clusters > 0 ? ["layers"] : []),
     ];
   }
 
@@ -341,21 +334,18 @@
       return { fill: style.fill, stroke: style.stroke, width: parseFloat(style.strokeWidth), dashed: style.strokeDasharray !== "none" };
     };
     const swatches = {
-      changed: look(PLAIN),
       verify: look("g.node.lv-verify"),
       read: look("g.node.lv-read"),
-      skim: look("g.node.lv-skim") ?? look("g.node.skim"),
+      skim: look("g.node.lv-skim"),
       save: look("g.node.save"),
       context: look("g.node.context"),
     };
     const counts = {
-      plain: copy.querySelectorAll(PLAIN).length,
       verify: copy.querySelectorAll("g.node.lv-verify").length,
       read: copy.querySelectorAll("g.node.lv-read").length,
-      skim: copy.querySelectorAll("g.node.lv-skim, g.node.skim").length,
+      skim: copy.querySelectorAll("g.node.lv-skim").length,
       save: copy.querySelectorAll("g.node.save").length,
       context: copy.querySelectorAll("g.node.context").length,
-      clusters: copy.querySelectorAll(LANES).length,
     };
     measure.remove();
     return legendKinds(counts).map((kind) => ({ kind, label: LEGEND_LABELS[kind], look: swatches[kind] ?? null }));
@@ -365,16 +355,14 @@
     const list = make("ul", "prd-legend");
     for (const { kind, label, look } of entries) {
       const item = make("li", undefined, label);
-      if (kind !== "layers") {
-        const swatch = make("span", `prd-swatch prd-swatch-${kind}`);
-        if (look) {
-          swatch.style.background = look.fill;
-          swatch.style.borderColor = look.stroke;
-          swatch.style.borderStyle = look.dashed ? "dashed" : "solid";
-          if (look.width > 0) swatch.style.borderWidth = `${look.width}px`;
-        }
-        item.prepend(swatch);
+      const swatch = make("span", `prd-swatch prd-swatch-${kind}`);
+      if (look) {
+        swatch.style.background = look.fill;
+        swatch.style.borderColor = look.stroke;
+        swatch.style.borderStyle = look.dashed ? "dashed" : "solid";
+        if (look.width > 0) swatch.style.borderWidth = `${look.width}px`;
       }
+      item.prepend(swatch);
       list.append(item);
     }
     return list;

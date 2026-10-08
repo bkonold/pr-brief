@@ -357,7 +357,8 @@
 
   // A PR with no run: the list's place holds one line that generates the brief, then follows the run. When it is done
   // the page's review is loaded again and the full list takes the line's place.
-  async function offerGenerate(pr, key, token) {
+  // `idleKind` is "old" when the PR has a run written by an older version, which the line asks to re-run.
+  async function offerGenerate(pr, key, token, idleKind = "none") {
     const target = runTarget(pr);
     const status = await source.runStatus(target);
     if (!live() || token !== loadToken) return;
@@ -372,14 +373,14 @@
       refresh();
     };
     session.line = {
-      view: { kind: "none" },
+      view: { kind: idleKind },
       controller: runControl.create({
         source,
         run: target,
         on: {
           running: (view) => setView({ kind: "running", ...view }),
           error: (view) => setView({ kind: "error", ...view }),
-          idle: () => setView({ kind: "none" }),
+          idle: () => setView({ kind: idleKind }),
           done: () => retry(session),
         },
       }),
@@ -467,8 +468,8 @@
       refresh();
       return;
     }
-    if (token === loadToken && !review) {
-      await offerGenerate(pr, key, token);
+    if (token === loadToken && (!review || review.error === "old")) {
+      await offerGenerate(pr, key, token, review ? "old" : "none");
       return;
     }
     if (token !== loadToken || !review) return;

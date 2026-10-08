@@ -7,7 +7,7 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, normalizeLevel, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
+const { staleMessage, chunkOfNode, revealTarget } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
@@ -39,12 +39,6 @@ test("staleMessage reports only a known, different head", () => {
     staleMessage({ head_sha: sha }, other),
     "Review was generated for a1b2c3d; the PR has newer commits. Focus still works by path.",
   );
-});
-
-test("normalizeLevel falls back to read for a missing or unknown word", () => {
-  assert.equal(normalizeLevel("Read  Carefully"), "verify");
-  assert.equal(normalizeLevel(undefined), "read");
-  assert.equal(normalizeLevel("careful"), "read");
 });
 
 test("lineAnchor joins the diff block id with the side and line", async () => {
@@ -194,12 +188,10 @@ test("chunkOfNode picks the first chunk in review.json's order that lists the bo
   assert.equal(chunkOfNode(NODE_CHUNKS, "missing"), null);
 });
 
-test("legendKinds lists only the styles a diagram uses, then the selection state and the lanes note", () => {
-  assert.deepEqual(legendKinds({ plain: 3, save: 0, context: 0, clusters: 0 }), ["changed", "selected"]);
-  assert.deepEqual(legendKinds({ plain: 3, save: 1, context: 2, clusters: 0 }), ["changed", "save", "context", "selected"]);
-  assert.deepEqual(legendKinds({ plain: 0, save: 2, context: 1, clusters: 3 }), ["save", "context", "selected", "layers"]);
-  assert.deepEqual(legendKinds({ plain: 2, save: 0, context: 1, skim: 2, clusters: 0 }), ["changed", "skim", "context", "selected"]);
-  assert.deepEqual(legendKinds({ plain: 0, save: 1, context: 0, verify: 1, read: 2, skim: 1, clusters: 0 }), ["verify", "read", "skim", "save", "selected"]);
+test("legendKinds lists only the styles a diagram uses, then the selection state", () => {
+  assert.deepEqual(legendKinds({ save: 0, context: 0, verify: 0, read: 0, skim: 0 }), ["selected"]);
+  assert.deepEqual(legendKinds({ save: 1, context: 2, verify: 0, read: 0, skim: 0 }), ["save", "context", "selected"]);
+  assert.deepEqual(legendKinds({ save: 1, context: 0, verify: 1, read: 2, skim: 1 }), ["verify", "read", "skim", "save", "selected"]);
 });
 
 test("classifyFetch tells a down server from a missing review", async () => {
@@ -237,14 +229,6 @@ test("revealTarget scrolls the list only when the span is not fully visible", ()
   assert.equal(revealTarget({ ...view, top: 20, bottom: 120 }), 12);
   assert.equal(revealTarget({ ...view, top: 2, bottom: 60, scrollTop: 40 }), 0);
   assert.equal(revealTarget({ ...view, top: 700, bottom: 1300 }), 692);
-});
-
-test("readFirstReason prefers the start line's reason and falls back to the chunk's", () => {
-  const start = { path: "a.ts", side: "R", line: 3, text: "x" };
-  assert.equal(readFirstReason({ why: "Every user's reports.", start: { ...start, why: "Check the owner filter survives." } }), "Check the owner filter survives.");
-  assert.equal(readFirstReason({ why: "Every user's reports.", start }), "Every user's reports.");
-  assert.equal(readFirstReason({ why: "Every user's reports.", start: { ...start, why: "   " } }), "Every user's reports.");
-  assert.equal(readFirstReason({ why: "", start }), "");
 });
 
 test("landingDelta asks for a correction only beyond one pixel", () => {
@@ -551,16 +535,13 @@ test("a hidden slot's placeholder goes nowhere when clicked, and the real button
   }
 });
 
-test("a single stop, and a fallback walkthrough of one, has two hidden slots and keeps the column", () => {
+test("a single stop has two hidden slots and keeps the column", () => {
   globalThis.document = fakeDom();
   try {
     const only = [STOPS[0]];
     const [prevSlot, nextSlot] = navSlots(stopCallout(only[0], only, () => {}, CHUNKS));
     assert.deepEqual([prevSlot.hidden, nextSlot.hidden, prevSlot.ariaHidden, nextSlot.ariaHidden], [true, true, "true", "true"]);
     assert.deepEqual([prevSlot.buttons[0].text, nextSlot.caption], ["\u2191 Previous", "Next"]);
-    const [fallback] = stopsOf({ chunks: [{ n: 1, name: "A", why: "w", start: { path: "a.js", side: "R", line: 2 } }] });
-    const slots = navSlots(stopCallout(fallback, [fallback], () => {}, []));
-    assert.deepEqual(slots.map((slot) => slot.hidden), [true, true]);
   } finally {
     delete globalThis.document;
   }
@@ -578,22 +559,9 @@ test("a stop with no chunk or no reason leaves the chunk and the reason out of i
   }
 });
 
-test("a run with a walkthrough shows its stops as given, even when there are none", () => {
+test("a run shows its walkthrough's stops as given, even when there are none", () => {
   assert.deepEqual(stopsOf({ chunks: CHUNKS, walkthrough: STOPS }), STOPS);
-  assert.deepEqual(stopsOf({ chunks: CHUNKS.map((chunk) => ({ ...chunk, start: { path: "a.js", side: "R", line: 1 } })), walkthrough: [] }), []);
-});
-
-test("a run without a walkthrough gets one stop per chunk that has a start, in chunk order, filtering nothing", () => {
-  const chunks = [
-    { n: 1, name: "Screen", why: "Every user's reports.", start: { path: "src/ui.js", side: "R", line: 4, why: "Where the list is built." } },
-    { n: 2, name: "Endpoint", why: "No start." },
-    { n: 3, name: "Table", why: "Why the table.", start: { path: "db/V1.sql", side: null, line: null } },
-  ];
-  assert.deepEqual(stopsOf({ chunks }), [
-    { i: 1, title: "ui.js", why: "Where the list is built.", path: "src/ui.js", side: "R", line: 4, chunk: 1 },
-    { i: 2, title: "V1.sql", why: "Why the table.", path: "db/V1.sql", side: null, line: null, chunk: 3 },
-  ]);
-  assert.deepEqual(stopsOf({ chunks: [{ n: 1, name: "A", why: "w" }] }), []);
+  assert.deepEqual(stopsOf({ chunks: CHUNKS, walkthrough: [] }), []);
 });
 
 test("firstStopOf finds the first stop in a chunk, and null for a chunk the walkthrough skips", () => {

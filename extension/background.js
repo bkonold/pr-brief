@@ -17,13 +17,13 @@ async function serverToken() {
   return String(stored[TOKEN_KEY] ?? "").trim();
 }
 
-function matchesPr(review, owner, repo, pr) {
-  return (
-    review?.schema === 3 &&
-    Array.isArray(review.chunks) &&
-    String(review.repo).toLowerCase() === `${owner}/${repo}`.toLowerCase() &&
-    Number(review.pr) === Number(pr)
-  );
+function namesPr(review, owner, repo, pr) {
+  return String(review?.repo).toLowerCase() === `${owner}/${repo}`.toLowerCase() && Number(review.pr) === Number(pr);
+}
+
+// A review.json this version writes: the current schema, with the walkthrough the pane lists.
+function isCurrentRun(review) {
+  return review.schema === 3 && Array.isArray(review.chunks) && Array.isArray(review.walkthrough);
 }
 
 // A text file of a run, or null when it can't be read.
@@ -67,7 +67,8 @@ async function loadConfig() {
 }
 
 // The run a PR page shows: its review.json, the variant that was read and the PR's variants. Null when the PR has
-// no usable run; { error: "server" } when the page server can't be reached. The page server sends no CORS headers,
+// no run; { error: "old" } when its run was written by an older version; { error: "server" } when the page server
+// can't be reached. The page server sends no CORS headers,
 // so the fetch happens here rather than in the content script. `requested` is a variant picked on the page; otherwise
 // chooseVariant decides from the server's config. The variants returned are the ones the switcher may list.
 async function findRun({ owner, repo, pr, variant: requested, key: requestedKey }) {
@@ -89,7 +90,8 @@ async function findRun({ owner, repo, pr, variant: requested, key: requestedKey 
   if (outcome === "none") return null;
   try {
     const review = await response.json();
-    return matchesPr(review, owner, repo, pr) ? { baseUrl, key, variant, variants, review } : null;
+    if (!namesPr(review, owner, repo, pr)) return null;
+    return isCurrentRun(review) ? { baseUrl, key, variant, variants, review } : { error: "old", baseUrl };
   } catch {
     return null;
   }
