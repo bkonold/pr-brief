@@ -8,7 +8,7 @@ const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, calloutDelta, holdPlace, correctLanding } = githubPage;
 const { staleMessage, revealTarget } = require("../tree.js");
-const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor } = require("../diagram.js");
+const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor, walkScale } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
   const expected = { owner: "example-org", repo: "example-repo", pr: 42, view: "files" };
@@ -107,23 +107,30 @@ test("unsafeAttribute flags event handlers and javascript links only", () => {
   assert.equal(unsafeAttribute("data-id", "L_A_B_0"), false);
 });
 
-test("the default width is a fifth of the viewport and never below 220px", () => {
+test("without a box to size by, the default width is a fifth of the viewport and never below 220px", () => {
   assert.equal(defaultWidth(1680), 336);
   assert.equal(defaultWidth(1000), 220);
   assert.equal(defaultWidth(1100), 220);
   assert.equal(defaultWidth(2560), 512);
   assert.equal(defaultWidth(300), 220);
   assert.equal(defaultWidth(undefined), 220);
+  assert.equal(defaultWidth(1680, 0), 336);
 });
 
-test("defaultWidth widens to the widest box plus its halo, a 16px margin each side and the panel's 14px chrome", () => {
-  assert.equal(defaultWidth(1440, 340), 406);
-  assert.equal(defaultWidth(1512, 340), 406);
-  assert.equal(defaultWidth(2560, 340), 512);
-  assert.equal(defaultWidth(1680, 340), 406);
-  assert.equal(defaultWidth(1680, 100), 336);
-  assert.equal(defaultWidth(1680, 0), 336);
-  assert.equal(defaultWidth(1680, 340.2), 407);
+test("defaultWidth is the width at which the walkthrough zoom is 1:1 for the widest box with its halo, in whole pixels", () => {
+  assert.equal(defaultWidth(1440, 340), 414);
+  assert.equal(defaultWidth(1512, 340), 414);
+  assert.equal(defaultWidth(2560, 340), 414);
+  assert.equal(defaultWidth(1680, 340), 414);
+  assert.equal(defaultWidth(1680, 340.2), 415);
+  assert.equal(defaultWidth(1680, 100), 220);
+});
+
+test("a panel of the default width draws the widest box at exactly 100% in the walkthrough", () => {
+  for (const box of [240, 340, 341.5, 500]) {
+    const viewport = { w: defaultWidth(2560, box) - 14 };
+    assert.equal(walkScale({ w: box + 20 }, viewport), 1);
+  }
 });
 
 test("defaultWidth never takes more than 40% of the viewport, and never less than 220px", () => {

@@ -314,10 +314,20 @@ test("centerOn uses the pane's size at the moment of focus, and the same box aga
 });
 
 test("walkScale takes 90% of the viewport's width for the box, kept between 0.5 and 1.25", () => {
-  close(walkScale({ w: 360 }, { w: 392 }), 0.98);
+  close(walkScale({ w: 360 }, { w: 300 }), 0.75);
+  close(walkScale({ w: 360 }, { w: 500 }), 1.25);
   assert.equal(walkScale({ w: 100 }, { w: 400 }), 1.25);
   assert.equal(walkScale({ w: 2000 }, { w: 400 }), 0.5);
   close(walkScale({ w: 600 }, { w: 600 }), 0.9);
+});
+
+test("walkScale snaps to exactly 1 within 5% of it, and only there", () => {
+  assert.equal(walkScale({ w: 360 }, { w: 392 }), 1);
+  assert.equal(walkScale({ w: 360 }, { w: 418 }), 1);
+  assert.equal(walkScale({ w: 360 }, { w: 382 }), 1);
+  assert.equal(walkScale({ w: 360 }, { w: 400 }), 1);
+  assert.notEqual(walkScale({ w: 360 }, { w: 375 }), 1);
+  assert.notEqual(walkScale({ w: 360 }, { w: 425 }), 1);
 });
 
 test("centerOn with zoom sets the zoom from the box's width and keeps its place on screen vertically", () => {

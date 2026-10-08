@@ -13,13 +13,13 @@
   const MAX_VIEWPORT_SHARE = 0.65;
   const PANE_CHROME = 14;
 
-  // The width of a panel nobody has resized: a fifth of the viewport, widened to take the diagram's widest box at 1:1 with
-  // its focus halo, BOX_MARGIN on each side and the panel's own chrome, so a focused box is centred rather than pushed
-  // against the left edge; but never past MAX_DEFAULT_SHARE of the viewport, and at least MIN_WIDTH. `boxWidth` is 0 when
-  // the diagram has no box to size by.
+  // The width of a panel nobody has resized: the width at which the walkthrough zoom (see walkScale) draws the diagram's
+  // widest box with its focus halo at exactly 1:1, plus the panel's own chrome, in whole pixels; but never past
+  // MAX_DEFAULT_SHARE of the viewport, and at least MIN_WIDTH. A diagram with no box to size by (`boxWidth` 0) gets a fifth
+  // of the viewport.
   function defaultWidth(viewportWidth, boxWidth = 0) {
     const share = Math.round(viewportWidth * DEFAULT_VIEWPORT_SHARE) || 0;
-    const wanted = boxWidth > 0 ? Math.max(share, Math.ceil(boxWidth) + 2 * (HALO_REACH + BOX_MARGIN) + PANE_CHROME) : share;
+    const wanted = boxWidth > 0 ? Math.ceil((boxWidth + 2 * HALO_REACH) / WALK_SHARE) + PANE_CHROME : share;
     const cap = Math.round(viewportWidth * MAX_DEFAULT_SHARE) || 0;
     return Math.max(MIN_WIDTH, Math.min(wanted, cap));
   }
@@ -48,6 +48,7 @@
   const WALK_SHARE = 0.9;
   const WALK_MIN_SCALE = 0.5;
   const WALK_MAX_SCALE = 1.25;
+  const WALK_SNAP = 0.05;
   const DRAG_THRESHOLD = 4;
   const WHEEL_ZOOM_RATE = 0.0025;
   const WHEEL_ZOOM_CAP = 100;
@@ -99,9 +100,11 @@
   }
 
   // The zoom at which `rect`, the focused box with its halo, takes WALK_SHARE of the viewport's width, kept within
-  // WALK_MIN_SCALE and WALK_MAX_SCALE so titles stay readable and never grow past the diagram's own size by much.
+  // WALK_MIN_SCALE and WALK_MAX_SCALE so titles stay readable and never grow past the diagram's own size by much. A zoom
+  // within WALK_SNAP of 1:1 is 1:1, where text is drawn crisp and the zoom reads 100%.
   function walkScale(rect, viewport) {
-    return Math.min(WALK_MAX_SCALE, Math.max(WALK_MIN_SCALE, (WALK_SHARE * viewport.w) / rect.w));
+    const scale = Math.min(WALK_MAX_SCALE, Math.max(WALK_MIN_SCALE, (WALK_SHARE * viewport.w) / rect.w));
+    return Math.abs(scale - 1) <= WALK_SNAP ? 1 : scale;
   }
 
   // The view that follows `rect` (a box's bounds in diagram units, its halo included) without changing the zoom. The rect is

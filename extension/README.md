@@ -96,7 +96,7 @@ sticky or fixed elements that span the diff column), then flashes the header for
 
 When `review.json` names a `diagram` (`diagram.svg` in the run directory), `background.js` fetches it with the review
 and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
-diagram, stop list, code, and the other two columns narrow by the panel's width (by default a fifth of the viewport, widened to fit the diagram's widest box with its halo and margins, at most 40% of the viewport, at least 220px) instead of being
+diagram, stop list, code, and the other two columns narrow by the panel's width (by default the width at which the walkthrough draws the diagram's widest box with its halo at 100%, at most 40% of the viewport, at least 220px) instead of being
 covered. The panel is sticky at the file tree pane's offset and as tall as the pane. Its header's `‹` button collapses it
 (remembered in `sessionStorage`) into a 30px rail in the same spot, with "Diagram" written vertically under a `›` button
 that expands it.
@@ -107,7 +107,7 @@ that expands it.
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
   250ms. The emphasized box gets a concentric 8px halo (22% of the accent, `#534ab7` in the light theme and `#9d94f5` in the dark), an 11% accent tint over its fill and an accent-dark title, and keeps its own stroke. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
-  the viewport, a fifth of the viewport by default, or wider to fit the widest box. A width dragged to lasts until the page is left and is not stored, so every load starts at the default; the extension removes the `diagramWidth` key an earlier version saved in `chrome.storage.local`.
+  the viewport, by default the width that shows the widest box at 100%. A width dragged to lasts until the page is left and is not stored, so every load starts at the default; the extension removes the `diagramWidth` key an earlier version saved in `chrome.storage.local`.
 - Each box shows the numbers of the stops that land on it as a purple badge (`2 · 5`) before its bold title, and a
   box with no stop has no badge. A box covering no changed file is dashed and muted. When the diagram has one, a line
   under the card reads "Dashed boxes are unchanged context".
@@ -129,7 +129,8 @@ that expands it.
 - Focusing a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas over about
   200ms (at once under reduced motion). From a stop row, a callout's Previous/Next, a stop's link or anchor, or the
   stop-1 selection on load, it also zooms so the box, halo included, takes 90% of the pane's width, kept between 0.5
-  and 1.25 (titles between 8px and 20px); at the default pane width that comes out near 1. A click on a box in the
+  and 1.25 (titles between 8px and 20px), and set to exactly 1 when it comes within 5% of it; at the default pane width it
+  is exactly 1. A click on a box in the
   diagram, dragging, the wheel, a pinch and Reset never change the zoom: a box click only pans, at the reader's zoom.
   The box is centred horizontally; a box wider than
   the pane has its left edge at a 16px margin instead. The canvas moves vertically only as far as it takes to bring the
