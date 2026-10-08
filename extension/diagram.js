@@ -598,6 +598,7 @@
       zoomIn: () => zoomTo(stepScale(view.scale, 1)),
       zoomOut: () => zoomTo(stepScale(view.scale, -1)),
       centerOn,
+      following: () => target,
       destroy() {
         cancelGlide();
         resizeObserver?.disconnect();
@@ -677,9 +678,13 @@
   function render(svgText, handlers) {
     const host = ns.page.diagramHost();
     if (!host) return;
+    let carried = null;
     if (!root?.isConnected || shownText !== svgText) {
       const svg = parseSvg(svgText);
       if (!svg) return;
+      // The page can drop the panel from under us (its own re-render of the files page does); the new panel carries on
+      // following the boxes the old one was on, since nothing else asks it to.
+      carried = shownText === svgText ? canvas?.following() : null;
       canvas?.destroy();
       root?.remove();
       caption = captionFor(svg);
@@ -695,6 +700,7 @@
     const anchor = host.pane ?? host.content;
     if (root.nextElementSibling !== anchor) anchor.before(root);
     applyEmphasis(card, found, emphasis);
+    if (carried) canvas.centerOn(carried.ids, { zoom: carried.zoom });
   }
 
   function emphasize(nodeIds) {

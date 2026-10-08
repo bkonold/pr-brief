@@ -395,6 +395,18 @@ test("centerOn favours the nearer side of a band taller than the pane and keeps 
   assert.ok(490 + view.y >= 16 && 570 + view.y <= 400 - 16);
 });
 
+test("a canvas reports the boxes it is following until the reader moves it", () => {
+  const { canvas } = boxCanvas();
+  assert.equal(canvas.following(), null);
+  canvas.centerOn(["a"], { zoom: true });
+  assert.deepEqual(canvas.following(), { ids: ["a"], zoom: true });
+  canvas.zoomIn();
+  assert.equal(canvas.following(), null);
+  canvas.centerOn(["a"]);
+  canvas.centerOn([]);
+  assert.equal(canvas.following(), null);
+});
+
 test("centerOn leaves the canvas alone for an empty list or boxes that are not drawn", () => {
   const { canvas, views } = boxCanvas();
   const count = views.length;

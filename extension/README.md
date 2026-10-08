@@ -139,7 +139,8 @@ that expands it.
   collapsed panel moves to the focused box when it is expanded again. A new diagram opens at its resting view: 1:1,
   centred horizontally when it is narrower than the pane, else at the left edge, at the top. Resizing the panel puts the
   focused box back where a click on it would, at the new width (with its walkthrough zoom, when it came from the
-  list or Next/Previous), and a diagram still at rest stays at rest. Zoom and position are not saved.
+  list or Next/Previous), and a diagram still at rest stays at rest. When the page replaces the panel (GitHub re-renders the files page
+  after it loads), the new panel goes back to the box the old one was following. Zoom and position are not saved.
 - Loading the files page in "By review" mode selects stop 1 as a click on it would: its box is highlighted, the canvas
   pans to it, its callout shows and the diff scrolls to it. A stop the URL links to is opened instead. When the URL
   already names a diff line or review comment (`#diff-…`, `#r…`, `#discussion_r…`) that is not a stop's, stop 1 is
