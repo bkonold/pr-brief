@@ -7,7 +7,7 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, normalizeLevel, orderChunks, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
+const { staleMessage, normalizeLevel, chunkOfNode, revealTarget, readFirstReason } = require("../tree.js");
 const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
@@ -45,20 +45,6 @@ test("normalizeLevel falls back to read for a missing or unknown word", () => {
   assert.equal(normalizeLevel("Read  Carefully"), "verify");
   assert.equal(normalizeLevel(undefined), "read");
   assert.equal(normalizeLevel("careful"), "read");
-});
-
-test("orderChunks sorts by review level, keeps ties in order and puts Unchunked after skim", () => {
-  const chunk = (n, name, review) => ({ n, name, review });
-  const ordered = orderChunks([
-    chunk(1, "A", "read"),
-    chunk(2, "B", "skim"),
-    chunk(3, "C", "verify"),
-    chunk(4, "Unchunked", "read"),
-    chunk(5, "D", "skim"),
-    chunk(6, "E", "read carefully"),
-    chunk(7, "F", "read"),
-  ]);
-  assert.deepEqual(ordered.map((c) => c.n), [3, 6, 1, 7, 2, 5, 4]);
 });
 
 test("lineAnchor joins the diff block id with the side and line", async () => {
@@ -447,25 +433,6 @@ test("GitHub's conversation page, which embeds no head sha, asks the run server 
     globalThis.location = savedLocation;
     if (savedLocation === undefined) delete globalThis.location;
   }
-});
-
-const { hasSteps } = require("../tree.js");
-
-test("orderChunks in flow order keeps review.json's order and puts Unchunked last", () => {
-  const chunks = [
-    { n: 1, name: "Screen", review: "skim", step: "UI" },
-    { n: 2, name: "Table", review: "verify", step: "Database" },
-    { n: 3, name: "Unchunked", review: "read" },
-    { n: 4, name: "Config", review: "read" },
-  ];
-  assert.deepEqual(orderChunks(chunks, "flow").map((chunk) => chunk.name), ["Screen", "Table", "Config", "Unchunked"]);
-  assert.deepEqual(orderChunks(chunks, "risk").map((chunk) => chunk.name), ["Table", "Config", "Screen", "Unchunked"]);
-  assert.deepEqual(orderChunks(chunks), orderChunks(chunks, "risk"));
-});
-
-test("a run has steps only when one of its chunks names a step", () => {
-  assert.equal(hasSteps([{ name: "A" }, { name: "B", step: "API" }]), true);
-  assert.equal(hasSteps([{ name: "A" }]), false);
 });
 
 const { stopsOf, firstStopOf, stopCallout } = require("../tree.js");

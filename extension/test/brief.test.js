@@ -13,13 +13,6 @@ const { buildBrief, buildCard, cardHtml, isStale } = require("../brief.js");
 
 const FILES_URL = "http://forge.example/acme/widgets/pulls/7/files";
 
-function row(name, files, extra = "") {
-  const cells = files
-    .map((file) => `<tr><td><code title="src">src</code><br><a href="https://github.com/acme/widgets/pull/7/files#diff-${file}"><strong>${file}.js</strong></a> +1/-0</td></tr>`)
-    .join("");
-  return `<tr><td>1</td><td><strong>${name}</strong><br><sub>start <a href="https://github.com/acme/widgets/pull/7/changes#diff-${files[0]}R12" title="src/${files[0]}.js">${files[0]}.js:12</a></sub>${extra}</td><td>read</td><td>why</td><td><table>${cells}</table></td></tr>`;
-}
-
 const MARKDOWN = [
   "# Example title",
   "",
@@ -45,12 +38,6 @@ const MARKDOWN = [
   "```",
   "",
   'Legend: <span style="display:inline-block;width:14px;background:#fff"></span> changed step',
-  "",
-  "<details open> <summary><h3> Review order</h3></summary>",
-  "",
-  `<table class="review-order"><thead><tr><th>#</th><th>Chunk</th><th>Review</th><th>Why</th><th>Files</th></tr></thead><tbody>${row("First chunk", ["alpha", "beta"])}${row("Second chunk", ["gamma"])}</tbody></table>`,
-  "",
-  "</details>",
   "",
   "___",
   "",
@@ -127,59 +114,9 @@ test("renderBody renders the description and leaves the title, the mermaid sourc
   assert.match(legend, /^Legend: <span style="display:inline-block; width:14px; background:#fff"><\/span> changed step$/);
 });
 
-test("each chunk's file list is a closed details headed by its file count", () => {
-  const { html } = briefText.renderBody(bodyHtml(), FILES_URL);
-  const lists = html.match(/<details class="files">.*?<\/details>/gs);
-  assert.equal(lists.length, 2);
-  assert.match(lists[0], /^<details class="files"><summary>2 files<\/summary><table>.*alpha\.js.*beta\.js.*<\/table><\/details>$/s);
-  assert.match(lists[1], /<summary>1 file<\/summary>/);
-  assert.doesNotMatch(html, /<details[^>]*\bopen\b/);
-  assert.equal(html.match(/<table>/g).length, 2);
-});
-
-test("each chunk's start is a closed Start here details that keeps the rewritten link and the quote", () => {
-  const withQuote = MARKDOWN.replace(row("First chunk", ["alpha", "beta"]), row("First chunk", ["alpha", "beta"], "<br><code>int total = 0;</code>"));
-  const { html } = briefText.renderBody(bodyHtml(withQuote), FILES_URL);
-  const starts = html.match(/<details class="start">.*?<\/details>/gs);
-  assert.equal(starts.length, 2);
-  assert.equal(
-    starts[0],
-    '<details class="start"><summary>Start here</summary><sub><a href="http://forge.example/acme/widgets/pulls/7/files#diff-alphaR12" title="src/alpha.js">alpha.js:12</a></sub><br><code>int total = 0;</code></details>',
-  );
-  assert.equal(
-    starts[1],
-    '<details class="start"><summary>Start here</summary><sub><a href="http://forge.example/acme/widgets/pulls/7/files#diff-gammaR12" title="src/gamma.js">gamma.js:12</a></sub></details>',
-  );
-  assert.match(html, /<strong>First chunk<\/strong><details class="start">/);
-  assert.doesNotMatch(html, /<sub>start /);
-  assert.doesNotMatch(html, /<details class="start"[^>]*\bopen\b/);
-});
-
-test("a file-only start is a Start here details with the file link and the reason, and no line", () => {
-  const fileStart = '<br><sub>start <a href="https://github.com/acme/widgets/pull/7/files#diff-alpha" title="src/alpha.js">alpha.js</a></sub><br><em>Where the screen is built.</em>';
-  const table = `<table class="review-order"><tbody><tr><td>1</td><td><strong>Screen</strong>${fileStart}</td><td>read</td></tr></tbody></table>`;
-  const { html } = briefText.renderBody(bodyHtml(`<details open>\n\n${table}\n\n</details>\n`), FILES_URL);
-  assert.match(
-    html,
-    /<strong>Screen<\/strong><details class="start"><summary>Start here<\/summary><sub><a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-alpha" title="src\/alpha\.js">alpha\.js<\/a><\/sub><br><em>Where the screen is built\.<\/em><\/details>/,
-  );
-  assert.doesNotMatch(html, /<sub>start /);
-});
-
-test("a chunk with no start is left alone", () => {
-  const cell = '<td>1</td><td><strong>No start</strong></td><td>read</td>';
-  const table = `<table class="review-order"><tbody><tr>${cell}</tr></tbody></table>`;
-  assert.equal(briefText.foldStarts(table), table);
-  assert.equal(briefText.foldStarts("<p>no table</p>"), "<p>no table</p>");
-});
-
-test("the review order's own details is not open either", () => {
-  const { html } = briefText.renderBody(bodyHtml(), FILES_URL);
-  assert.match(html, /<details> <summary><h3> Review order<\/h3><\/summary>/);
-});
-
 test("links into the files view point at this host's files view and keep their fragment", () => {
-  const { html } = briefText.renderBody(bodyHtml(), FILES_URL);
+  const markdown = '<a href="https://github.com/acme/widgets/pull/7/files#diff-alpha">a</a> <a href="https://github.com/acme/widgets/pull/7/changes#diff-alphaR12">b</a>';
+  const { html } = briefText.renderBody(bodyHtml(markdown), FILES_URL);
   assert.match(html, /href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-alpha"/);
   assert.match(html, /href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-alphaR12"/);
   assert.doesNotMatch(html, /github\.com/);
@@ -235,7 +172,6 @@ test("the card is a closed details that reads and writes no storage", () => {
     assert.match(diagramBox[1], /^<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<p class="legend">Legend:.*<\/figure>$/s);
     const at = (needle) => shadow.indexOf(needle);
     assert.ok(at("Second point") < at('<details class="diagram-box">'), "the diagram follows the description's bullets");
-    assert.ok(at('<details class="diagram-box">') < at("Review order"), "the diagram precedes the review order");
     assert.equal(shadow.match(/<details class="diagram-box">/g).length, 1);
     assert.doesNotMatch(shadow, /grid-template-columns/);
     assert.match(shadow, /\.text > ul > li, \.text > ol > li \{ margin-bottom: 1\.5em; \}/);
@@ -579,142 +515,6 @@ test("clicking a button in the card reports its action, and show redraws the car
   }
 });
 
-function ranked(n, name, risk, files = ["alpha"]) {
-  return `<tr data-flow="${n}" data-risk="${risk}"><td>${n}<br><sub>step ${n}</sub></td><td><strong>${name}</strong></td><td>read</td><td>why</td><td><table>${files
-    .map((file) => `<tr><td><a href="https://github.com/acme/widgets/pull/7/files#diff-${file}">${file}.js</a></td></tr>`)
-    .join("")}</table></td></tr>`;
-}
-
-const ORDER_ROWS = [ranked(1, "Screen", 0), ranked(2, "Endpoint", 1, ["beta", "gamma"]), ranked(3, "Table", 2), ranked(4, "Tests", 0), ranked(5, "Unchunked", -1)];
-const ORDER_MARKDOWN = [
-  "# T",
-  "",
-  "### **Description**",
-  "text",
-  "",
-  "___",
-  "",
-  "<details open> <summary><h3> Review order</h3></summary>",
-  "",
-  `<table class="review-order"><thead><tr><th>#</th><th>Chunk</th></tr></thead><tbody>${ORDER_ROWS.join("")}</tbody></table>`,
-  "",
-  "</details>",
-  "",
-].join("\n");
-const names = (html) => [...html.matchAll(/<tr data-flow="\d+" data-risk="-?\d+"><td>\d+<br><sub>[^<]*<\/sub><\/td><td><strong>([^<]*)</g)].map((match) => match[1]);
-
-test("orderRows puts the chunks in flow order, or by risk with ties in flow order and the catch-all last", () => {
-  const html = briefText.renderBody(bodyHtml(ORDER_MARKDOWN), FILES_URL).html;
-  assert.deepEqual(names(briefText.orderRows(html, "flow")), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
-  assert.deepEqual(names(briefText.orderRows(html, "risk")), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
-});
-
-test("orderRows moves a row with its nested file list whole and leaves the rest of the html alone", () => {
-  const html = briefText.renderBody(bodyHtml(ORDER_MARKDOWN), FILES_URL).html;
-  const risk = briefText.orderRows(html, "risk");
-  assert.equal(risk.length, html.length);
-  assert.ok(risk.startsWith(html.slice(0, html.indexOf("<tr data-flow"))));
-  assert.ok(risk.endsWith(html.slice(html.lastIndexOf("</tbody>"))));
-  const endpoint = /<tr data-flow="2"[^]*?<\/details><\/td><\/tr>/.exec(risk)[0];
-  assert.match(endpoint, /2 files<\/summary>.*diff-beta.*diff-gamma/s);
-  assert.equal(briefText.orderRows(risk, "flow"), html);
-});
-
-test("html with no ranked rows is returned as it is in either order", () => {
-  const html = briefText.renderBody(bodyHtml(), FILES_URL).html;
-  assert.equal(briefText.hasOrders(html), false);
-  assert.equal(briefText.orderRows(html, "risk"), html);
-  assert.equal(briefText.orderRows("<p>none</p>", "flow"), "<p>none</p>");
-});
-
-test("the rank attributes survive sanitizing while event handlers on the same row do not", () => {
-  const html = briefText.sanitize('<tr data-flow="2" onclick="x()" data-risk="1" data-evil="y"><td>a</td></tr>');
-  assert.equal(html, '<tr data-flow="2" data-risk="1"><td>a</td></tr>');
-});
-
-test("a review order with ranks opens in flow order with an Order switch, and the risk view reorders it", () => {
-  const view = { kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null };
-  const flow = cardHtml(view, CARD);
-  assert.deepEqual(names(flow), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
-  assert.match(flow, /<\/summary><div class="order-switch">Order: <button class="link" type="button" data-action="order:flow" aria-pressed="true">by flow<\/button> \| <button class="link" type="button" data-action="order:risk" aria-pressed="false">by risk<\/button><\/div>/);
-  const risk = cardHtml({ ...view, order: "risk" }, CARD);
-  assert.deepEqual(names(risk), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
-  assert.match(risk, /data-action="order:risk" aria-pressed="true"/);
-});
-
-test("a run without ranks shows no Order switch", () => {
-  const html = cardHtml({ kind: "brief", variant: "v15", bodyHtml: bodyHtml(), diagramSvg: null }, CARD);
-  assert.doesNotMatch(html, /order-switch|order:/);
-});
-
-const JSON_CHUNKS = [
-  { n: 1, name: "Screen", step: "UI", review: "skim" },
-  { n: 2, name: "Endpoint", step: "API", review: "read" },
-  { n: 3, name: "Table", step: "Database", review: "verify" },
-  { n: 4, name: "Tests", step: "Tests", review: "skim" },
-  { n: 5, name: "Unchunked", review: "skim" },
-];
-const BLIND_ROWS = ORDER_ROWS.map((row) => row.replace(/data-risk="-?\d+"/, 'data-risk="0"'));
-const BLIND_MARKDOWN = ORDER_MARKDOWN.replace(ORDER_ROWS.join(""), BLIND_ROWS.join(""));
-
-test("orderRows follows the chunk numbers it is given and puts a row they do not name last", () => {
-  const html = briefText.renderBody(bodyHtml(BLIND_MARKDOWN), FILES_URL).html;
-  assert.deepEqual(names(briefText.orderRows(html, "risk", [3, 2, 1, 5])), ["Table", "Endpoint", "Screen", "Unchunked", "Tests"]);
-  assert.deepEqual(names(briefText.orderRows(html, "flow", [1, 2, 3, 4, 5])), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
-});
-
-test("a card with review.json's chunks orders the review order by them, whatever ranks the rows carry", () => {
-  const view = { kind: "brief", variant: "v16", bodyHtml: bodyHtml(BLIND_MARKDOWN), diagramSvg: null, chunks: JSON_CHUNKS };
-  assert.deepEqual(names(cardHtml(view, CARD)), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
-  const risk = cardHtml({ ...view, order: "risk" }, CARD);
-  assert.deepEqual(names(risk), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
-  assert.match(risk, /data-action="order:risk" aria-pressed="true"/);
-});
-
-test("with review.json's chunks the Order switch needs steps there, not ranks on the rows", () => {
-  const stepless = JSON_CHUNKS.map(({ step, ...rest }) => rest);
-  const html = cardHtml({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null, chunks: stepless }, CARD);
-  assert.doesNotMatch(html, /order-switch|order:/);
-  assert.deepEqual(names(html), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
-});
-
-test("the Order buttons order by review.json's chunks too", () => {
-  const { document, click } = interactiveDocument();
-  globalThis.document = document;
-  try {
-    const host = buildCard({ key: "fj-7", filesUrl: FILES_URL, onAction: () => {} });
-    host.show({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(BLIND_MARKDOWN), diagramSvg: null, chunks: JSON_CHUNKS });
-    click("order:risk");
-    assert.deepEqual(names(document.order.innerHTML), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a body with no review-order table has no order block, and the Contract groups stay in the description", () => {
-  const markdown = [
-    "# T",
-    "",
-    "### **Contract**",
-    "Contract: 1 additive",
-    "",
-    "<details>",
-    "<summary>3 · Endpoint <em>+1 more</em></summary>",
-    "",
-    "<ul>",
-    "<li>a line</li>",
-    "</ul>",
-    "",
-    "</details>",
-    "",
-  ].join("\n");
-  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(markdown), diagramSvg: null }, CARD);
-  assert.doesNotMatch(html, /class="order"/);
-  assert.match(html, /<div class="text">[^]*<summary>3 · Endpoint/);
-  assert.deepEqual(require("../brief.js").splitOrder("<p>x</p><details><summary>a</summary></details>"), { text: "<p>x</p><details><summary>a</summary></details>", order: "" });
-  assert.equal(require("../brief.js").splitOrder("<p>x</p><details> <summary><h3> File Walkthrough</h3></summary></details>").order.startsWith("<details>"), true);
-});
-
 const V22_MARKDOWN = [
   "# T",
   "",
@@ -761,10 +561,9 @@ test("a v22 section is one closed details with its name and chips in the summary
   assert.doesNotMatch(html, /\||class="sub"|group-row|chunk/);
 });
 
-test("a v22 brief keeps the diagram after the Data section, with no order block", () => {
+test("a v22 brief keeps the diagram after the Data section", () => {
   const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
-  assert.doesNotMatch(html, /class="order"|order-switch/);
   const contract = html.indexOf("<strong>Contract</strong>");
   const data = html.indexOf("<h3><strong>Data</strong></h3>");
   const diagram = html.indexOf('class="diagram-box"');
@@ -772,97 +571,10 @@ test("a v22 brief keeps the diagram after the Data section, with no order block"
   assert.equal(html.slice(contract, data).includes("diagram-box"), false);
 });
 
-test("a section's details is not mistaken for the file walkthrough when the body is split", () => {
-  const html = '<p>x</p><details class="section"><summary><strong>Data</strong></summary></details><p>y</p>';
-  assert.deepEqual(require("../brief.js").splitOrder(html), { text: html, order: "" });
-});
-
 test("renderMarkdown reads a pipe table with an escaped pipe and leaves a lone pipe line as text", () => {
   const { html } = briefText.renderMarkdown(["| a | b |", "| --- | --- |", "| x \\| y | `z` |", "", "| not a table |"].join("\n"));
   assert.match(html, /<table><thead><tr><th>a<\/th><th>b<\/th><\/tr><\/thead><tbody><tr><td>x \| y<\/td><td><code>z<\/code><\/td><\/tr><\/tbody><\/table>/);
   assert.match(html, /<p>\| not a table \|<\/p>/);
-});
-
-test("the Contract and data block renders as a list of links into the files view, with its fragments kept", () => {
-  const markdown = [
-    "# T",
-    "",
-    "### **Description**",
-    "text",
-    "",
-    "___",
-    "",
-    "### **Contract and data**",
-    '<ul class="contract">',
-    '<li><a href="https://github.com/acme/widgets/pull/7/files#diff-abcR40"><code>GET /widgets</code></a> · <a href="https://github.com/acme/widgets/pull/7/files#diff-abcR41"><strong>size now required</strong></a></li>',
-    '<li><a href="https://github.com/acme/widgets/pull/7/files#diff-defR3"><code>orders</code></a> <sub>table</sub> · <a href="https://github.com/acme/widgets/pull/7/files#diff-defR3">CREATE TABLE</a></li>',
-    "</ul>",
-    "",
-    "<sub>Database changes not checked</sub>",
-    "",
-    "___",
-    "",
-  ].join("\n");
-  const html = cardHtml({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(markdown), diagramSvg: null }, CARD);
-  assert.match(html, /<h3><strong>Contract and data<\/strong><\/h3>\s*<ul class="contract">/);
-  assert.match(html, /<a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abcR40"><code>GET \/widgets<\/code><\/a>/);
-  assert.match(html, /<strong>size now required<\/strong>/);
-  assert.match(html, /<code>orders<\/code><\/a> <sub>table<\/sub>/);
-  assert.match(html, /<sub>Database changes not checked<\/sub>/);
-});
-
-function interactiveDocument() {
-  const order = { innerHTML: "", opened: false };
-  const details = { get open() { return order.opened; }, setAttribute: () => { order.opened = true; } };
-  order.querySelector = () => details;
-  const handlers = [];
-  const document = {
-    order,
-    handlers,
-    createElement: () => ({
-      attributes: {},
-      setAttribute(name, value) {
-        this.attributes[name] = value;
-      },
-      attachShadow() {
-        this.shadow = {
-          innerHTML: "",
-          addEventListener: (type, handler) => handlers.push(handler),
-          querySelector: (selector) => (selector === ".order" ? order : null),
-        };
-        return this.shadow;
-      },
-    }),
-  };
-  const click = (action) => {
-    let prevented = false;
-    const target = { closest: () => ({ getAttribute: () => action }) };
-    for (const handler of handlers) handler({ target, preventDefault: () => (prevented = true) });
-    return prevented;
-  };
-  return { document, click };
-}
-
-test("the Order buttons reorder the open review order in place and never reach onAction", () => {
-  const { document, click } = interactiveDocument();
-  globalThis.document = document;
-  try {
-    const actions = [];
-    const host = buildCard({ key: "fj-7", filesUrl: FILES_URL, onAction: (action) => actions.push(action) });
-    host.show({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null });
-    document.order.opened = true;
-    assert.equal(click("order:risk"), true);
-    assert.deepEqual(names(document.order.innerHTML), ["Table", "Endpoint", "Screen", "Tests", "Unchunked"]);
-    assert.equal(document.order.opened, true);
-    click("order:flow");
-    assert.deepEqual(names(document.order.innerHTML), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
-    click("generate");
-    assert.deepEqual(actions, ["generate"]);
-    host.show({ kind: "brief", variant: "v16", bodyHtml: bodyHtml(ORDER_MARKDOWN), diagramSvg: null });
-    assert.deepEqual(names(host.shadow.innerHTML), ["Screen", "Endpoint", "Table", "Tests", "Unchunked"]);
-  } finally {
-    delete globalThis.document;
-  }
 });
 
 const STEP_REVIEW = {
@@ -1082,47 +794,6 @@ test("every action that focuses a chunk centres the diagram on the chunk's boxes
   assert.deepEqual(centered.at(-1), ["b"]);
   await renders.at(-1).handlers.onMode("github");
   assert.deepEqual(centered.at(-1), ["b"]);
-});
-
-const SECTION_MARKDOWN = [
-  "# T",
-  "",
-  "### **Description**",
-  "text",
-  "",
-  "___",
-  "",
-  "### **Contract**",
-  "Contract: 1 callers must change · 1 additive",
-  "",
-  "<details>",
-  '<summary>2 · Item endpoints <span class="pill p0"><strong>callers must change</strong></span> <code>size</code> now required</summary>',
-  "",
-  "<ul>",
-  '<li><span class="pill p0"><strong>callers must change</strong></span> <a href="https://github.com/acme/widgets/pull/7/files#diff-abcR40"><code>size</code> now required</a></li>',
-  '<li><span class="pill p2">additive</span> <a href="https://github.com/acme/widgets/pull/7/files#diff-abcR41">new <code>GET /items</code></a></li>',
-  "</ul>",
-  "",
-  "</details>",
-  "",
-  "___",
-  "",
-  "<details open> <summary><h3> Review order</h3></summary>",
-  "",
-  `<table class="review-order"><thead><tr><th>#</th><th>Chunk</th></tr></thead><tbody>${ORDER_ROWS.join("")}</tbody></table>`,
-  "",
-  "</details>",
-  "",
-].join("\n");
-
-test("the Contract section's groups and chips stay in the description, apart from the review order", () => {
-  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(SECTION_MARKDOWN), diagramSvg: null }, CARD);
-  const { text, order } = require("../brief.js").splitOrder(briefText.renderBody(bodyHtml(SECTION_MARKDOWN), FILES_URL).html);
-  assert.match(text, /<details>\s*<summary>2 · Item endpoints <span class="pill p0"><strong>callers must change<\/strong><\/span>/);
-  assert.match(text, /<span class="pill p2">additive<\/span> <a href="[^"]+#diff-abcR41">new <code>GET \/items<\/code><\/a>/);
-  assert.doesNotMatch(order, /pill/);
-  assert.match(order, /^<details>[\s\S]*class="review-order"/);
-  assert.equal(html.match(/<details/g).length >= 3, true);
 });
 
 test("the diagram's Reset restores the load-time state: nothing selected, no chunk or box marked, nothing saved", async () => {

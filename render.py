@@ -52,7 +52,6 @@ CHECK_ORDER: list[str] = ["logic", "contract", "breaking", "data", "destructive"
 # The labels the model sets; the renderer sets the others (`breaking`, `destructive`, `generated`).
 MODEL_CHECKS: list[str] = ["logic", "contract", "data", "access"]
 MAX_MODEL_CHECKS = 3
-ROUTES_DIR: str = load_local().get("routes_dir", "")
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
 DEFAULT_TEST_GLOBS: list[str] = ["**/test/**", "**/tests/**", "**/*Test.*", "**/*Tests.*", "**/*.test.*", "**/*_test.*"]
 TEST_GLOBS: list[str] = load_local().get("test_globs", DEFAULT_TEST_GLOBS)
@@ -340,40 +339,6 @@ def breaking_probes(contract: dict[str, Any]) -> list[re.Pattern[str]]:
 
 def has_breaking_change(contract: dict[str, Any] | None) -> bool:
     return bool(contract and (contract.get("removals") or contract.get("newly_required")))
-
-
-# ---------------------------------------------------------------- directory labels
-
-def route_url(folder: str) -> str:
-    """Route URL of a flat-route folder: `_layout.a.$id._index` -> `/a/:id`."""
-    segments: list[str] = [s for s in folder.split(".") if s and not s.startswith("_")]
-    return "/" + "/".join(":" + s[1:] if s.startswith("$") else s for s in segments)
-
-
-def directory_labels(paths: list[str]) -> dict[str, str]:
-    """Label for each directory of the changed files: a route URL under the routes folder,
-    otherwise the shortest path suffix that no other changed directory shares."""
-    dirs: set[str] = {str(Path(p).parent) if "/" in p else "" for p in paths}
-    labels: dict[str, str] = {}
-    plain: list[str] = []
-    for d in sorted(dirs):
-        folder: str = d[len(ROUTES_DIR):].split("/")[0] if ROUTES_DIR and d.startswith(ROUTES_DIR) else ""
-        url: str = route_url(folder) if folder else ""
-        if folder and (url != "/" or folder == "_index"):
-            labels[d] = url
-        elif folder:
-            labels[d] = folder
-        else:
-            plain.append(d)
-    for d in plain:
-        parts: list[str] = d.split("/") if d else []
-        others: list[list[str]] = [o.split("/") if o else [] for o in plain if o != d]
-        labels[d] = "(root)" if not parts else "/".join(parts)
-        for k in range(1, len(parts) + 1):
-            if not any(o[-k:] == parts[-k:] for o in others):
-                labels[d] = "/".join(parts[-k:])
-                break
-    return labels
 
 
 # ---------------------------------------------------------------- start lines
@@ -1151,49 +1116,6 @@ def start_cell(chunk: Chunk, repo: str, pr: str) -> str:
             f'{name}:{start["line"]}</a></sub><br><code>{html.escape(quote)}</code>')
 
 
-def risk_rank(chunk: Chunk) -> int:
-    """How high the chunk sits in the risk order: its level, with the catch-all chunk below every level."""
-    return -1 if chunk.name == UNCHUNKED else LEVELS.index(chunk.review)
-
-
-def chunks_walkthrough(chunks: list[Chunk], counts: dict[str, tuple[int, int]], paths: list[str],
-                       floor_cfg: dict[str, Any], repo: str, pr: str, numbering: str, show_start: bool,
-                       flow_order: bool = False) -> str:
-    labels: dict[str, str] = directory_labels(paths)
-    by_boxes: bool = numbering == "boxes"
-    with_steps: bool = any(chunk.step for chunk in chunks)
-    wide_first: bool = by_boxes or with_steps
-
-    def boxes_width(width: str) -> str:
-        return f' style="width: {width}"' if wide_first else ""
-
-    out: str = ('<details open> <summary><h3> Review order</h3></summary>\n\n'
-                f'<table class="review-order"><thead><tr><th{boxes_width("8%")}>{"Boxes" if by_boxes else "#"}</th>'
-                '<th align="left">Chunk</th><th align="left">Review</th>'
-                f'<th align="left"{boxes_width("27%")}>Why</th><th align="left">Files</th></tr></thead><tbody>')
-    for chunk in chunks:
-        review: str = f"<strong>{chunk.review}</strong>" if chunk.review == "verify" else chunk.review
-        if chunk.labels:
-            review += f"<br><sub>{html.escape(' · '.join(chunk.labels))}</sub>"
-        if chunk.raised_by:
-            review += f"<br><sub>raised by {html.escape(', '.join(chunk.raised_by))}</sub>"
-        rows: str = ""
-        for path in chunk.files:
-            directory: str = str(Path(path).parent) if "/" in path else ""
-            plus, minus = counts[path.lower()]
-            tags: str = "".join(f" <em>{html.escape(t)}</em>" for t in file_tags(floor_cfg, path))
-            rows += (f'<tr><td><code title="{html.escape(directory or "(root)")}">{html.escape(labels[directory]).replace("/", "/<wbr>")}</code><br>'
-                     f'<a href="{diff_link(repo, pr, path)}"><strong>{html.escape(path.split("/")[-1])}</strong></a> +{plus}/-{minus}{tags}</td></tr>')
-        first_cell: str = format_boxes(chunk.boxes) if by_boxes else str(chunk.number)
-        if chunk.step:
-            first_cell += f"<br><sub>{html.escape(chunk.step)}</sub>"
-        start: str = start_cell(chunk, repo, pr) if show_start else ""
-        order_data: str = f' data-flow="{chunk.number}" data-risk="{risk_rank(chunk)}"' if flow_order and with_steps else ""
-        out += (f"<tr{order_data}><td>{first_cell}</td><td><strong>{inline(chunk.name)}</strong>{start}</td><td>{review}</td>"
-                f"<td>{inline(chunk.why)}</td><td><table>{rows}</table></td></tr>")
-    return out + "</tbody></table>\n\n</details>\n\n"
-
-
 # ---------------------------------------------------------------- contract and data block
 
 def unchecked_sides(run: dict[str, Any], contract: dict[str, Any] | None) -> list[str]:
@@ -1256,11 +1178,6 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         raise AnswerError(f"unknown render contract_layout {layout_mode!r}, expected 'by_chunk'")
     if layout_mode and not (cfg.get("contract_block") and cfg.get("files") == "chunks"):
         raise AnswerError("render contract_layout 'by_chunk' needs contract_block and files = 'chunks'")
-    review_order: bool = cfg.get("review_order", True)
-    if not isinstance(review_order, bool):
-        raise AnswerError(f"render review_order must be true or false, got {review_order!r}")
-    if not review_order and cfg.get("files") != "chunks":
-        raise AnswerError("render review_order = false needs files = 'chunks'")
     lineset: layout.LineSet | None = build_lineset(run, pr, contract, diff_text) if layout_mode else None
     if lineset is not None:
         ordered["contract"] = ordered["data"] = ""
@@ -1306,10 +1223,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         legend = diagram_legend(diagram, context_nodes)
     if diagram:
         ordered["changes_diagram"] = diagram
-    if cfg.get("files") == "chunks":
-        if review_order:
-            ordered["pr_files"] = True
-    elif data.get("pr_files"):
+    if cfg.get("files") != "chunks" and data.get("pr_files"):
         ordered["pr_files"] = data["pr_files"]
 
     body: str = ""
@@ -1319,14 +1233,10 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
             body += f"### Diagram Walkthrough\n\n{value}\n\n{legend + chr(10) * 2 if legend else ''}"
             continue
         if key == "pr_files":
-            if cfg.get("files") == "chunks":
-                walkthrough = chunks_walkthrough(chunks, counts, paths, floor_cfg, run["repo"], pr_number, numbering,
-                                                bool(cfg.get("start_line")), flow_order)
-            else:
-                include_summary: bool = len(pr["files"]) <= COLLAPSIBLE_FILE_LIST_THRESHOLD
-                labels = file_label_dict(value, include_summary)
-                walkthrough = ("<details> <summary><h3> File Walkthrough</h3></summary>\n\n"
-                               f"{labels_walkthrough(labels, counts, run['repo'], pr_number)}\n\n</details>\n\n")
+            include_summary: bool = len(pr["files"]) <= COLLAPSIBLE_FILE_LIST_THRESHOLD
+            labels = file_label_dict(value, include_summary)
+            walkthrough = ("<details> <summary><h3> File Walkthrough</h3></summary>\n\n"
+                           f"{labels_walkthrough(labels, counts, run['repo'], pr_number)}\n\n</details>\n\n")
         elif lineset is not None and key in ("contract", "data") and value.startswith("<details"):
             body += f"{value}\n"
         else:
@@ -1589,16 +1499,6 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  body { background: #fff; margin: 0; }
  .markdown-body { box-sizing: border-box; max-width: 980px; margin: 0 auto; padding: 32px 16px; }
  pre.mermaid { background: #fff; text-align: center; }
- table.review-order { display: table; table-layout: fixed; width: 100%; }
- table.review-order > thead > tr > th:nth-child(1) { width: 4%; }
- table.review-order > thead > tr > th:nth-child(2) { width: 16%; }
- table.review-order > thead > tr > th:nth-child(3) { width: 11%; }
- table.review-order > thead > tr > th:nth-child(4) { width: 31%; }
- table.review-order > thead > tr > th:nth-child(5) { width: 38%; }
- table.review-order td, table.review-order th { padding: 6px 8px; overflow-wrap: break-word; }
- table.review-order table { display: table; table-layout: fixed; width: 100%; }
- table.review-order table td { padding: 2px 0; border: 0; background: none; overflow-wrap: anywhere; }
- table.review-order table tr, table.review-order table tr:nth-child(2n) { border: 0; background: none; }
  .pill { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 7px; border: 1px solid #8c959f; border-radius: 999px; white-space: nowrap; vertical-align: 1px; }
  .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
  .pill.p1 { border-color: #1f2328; font-weight: 600; }

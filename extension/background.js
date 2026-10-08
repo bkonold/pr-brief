@@ -102,7 +102,7 @@ async function loadReview(request) {
   return { ...review, variants, diagramSvg: await loadDiagram(baseUrl, variant, key, review.diagram) };
 }
 
-// The PR brief card reads the run's rendered description and its diagram, and the chunks' order from review.json.
+// The PR brief card reads the run's rendered description and its diagram.
 async function loadBrief(request) {
   const run = await findRun(request);
   if (!run || run.error) return run;
@@ -111,8 +111,7 @@ async function loadBrief(request) {
     loadRunFile(baseUrl, variant, key, "body.html"),
     loadDiagram(baseUrl, variant, key, review.diagram),
   ]);
-  const chunks = review.chunks.map(({ n, name, review: level, step }) => ({ n, name, review: level, step }));
-  return bodyHtml === null ? null : { variant, bodyHtml, diagramSvg, chunks, headSha: review.head_sha ?? null };
+  return bodyHtml === null ? null : { variant, bodyHtml, diagramSvg, headSha: review.head_sha ?? null };
 }
 
 // One call to serve.py's /api/ with the token; see describeResponse for the shapes that come back.

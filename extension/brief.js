@@ -1,4 +1,4 @@
-// The PR brief card: the run's description, review order and diagram, in a collapsed <details> that the content
+// The PR brief card: the run's description and diagram, in a collapsed <details> that the content
 // script places above the PR's description on the conversation page. Before there is a run it is a bar with a
 // "Generate brief" button, while one is being written a bar with the stage pills and a Cancel link, and when the run
 // is for an older head commit than the page's the badge says so and a Regenerate button appears; otherwise a quiet
@@ -113,62 +113,10 @@
     .text .table-wrap td:last-child { padding-right: 0; }
     .text .table-wrap th:nth-child(2), .text .table-wrap td:nth-child(2) { min-width: 9ch; }
     .text .table-wrap td .pill { font-size: 11px; line-height: 16px; padding: 0 7px; }
-    ul.contract { margin: 0 0 12px; padding-left: 20px; }
-    .text > ul.contract > li { margin-bottom: 4px; }
-    .order-switch { margin: 4px 0 8px; font-size: 12px; color: var(--muted); }
-    .order-switch .link { margin: 0 2px; }
-    .order-switch .link[aria-pressed="true"] { color: var(--fg); font-weight: 600; cursor: default; text-decoration: none; }
-    table.review-order { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
-    table.review-order th, table.review-order td { padding: 6px 8px; vertical-align: top; text-align: left; border: 1px solid var(--border); overflow-wrap: anywhere; }
-    table.review-order th { background: var(--header); }
-    table.review-order th:nth-child(1) { width: 8%; }
-    table.review-order th:nth-child(2) { width: 25%; }
-    table.review-order th:nth-child(3) { width: 11%; }
-    table.review-order th:nth-child(4) { width: 26%; }
-    table.review-order table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 4px; }
-    table.review-order table td { padding: 2px 0; border: 0; }
-    details.files { margin: 0; }
-    details.start { margin: 0; }
-    details.start > summary { font-size: 12px; line-height: 18px; color: var(--accent); }
-    details.start[open] > summary { margin-bottom: 2px; }
-    details.files > summary { color: var(--accent); }
   `;
 
   function escapeHtml(text) {
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-
-  const WALKTHROUGH = /<details>\s*<summary>\s*<h3>/;
-
-  // The description and the review order are split at the review order's <details>, so the diagram's own <details>
-  // can sit between them. A body with no review-order table splits at its file walkthrough's <details>, which has an
-  // <h3> in its summary, and has no order when it has neither. The <details> of the Contract and Data sections stay in
-  // the description.
-  function splitOrder(html) {
-    const table = html.indexOf('class="review-order"');
-    const at = table === -1 ? html.search(WALKTHROUGH) : html.lastIndexOf("<details", table);
-    return at === -1 ? { text: html, order: "" } : { text: html.slice(0, at), order: html.slice(at) };
-  }
-
-  const ORDERS = [["flow", "by flow"], ["risk", "by risk"]];
-  const DEFAULT_ORDER = "flow";
-
-  // The "Order: by flow | by risk" switch. Its buttons are `order:<mode>` actions.
-  function orderSwitch(mode) {
-    const buttons = ORDERS.map(([value, label]) => `<button class="link" type="button" data-action="order:${value}" aria-pressed="${value === mode}">${label}</button>`);
-    return `<div class="order-switch">Order: ${buttons.join(" | ")}</div>`;
-  }
-
-  // The review-order block in `mode` ("flow" unless the view asks for "risk"), with the switch under its heading. The
-  // block is ordered by review.json's `chunks` when the view has them, and offers the switch only when they carry
-  // steps, as the files view does; without `chunks` it follows the rows' own ranks.
-  function orderBlock(order, mode, chunks = null) {
-    if (!ns.briefText.hasOrders(order) || (chunks && !ns.tree.hasSteps(chunks))) return order;
-    const shown = mode === "risk" ? "risk" : DEFAULT_ORDER;
-    const numbers = chunks ? ns.tree.orderChunks(chunks, shown).map((chunk) => chunk.n) : null;
-    const ordered = ns.briefText.orderRows(order, shown, numbers);
-    const heading = ordered.indexOf("</summary>");
-    return heading === -1 ? ordered : `${ordered.slice(0, heading + "</summary>".length)}${orderSwitch(shown)}${ordered.slice(heading + "</summary>".length)}`;
   }
 
   const SHORT_SHA = 7;
@@ -202,8 +150,7 @@
   //   { kind: "none", canGenerate }                         no run yet
   //   { kind: "running", stage, elapsed }                   a run is going
   //   { kind: "error", message }                            the call or the run failed
-  //   { kind: "brief", variant, bodyHtml, diagramSvg, chunks, runSha, pageSha, canGenerate, order }   a run, closed
-  //                                    (`order`: "flow", the default, or "risk" for the review order; `chunks`: review.json's)
+  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate }   a run, closed
   // `key` and `filesUrl` name the run and the PR's files view on this host. Every button is a
   // data-action: generate, cancel.
   function cardHtml(view, { key, filesUrl }) {
@@ -222,7 +169,6 @@
     }
     const { html, legend } = ns.briefText.renderBody(view.bodyHtml, filesUrl);
     const svg = /^\s*<svg[\s>]/.test(view.diagramSvg ?? "") ? ns.briefText.sanitize(view.diagramSvg, "svg") : "";
-    const { text, order } = splitOrder(html);
     const diagram = svg
       ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${legend ? `<p class="legend">${legend}</p>` : ""}</figure></details>`
       : "";
@@ -238,41 +184,25 @@
       '<details class="brief">' +
       `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label)}${regenerate}` +
       `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
-      `<div class="content"><div class="text">${text}</div>${diagram}` +
-      `${order ? `<div class="order">${orderBlock(order, view.order, view.chunks)}</div>` : ""}</div></details>`
+      `<div class="content"><div class="text">${html}</div>${diagram}</div></details>`
     );
   }
 
   // Builds the card host for a run folder `key`, empty until `show(view)` draws it (see cardHtml for the views).
-  // `onAction(name)` is called with "generate" or "cancel" when the matching button is clicked. The "order:flow" and
-  // "order:risk" buttons only reorder the review order in place, keeping it open; the choice is not remembered, and
-  // the next `show` draws the default order again. A brief view is drawn closed every time.
+  // `onAction(name)` is called with "generate" or "cancel" when the matching button is clicked. A brief view is drawn
+  // closed every time.
   function buildCard({ key, filesUrl, onAction }) {
     const host = document.createElement("div");
     host.id = HOST_ID;
     host.setAttribute("data-run", key);
     const shadow = host.attachShadow({ mode: "open" });
-    let shown = null;
-
-    function reorder(mode) {
-      if (shown?.kind !== "brief") return;
-      shown = { ...shown, order: mode };
-      const target = shadow.querySelector?.(".order");
-      if (!target) return;
-      const wasOpen = target.querySelector?.("details")?.open;
-      target.innerHTML = orderBlock(splitOrder(ns.briefText.renderBody(shown.bodyHtml, filesUrl).html).order, mode, shown.chunks);
-      if (wasOpen) target.querySelector?.("details")?.setAttribute?.("open", "");
-    }
-
     shadow.addEventListener?.("click", (event) => {
       const action = event.target?.closest?.("[data-action]")?.getAttribute("data-action");
       if (!action) return;
       event.preventDefault();
-      if (action.startsWith("order:")) reorder(action.slice("order:".length));
-      else onAction?.(action);
+      onAction?.(action);
     });
     host.show = (view) => {
-      shown = view;
       if (view.variant) host.setAttribute("data-variant", view.variant);
       shadow.innerHTML = `<style>${STYLE}</style>${cardHtml(view, { key, filesUrl })}`;
     };
@@ -280,13 +210,13 @@
   }
 
   // The card for a run that exists, drawn closed.
-  function buildBrief({ key, variant, bodyHtml, diagramSvg, chunks, filesUrl, runSha, pageSha, onAction }) {
+  function buildBrief({ key, variant, bodyHtml, diagramSvg, filesUrl, runSha, pageSha, onAction }) {
     const host = buildCard({ key, filesUrl, onAction });
-    host.show({ kind: "brief", variant, bodyHtml, diagramSvg, chunks, runSha, pageSha });
+    host.show({ kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha });
     return host;
   }
 
-  ns.brief = { splitOrder, HOST_ID, buildCard, buildBrief, cardHtml, isStale, orderBlock };
+  ns.brief = { HOST_ID, buildCard, buildBrief, cardHtml, isStale };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.brief;

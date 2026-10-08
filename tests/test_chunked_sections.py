@@ -83,7 +83,7 @@ class ChunkedSections(unittest.TestCase):
 
     def test_a_variant_without_a_walkthrough_keeps_the_rules_after_both_sections(self) -> None:
         (text, _, _, _, _), _ = render_body()
-        self.assertEqual(text.count("___"), 5)
+        self.assertEqual(text.count("___"), 4)
 
     def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
         (text, _, _, _, lineset), _ = render_body()
@@ -160,33 +160,18 @@ class ChunkedSections(unittest.TestCase):
             self.assertIn(f".pill.{rank} {{", page)
         self.assertIn(".pill {", page)
 
-    def test_the_review_order_is_in_the_body_unless_the_option_is_off(self) -> None:
-        (text, _, chunks, _, _), _ = render_body()
-        self.assertIn("Review order", text)
-        self.assertIn('<table class="review-order">', text)
-        (text, _, _, _, _), _ = render_body({"review_order": False})
+    def test_the_body_has_no_review_order_table(self) -> None:
+        (text, _, _, _, _), _ = render_body()
         self.assertNotIn("Review order", text)
         self.assertNotIn("review-order", text)
         self.assertNotIn("<table", text)
 
-    def test_without_the_review_order_the_body_ends_after_the_diagram(self) -> None:
-        (text, _, _, _, _), _ = render_body({"review_order": False})
+    def test_the_body_ends_after_the_diagram(self) -> None:
+        (text, _, _, _, _), _ = render_body()
         headings = re.findall(r"^### (?:\*\*)?(.*?)(?:\*\*)?$", text, re.M)
         self.assertEqual(headings, ["PR Type", "Description"])
         self.assertEqual(text.count("<summary><strong>"), 2)
         self.assertTrue(text.rstrip().endswith("___"))
-
-    def test_the_option_does_not_touch_review_json(self) -> None:
-        (_, _, shown, _, lineset), _ = render_body()
-        (_, _, hidden, _, hidden_lineset), _ = render_body({"review_order": False})
-        self.assertEqual(review_json(RUN, PR, hidden, False, None, True, hidden_lineset),
-                         review_json(RUN, PR, shown, False, None, True, lineset))
-
-    def test_the_option_must_be_a_boolean_and_needs_chunks(self) -> None:
-        with self.assertRaises(AnswerError):
-            render_body({"review_order": "no"})
-        with self.assertRaises(AnswerError):
-            render_body({"files": "labels", "contract_layout": None, "contract_block": False, "review_order": False})
 
     def test_the_layout_needs_chunks(self) -> None:
         with self.assertRaises(AnswerError):

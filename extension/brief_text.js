@@ -179,7 +179,7 @@
     "a b blockquote br code details div em h1 h2 h3 h4 h5 h6 hr i li ol p pre small span strong sub summary sup table tbody td th thead tr ul wbr".split(" "),
   );
   const DROPPED_WITH_CONTENT = new Set("script iframe object embed noscript template applet frame frameset".split(" "));
-  const BODY_ATTRIBUTES = new Set(["href", "title", "class", "style", "align", "colspan", "rowspan", "open", "data-flow", "data-risk"]);
+  const BODY_ATTRIBUTES = new Set(["href", "title", "class", "style", "align", "colspan", "rowspan", "open"]);
   const URL_ATTRIBUTES = new Set(["href", "src", "xlink:href", "action", "formaction"]);
   const STYLE_PROPERTIES = new Set(["width", "display", "vertical-align", "border-radius", "background", "border", "height", "text-align"]);
   const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", colon: ":", tab: "\t", newline: "\n" };
@@ -264,75 +264,6 @@
 
   // ---- the card's body
 
-  // In the review-order table, the Files cell of each chunk row holds a table of that chunk's files; it goes
-  // into a closed <details> headed by the file count.
-  function collapseFileLists(html) {
-    const start = html.indexOf('class="review-order"');
-    if (start === -1) return html;
-    const nested = /<td>(<table>(?:(?!<\/table>)[\s\S])*<\/table>)<\/td>/g;
-    return (
-      html.slice(0, start) +
-      html.slice(start).replace(nested, (_, table) => {
-        const count = table.match(/<tr[\s>]/g)?.length ?? 0;
-        return `<td><details class="files"><summary>${count} ${count === 1 ? "file" : "files"}</summary>${table}</details></td>`;
-      })
-    );
-  }
-
-  // In the review-order table, a chunk cell's start (the file:line link and the quoted line under the chunk name, or the
-  // file link and the reason for a start that names only a file) goes into a closed <details> headed "Start here"; a
-  // chunk with no start is left as it is.
-  function foldStarts(html) {
-    const start = html.indexOf('class="review-order"');
-    if (start === -1) return html;
-    const chunkStart = /<br><sub>start (<a\b[^>]*>(?:(?!<\/a>)[\s\S])*<\/a>)<\/sub>(<br><(code|em)>(?:(?!<\/(?:code|em)>)[\s\S])*<\/\3>)?/g;
-    return (
-      html.slice(0, start) +
-      html.slice(start).replace(chunkStart, (_, link, quote = "") => `<details class="start"><summary>Start here</summary><sub>${link}</sub>${quote}</details>`)
-    );
-  }
-
-  // ---- the review order's two orders
-
-  const FLOW_ROW = /(?=<tr\s[^>]*\bdata-flow=)/;
-  const ROW_NUMBER = /^<tr\s[^>]*?\bdata-flow="(-?\d+)"/;
-  const ROW_RANKS = /^<tr\s[^>]*?\bdata-flow="(-?\d+)"[^>]*?\bdata-risk="(-?\d+)"|^<tr\s[^>]*?\bdata-risk="(-?\d+)"[^>]*?\bdata-flow="(-?\d+)"/;
-
-  // True when the review-order table's rows carry the chunk number render.py writes for a flow-ordered run.
-  function hasOrders(html) {
-    const start = html.indexOf('class="review-order"');
-    return start !== -1 && /<tr\s[^>]*\bdata-flow=/.test(html.slice(start));
-  }
-
-  // The review-order table's rows in the given order. `numbers` is the chunk numbers in the order to show, which
-  // the caller takes from review.json; a row's chunk is its data-flow, and a row `numbers` does not name goes last.
-  // Without `numbers` the order comes from the rows' own ranks: "flow" (data-flow) or "risk" (data-risk, highest
-  // first, ties in flow order, the catch-all chunk last). HTML without such rows is returned as it is.
-  function orderRows(html, mode, numbers = null) {
-    const table = html.indexOf('class="review-order"');
-    const first = table === -1 ? -1 : html.slice(table).search(FLOW_ROW) + table;
-    if (table === -1 || first < table) return html;
-    const rest = html.slice(first);
-    const end = rest.lastIndexOf("</tbody>");
-    if (end === -1) return html;
-    const rows = [];
-    for (const row of rest.slice(0, end).split(FLOW_ROW)) {
-      if (numbers) {
-        const found = ROW_NUMBER.exec(row);
-        if (!found) return html;
-        const place = numbers.indexOf(Number(found[1]));
-        rows.push({ row, place: place === -1 ? numbers.length : place });
-        continue;
-      }
-      const found = ROW_RANKS.exec(row);
-      if (!found) return html;
-      rows.push({ row, flow: Number(found[1] ?? found[4]), risk: Number(found[2] ?? found[3]) });
-    }
-    if (numbers) rows.sort((a, b) => a.place - b.place);
-    else rows.sort(mode === "risk" ? (a, b) => b.risk - a.risk || a.flow - b.flow : (a, b) => a.flow - b.flow);
-    return html.slice(0, first) + rows.map(({ row }) => row).join("") + rest.slice(end);
-  }
-
   // Links into the PR's files view (either host's path, any origin) are pointed at this host's files view,
   // keeping the fragment that names the diff or the line.
   function rewriteLinks(html, filesUrl) {
@@ -355,16 +286,16 @@
     return match ? match[1] : bodyHtml;
   }
 
-  // The HTML of the card's text for a run's body.html: `html` is the description and the review order, `legend`
+  // The HTML of the card's text for a run's body.html: `html` is the description, `legend`
   // the diagram's legend (empty when there is none). A body.html with no markdown string is used as written.
   function renderBody(bodyHtml, filesUrl) {
     const md = extractMarkdown(bodyHtml);
     const rendered = md === null ? { html: bodyOf(bodyHtml), legend: "" } : renderMarkdown(md);
-    const finish = (html) => rewriteLinks(foldStarts(collapseFileLists(sanitize(html))), filesUrl);
+    const finish = (html) => rewriteLinks(sanitize(html), filesUrl);
     return { html: finish(rendered.html), legend: finish(rendered.legend) };
   }
 
-  ns.briefText = { extractMarkdown, renderMarkdown, sanitize, collapseFileLists, foldStarts, rewriteLinks, renderBody, hasOrders, orderRows };
+  ns.briefText = { extractMarkdown, renderMarkdown, sanitize, rewriteLinks, renderBody };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.briefText;

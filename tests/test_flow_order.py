@@ -63,16 +63,7 @@ def body(cfg: dict, diff: str = DIFF, contract: dict | None = None) -> str:
     return text
 
 
-class RowOrderAttributes(unittest.TestCase):
-    def test_the_rows_carry_the_flow_and_risk_ranks(self) -> None:
-        text = body({"chunk_order": "flow", "numbering": "flow"})
-        rows = re.findall(r'<tr data-flow="(\d+)" data-risk="(\d+)">', text)
-        self.assertEqual(rows, [("1", "0"), ("2", "1"), ("3", "2")])
-        self.assertIn("<sub>UI</sub>", text)
-
-    def test_a_risk_ordered_variant_has_no_order_attributes(self) -> None:
-        self.assertNotIn("data-flow", body({}))
-
+class FlowNumbering(unittest.TestCase):
     def test_flow_numbering_labels_each_box_with_its_chunks_flow_step(self) -> None:
         diagram = 'flowchart TD\n  a["Open screen"] --> b["Call endpoint"]\n  b --> c["Write row"]:::save'
         data = {**DATA, "changes_diagram": f"```mermaid\n{diagram}\n```",

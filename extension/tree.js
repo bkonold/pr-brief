@@ -19,27 +19,6 @@
     return LEVEL_ORDER.includes(level) ? level : "read";
   }
 
-  function groupRank(chunk) {
-    if (chunk.name === UNCHUNKED) return LEVEL_ORDER.length;
-    return LEVEL_ORDER.indexOf(normalizeLevel(chunk.review));
-  }
-
-  // True when the run's chunks carry a `step`, which is what makes review.json's order a flow order worth offering
-  // beside the risk order.
-  function hasSteps(chunks) {
-    return chunks.some((chunk) => chunk.step);
-  }
-
-  // "risk" (the default): "verify" first, then "read", then "skim", then Unchunked; ties keep review.json's
-  // order. "flow": review.json's order, Unchunked last.
-  function orderChunks(chunks, order = "risk") {
-    const rank = order === "flow" ? (chunk) => (chunk.name === UNCHUNKED ? 1 : 0) : groupRank;
-    return chunks
-      .map((chunk, index) => ({ chunk, index }))
-      .sort((a, b) => rank(a.chunk) - rank(b.chunk) || a.index - b.index)
-      .map(({ chunk }) => chunk);
-  }
-
   // The first chunk, in review.json's order, that lists the diagram box `nodeId`; null when none does.
   function chunkOfNode(chunks, nodeId) {
     return chunks.find((chunk) => chunk.nodes?.includes(nodeId)) ?? null;
@@ -329,7 +308,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, readFirstReason, stopsOf, firstStopOf, stopCallout, bar, stopList, remove, owns, orderChunks, chunkOfNode, hasSteps, normalizeLevel, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, readFirstReason, stopsOf, firstStopOf, stopCallout, bar, stopList, remove, owns, chunkOfNode, normalizeLevel, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;
