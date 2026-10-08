@@ -257,7 +257,8 @@
       const halo = found.halos.get(id);
       if (on && !halo) {
         const shape = group.querySelector(":scope > rect");
-        const ring = shape ? haloOf(shape) : null;
+        // A box's corner radius comes from the diagram's own stylesheet, which only a connected shape has computed.
+        const ring = shape?.isConnected ? haloOf(shape) : null;
         if (ring) {
           shape.after(ring);
           found.halos.set(id, ring);
@@ -477,16 +478,24 @@
     function centerOn(ids, { zoom = false } = {}) {
       target = ids.length > 0 ? { ids, zoom } : null;
       if (!target || size().w <= 0) return;
-      const rect = boundsOf(ids);
-      if (!rect) return;
+      const followed = viewFollowing(target);
+      if (!followed) return;
       resting = false;
+      glide(followed);
+    }
+
+    // The view that follows the boxes of `target` ({ ids, zoom }) in the viewport as it is now, or null when none of
+    // them is drawn.
+    function viewFollowing({ ids, zoom }) {
+      const rect = boundsOf(ids);
+      if (!rect) return null;
       const own = grown(rect);
       const joined = boundsOf(neighboursOf(ids));
       const band = joined ? union(own, joined) : own;
       const scale = zoom ? walkScale(own, size()) : view.scale;
       const onScreen = view.y + (own.y + own.h / 2) * view.scale;
       const start = { scale, x: view.x, y: onScreen - (own.y + own.h / 2) * scale };
-      glide(followBoxView(start, own, band, content, size()));
+      return followBoxView(start, own, band, content, size());
     }
 
     function union(a, b) {
@@ -549,8 +558,9 @@
     }
 
     // The canvas is built before its panel is in the page, so its viewport has no size until the panel is attached, and
-    // the observer's first report of a size is the viewport appearing: the diagram takes its resting view then, or is
-    // taken to the boxes it was asked to follow, rather than carrying on a glide that began against an unplaced view.
+    // the observer's first report of a size is the viewport appearing: the diagram takes its resting view then. Whenever
+    // the viewport's size changes, a canvas that is following boxes (see centerOn) is put on them again for the new size,
+    // without a glide, so it is never left centred for a width the viewport no longer has.
     let observed = size();
     placed = observed.w > 0;
     if (placed) rest();
@@ -567,7 +577,10 @@
             rest();
           } else if (resting) rest();
           else show(view, false);
-          if (appeared && target) centerOn(target.ids, { zoom: target.zoom });
+          const followed = target ? viewFollowing(target) : null;
+          if (!followed) return;
+          resting = false;
+          show(followed, false);
         })
       : null;
     resizeObserver?.observe(viewport);
@@ -675,13 +688,13 @@
       card = root.querySelector(".prd-card");
       found = index(svg);
       shownText = svgText;
-      applyEmphasis(card, found, emphasis);
     }
     root.style.top = host.top;
     root.style.setProperty("--prd-top", host.top);
     root.style.order = host.order;
     const anchor = host.pane ?? host.content;
     if (root.nextElementSibling !== anchor) anchor.before(root);
+    applyEmphasis(card, found, emphasis);
   }
 
   function emphasize(nodeIds) {

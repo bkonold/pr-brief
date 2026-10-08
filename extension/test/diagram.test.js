@@ -571,7 +571,7 @@ test("Reset returns a zoomed and panned canvas to its resting view, then calls t
   assert.deepEqual(order, ["rest", "onReset", "rest"]);
 });
 
-test("a resize keeps a focused view and re-rests a resting one", () => {
+test("a resize re-rests a resting view and puts a followed box back at the centre of the new width", () => {
   const original = globalThis.ResizeObserver;
   let notify = null;
   globalThis.ResizeObserver = class {
@@ -591,7 +591,7 @@ test("a resize keeps a focused view and re-rests a resting one", () => {
     const focusedView = views.at(-1);
     Object.assign(viewport, { clientWidth: 1100 });
     notify();
-    assert.deepEqual(views.at(-1), focusedView);
+    assert.deepEqual(views.at(-1), { ...focusedView, x: 550 - 550 });
   } finally {
     globalThis.ResizeObserver = original;
   }
@@ -626,6 +626,7 @@ function emphasisFixture() {
   const computed = {};
   global.getComputedStyle = () => computed;
   const shape = {
+    isConnected: true,
     computed,
     attrs: rectAttrs,
     localName: "rect",
@@ -729,6 +730,23 @@ test("focus leaves nothing behind: after it moves or clears, a box has no class 
   assert.deepEqual([...found.nodes.values()].map((entry) => entry.classList.set.size), [0, 0, 0, 0]);
   assert.deepEqual([children.length, found.halos.size, card.classList.set.size], [0, 0, 0]);
   assert.equal(JSON.stringify(shape.attrs), before);
+});
+
+test("applyEmphasis makes the same halo whether the focus arrived before or after the shape was connected", () => {
+  const early = emphasisFixture();
+  early.found.nodes.get("a").querySelector().isConnected = false;
+  early.found.nodes.get("a").querySelector().computed.rx = "";
+  applyEmphasis(early.card, early.found, ["a"]);
+  assert.equal(early.created.length, 0);
+  assert.equal(early.found.halos.has("a"), false);
+  early.found.nodes.get("a").querySelector().isConnected = true;
+  early.found.nodes.get("a").querySelector().computed.rx = "12px";
+  applyEmphasis(early.card, early.found, ["a"]);
+  const late = emphasisFixture();
+  late.found.nodes.get("a").querySelector().computed.rx = "12px";
+  applyEmphasis(late.card, late.found, ["a"]);
+  assert.deepEqual(early.created.map((ring) => ring.attrs), late.created.map((ring) => ring.attrs));
+  assert.equal(early.created[0].attrs.rx, "18");
 });
 
 test("applyEmphasis draws no halo for a box without a rect", () => {
