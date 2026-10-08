@@ -33,11 +33,6 @@ github_url = "https://github.com/example-org/example-repo.git"
 # Folder name of the mirror inside .cache/ (default "mirror.git").
 mirror_name = "example-repo.git"
 
-# Section "wiki": a checkout of a markdown wiki whose pages carry front matter with `resource: repo://<path>`
-# lines. wiki_dir is the folder of pages inside it (default: the checkout's root). Read only.
-wiki_repo = "/path/to/your/wiki-checkout"
-wiki_dir = "docs"
-
 # Section "contract": the OpenAPI document, compared between the base and head commits when the PR changes it.
 openapi_path = "api/openapi.json"
 
@@ -71,7 +66,7 @@ callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
 # default_variant is the variant a started run uses. serve_repos is the only list of repositories a run may be
 # started for, per host, as "owner/name"; a request for any other repository is refused. Both are required to
 # start runs; without serve_repos the server still serves the runs but refuses every request to start one.
-default_variant = "diagram_walkthrough_v24"
+default_variant = "diagram_walkthrough_v25"
 
 [serve_repos]
 github = ["example-org/example-repo"]

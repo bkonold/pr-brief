@@ -8,7 +8,7 @@ reviewer through a GitHub or Forgejo pull request. It only reads from GitHub or 
 anything. The brief is a guide, never a verdict: highlights can anchor a reviewer toward what is flagged, and
 the first file shown is the likeliest to have its bug found.
 
-One variant is current, `diagram_walkthrough_v24`. Earlier variants live in git history (see "Variant history").
+One variant is current, `diagram_walkthrough_v25`. Earlier variants live in git history (see "Variant history").
 
 ## Setup
 
@@ -39,7 +39,7 @@ You also need:
 Everything that names one repository lives in files that git ignores, so the tool itself stays generic:
 
 ```bash
-cp local.example.toml local.toml          # clone location, GitHub URL, wiki, OpenAPI path, ...
+cp local.example.toml local.toml          # clone location, GitHub URL, OpenAPI path, ...
 cp reach.example.toml reach.toml          # which app each path ships in
 cp archetypes.example.toml archetypes.toml
 ```
@@ -63,7 +63,7 @@ and carry this tool as a submodule.
 
 ```bash
 # run one variant on one PR (calls the model, then render.py)
-.venv/bin/python run.py 42 --variant diagram_walkthrough_v24 --repo owner/name
+.venv/bin/python run.py 42 --variant diagram_walkthrough_v25 --repo owner/name
 #   --with-body       show the model the PR's existing description (default: empty body)
 #   --model ID        model id passed to the runner (default: the runner's entry in local.toml's [model] table, else
 #                     claude-opus-5-5 for claude and claude-opus-5.5 for copilot; run.json records the id used)
@@ -78,7 +78,7 @@ and carry this tool as a submodule.
 #                     --repo is then the Forgejo owner/name. Default: local.toml's `host`, else github
 
 # re-render a run from its saved answer, without calling the model
-.venv/bin/python render.py runs/42/diagram_walkthrough_v24
+.venv/bin/python render.py runs/42/diagram_walkthrough_v25
 
 # build runs/42/index.html and runs/index.html; columns come from compare.toml
 # (a Forgejo PR's folder is fj-<number>: compare.py fj-42)
@@ -154,7 +154,7 @@ cannot change them.
 
 | Variant | What it is |
 | --- | --- |
-| `diagram_walkthrough_v24` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
+| `diagram_walkthrough_v25` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
 
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.
@@ -259,7 +259,7 @@ re-run it instead.
 
 ## Context packs
 
-A variant with `context = ["callers", "reach", "contract", "migrations", "wiki"]` (any subset, in that
+A variant with `context = ["callers", "reach", "contract", "migrations"]` (any subset, in that
 order) fills the prompt's `repo_context` slot with a pack built by `context_pack.py`. Variants without
 `context` leave the slot empty. The pack is written to `runs/<pr>/<variant>/context.md`, and `run.json` gets
 a `context` key with the item count per section, symbols skipped as too common, sections dropped and why,
@@ -271,9 +271,8 @@ and estimated tokens (characters / 4). `run.py --prompt-only` builds the pack to
 | reach | Per app, the changed files and caller files, mapped by globs | `reach.toml` |
 | contract | Removed operations, removed schema properties, newly required properties and removed enum values (at most 30 lines), only when the OpenAPI file changed | `openapi_path`, plus the mirror |
 | migrations | `DELETE FROM`, `UPDATE`, `DROP`, `TRUNCATE` and `SET NOT NULL` statements in added migration files | `migration_dirs` (the "Contract and data" block uses `migration_globs`) |
-| wiki | Up to four pages whose `resource: repo://` paths equal a changed non-test file, ranked by the number of exact matches | `wiki_repo` (and `wiki_dir`) |
 
-The pack is trimmed to 6000 estimated tokens by dropping whole items, wiki first, then callers, reach,
+The pack is trimmed to 6000 estimated tokens by dropping whole items, callers first, then reach,
 contract and migrations, and the text says how many were left out.
 
 The mirror is a bare clone of your local checkout at `.cache/<mirror_name>` (git-ignored). `ensure_commits`
@@ -284,7 +283,7 @@ GitHub is never asked), under an
 commits before starting parallel runs. When a commit still cannot be found, the callers and contract sections
 are dropped, the reason goes in `run.json`, and the run carries on.
 
-Callers are always matched precisely and wiki pages exactly (see below); a variant can set `[context_options]` to
+Callers are always matched precisely (see below); a variant can set `[context_options]` to
 change the rest. An unknown key or value is an error.
 
 | Option | Default | Effect |
@@ -293,7 +292,6 @@ change the rest. An unknown key or value is an error.
 | `callers_skip_new_files` | `false` | Skips the caller search for a symbol declared only in files the PR adds, and lists them as `New in this PR (no outside callers possible)`. |
 | `callers_skip_fields` | `false` | Drops names that do not name a Java method with a return type, a type or a TypeScript export, before the 15-symbol cap. |
 | `callers_mode` | `"precise"` | Fixed. Only callers that pass rules specific to the declaration are listed, so every listed file really uses the symbol and many real callers are missing. The section says the list is partial. |
-| `wiki_match` | `"exact"` | Fixed. Only pages with a `repo://` resource equal to a changed non-test file are kept, ranked by the number of exact matches; pages with no description are skipped. |
 | `callers_require_owner` | | Accepted and ignored: precise matching already requires the owner. |
 
 ### Precise callers
@@ -321,11 +319,12 @@ which upstream commits they come from.
 
 ## Variant history
 
-The variants before v24 (v10 to v23, with v11b and v15_nocontext) and their render options are gone from the tree. The
+The variants before v25 (v10 to v24, with v11b and v15_nocontext) and their render options are gone from the tree. The
 last commit that has v23, with its chunks, floors, levels and labels, is `56ad3d2`: `git show 56ad3d2:variants/` lists
 the variants and `git show 56ad3d2:README.md` describes each. In short, v10 to v15 grouped files into review chunks with
 a start line to read first; v16 added `step` and a Contract and data block; v17 to v20 changed what a start line anchors
 and capped the diagram at 10 boxes with one box per chunk; v21 added effort levels and check labels; v22 split the block
 into Contract and Data sections and dropped the review order; v23 replaced the start lines with the walkthrough; v24
-dropped the chunks, so that the diagram and the walkthrough are the whole brief. Runs made by those variants are not
-shown by the extension.
+dropped the chunks, so that the diagram and the walkthrough are the whole brief; v25 is v24 without the wiki context (`git log --diff-filter=D -- variants/diagram_walkthrough_v24.toml` finds the
+commit that removed v24). Runs
+made by v23 and earlier are not shown by the extension.

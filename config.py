@@ -21,7 +21,6 @@ LOCAL = HOME / "local.toml"
 
 KEYS: frozenset[str] = frozenset({
     "repo", "source_checkout", "github_url", "mirror_name",
-    "wiki_repo", "wiki_dir",
     "openapi_path", "migration_dirs", "migration_globs",
     "sdk_dir", "sdk_specifier", "workspace_alias", "workspace_root",
     "test_dirs", "callers_exclude_globs",

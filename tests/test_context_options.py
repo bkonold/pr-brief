@@ -2,9 +2,8 @@ import unittest
 
 from context_pack import build
 
-V24_OPTIONS = {
+V25_OPTIONS = {
     "callers_code_only": True,
-    "wiki_match": "exact",
     "callers_skip_new_files": True,
     "callers_require_owner": True,
     "callers_skip_fields": True,
@@ -14,16 +13,23 @@ PR = {"baseRefOid": "a" * 40, "headRefOid": "b" * 40, "files": []}
 
 
 class ContextOptions(unittest.TestCase):
-    def test_the_options_of_the_v23_variant_are_accepted(self) -> None:
-        self.assertEqual(build(PR, "", [], V24_OPTIONS).items, {})
+    def test_the_options_of_the_v25_variant_are_accepted(self) -> None:
+        self.assertEqual(build(PR, "", [], V25_OPTIONS).items, {})
 
     def test_no_options_are_accepted(self) -> None:
         self.assertEqual(build(PR, "", [], None).items, {})
 
-    def test_wiki_matching_and_callers_have_one_legal_value_each(self) -> None:
-        for name, value in (("wiki_match", "folder"), ("callers_mode", "default")):
-            with self.assertRaisesRegex(ValueError, f"unknown {name}: {value}"):
-                build(PR, "", [], {name: value})
+    def test_callers_have_one_legal_mode(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown callers_mode: default"):
+            build(PR, "", [], {"callers_mode": "default"})
+
+    def test_a_variant_that_still_lists_the_wiki_section_is_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, r"unknown context sections: wiki \(known: callers, reach, contract, migrations\)"):
+            build(PR, "", ["callers", "wiki"], None)
+
+    def test_the_wiki_matching_option_is_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown context options: wiki_match"):
+            build(PR, "", [], {"wiki_match": "exact"})
 
     def test_an_option_that_no_longer_exists_is_refused(self) -> None:
         with self.assertRaisesRegex(ValueError, "unknown context options: list_uncalled"):

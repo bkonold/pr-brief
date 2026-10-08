@@ -1,11 +1,11 @@
 """Builds the "Repository context" markdown for a PR: who calls the changed code, which apps it
-reaches, contract changes, destructive migration statements and related wiki pages.
+reaches, contract changes and destructive migration statements.
 
 usage: from context_pack import ensure_commits, build
        ensure_commits([base, head]); pack = build(pr, diff, ["callers", "reach"]); pack.markdown()
 
 Reads from a bare mirror of a local checkout kept in .cache/, topped up from GitHub by `git fetch`
-for any commit it lacks. Reads the wiki checkout without writing to it. Every repository-specific
+for any commit it lacks. Every repository-specific
 setting comes from local.toml (see local.example.toml and config.py); a section whose settings are
 missing is skipped and the reason goes in the pack's `dropped` stats.
 """
@@ -20,8 +20,6 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import yaml
-
 from config import HOME, config_file, load_local
 
 LOCAL: dict[str, Any] = load_local()
@@ -30,18 +28,14 @@ MIRROR = CACHE / LOCAL.get("mirror_name", "mirror.git")
 LOCK = CACHE / "mirror.lock"
 SOURCE_CHECKOUT: str | None = LOCAL.get("source_checkout")
 GITHUB_URL: str | None = LOCAL.get("github_url")
-WIKI_REPO: Path | None = Path(LOCAL["wiki_repo"]) if LOCAL.get("wiki_repo") else None
-WIKI_FOLDER: str = LOCAL.get("wiki_dir", ".")
-WIKI_DIR: Path | None = WIKI_REPO / WIKI_FOLDER if WIKI_REPO else None
 REACH_CONFIG: Path | None = config_file("reach")
 
-SECTIONS: tuple[str, ...] = ("callers", "reach", "contract", "migrations", "wiki")
+SECTIONS: tuple[str, ...] = ("callers", "reach", "contract", "migrations")
 TITLES: dict[str, str] = {
     "callers": "Callers",
     "reach": "App reach",
     "contract": "API contract changes",
     "migrations": "Migrations",
-    "wiki": "Codebase wiki",
 }
 PRECISE_CALLERS_INTRO = ("Confirmed callers of changed code, from the base commit. The list is partial: every file listed "
                          "really calls the code, but many callers are missing (for example calls over HTTP, through "
@@ -51,20 +45,18 @@ INTROS: dict[str, str] = {
     "reach": "Apps that contain changed files or files that call the changed code.",
     "contract": f"Differences between the base and head `{LOCAL.get('openapi_path', 'OpenAPI document')}`.",
     "migrations": "Statements in the PR's new migration files that change or remove existing data or schema.",
-    "wiki": "Related pages from the codebase wiki; may be out of date.",
 }
 # The order in which sections lose items when the pack is over budget.
-TRIM_ORDER: tuple[str, ...] = ("wiki", "callers", "reach", "contract", "migrations")
+TRIM_ORDER: tuple[str, ...] = ("callers", "reach", "contract", "migrations")
 OMITTED_UNITS: dict[str, str] = {
     "callers": "changed symbols", "reach": "apps", "contract": "contract lines",
-    "migrations": "migration statements", "wiki": "wiki pages",
+    "migrations": "migration statements",
 }
 
 MAX_SYMBOLS = 15
 MAX_CALLER_FILES_PER_SYMBOL = 50
 MAX_CALLER_PATHS_SHOWN = 10
 MAX_CONTRACT_LINES = 30
-MAX_WIKI_PAGES = 4
 CODE_PATHSPECS: tuple[str, ...] = ("*.java", "*.kt", "*.ts", "*.tsx", "*.js", "*.jsx", "*.sql")
 CODE_ONLY_EXCLUDES: tuple[str, ...] = (
     ":!**/*.md", ":!**/*.mdc", ":!**/package-lock.json",
@@ -72,8 +64,8 @@ CODE_ONLY_EXCLUDES: tuple[str, ...] = (
 )
 # Context options a variant may set in its `[context_options]` table, with their defaults.
 DEFAULT_OPTIONS: dict[str, Any] = {"callers_code_only": False, "callers_skip_new_files": False, "callers_skip_fields": False}
-# Options with one legal value: callers are always the precise ones and wiki pages always match by exact path.
-FIXED_OPTIONS: dict[str, str] = {"callers_mode": "precise", "wiki_match": "exact"}
+# Options with one legal value: callers are always the precise ones.
+FIXED_OPTIONS: dict[str, str] = {"callers_mode": "precise"}
 # Options a variant file may still set that change nothing: precise callers need no owner check.
 IGNORED_OPTIONS: frozenset[str] = frozenset({"callers_require_owner"})
 BOOLEAN_OPTIONS: frozenset[str] = frozenset(k for k, v in DEFAULT_OPTIONS.items() if isinstance(v, bool))
@@ -880,57 +872,10 @@ def migration_items(files: list[DiffFile]) -> list[str]:
 
 
 @dataclass
-class WikiPage:
-    path: str
-    title: str
-    description: str
-    resources: set[str]
-
-
-def load_wiki_pages() -> list[WikiPage]:
-    pages: list[WikiPage] = []
-    if WIKI_DIR is None or not WIKI_DIR.exists():
-        return pages
-    for md in sorted(WIKI_DIR.rglob("*.md")):
-        rel: Path = md.relative_to(WIKI_DIR)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        text: str = md.read_text()
-        match = re.match(r"---\n(.*?)\n---\n(.*)", text, re.DOTALL)
-        if not match:
-            continue
-        front: dict[str, Any] = yaml.safe_load(match.group(1)) or {}
-        heading = re.search(r"^# (.+)$", match.group(2), re.MULTILINE)
-        title: str = str(front.get("title") or (heading.group(1) if heading else rel.stem))
-        resources: set[str] = set(re.findall(r"resource:\s*repo://(\S+)", match.group(1)))
-        pages.append(WikiPage(rel.as_posix() if WIKI_FOLDER == "." else f"{WIKI_FOLDER}/{rel.as_posix()}", title, " ".join(str(front.get("description", "")).split()), resources))
-    return pages
-
-
-def wiki_items(changed: list[str]) -> list[str]:
-    """Pages with a description, ranked by how many changed files appear among their `repo://` resources."""
-    scored: list[tuple[int, WikiPage]] = []
-    for page in load_wiki_pages():
-        score: int = sum(1 for p in changed if p in page.resources) if page.description else 0
-        if score:
-            scored.append((score, page))
-    scored.sort(key=lambda s: (-s[0], s[1].path))
-    return [f"**{p.title}** (`{p.path}`)" + (f": {p.description}" if p.description else "") for _, p in scored[:MAX_WIKI_PAGES]]
-
-
-def wiki_sha() -> str | None:
-    if WIKI_REPO is None:
-        return None
-    result = git(WIKI_REPO, "rev-parse", "HEAD", check=False)
-    return result.stdout.strip() if result.returncode == 0 else None
-
-
-@dataclass
 class Pack:
     items: dict[str, list[str]]
     skipped_common: dict[str, int]
     dropped: dict[str, str]
-    wiki_sha: str | None
     trimmed: dict[str, int] = field(default_factory=dict)
     footers: dict[str, list[str]] = field(default_factory=dict)
     new_in_pr: list[str] | None = None
@@ -996,7 +941,6 @@ class Pack:
             "skipped_common": self.skipped_common,
             "dropped": dropped,
             "estimated_tokens": self._tokens,
-            "wiki_sha": self.wiki_sha,
         }
 
 
@@ -1007,7 +951,7 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
     TS exports. Callers are always the precise ones: only callers that pass the declaration-specific
     rules (qualified static calls, unique instance-method names, resolved TS imports, same-language
     type mentions) are listed, the section says the list is partial and the stats record why each
-    other symbol was dropped. Wiki pages always match by exact `repo://` path."""
+    other symbol was dropped."""
     settings: dict[str, Any] = {**DEFAULT_OPTIONS, **(options or {})}
     unknown_options: list[str] = [k for k in settings if k not in DEFAULT_OPTIONS and k not in FIXED_OPTIONS and k not in IGNORED_OPTIONS]
     if unknown_options:
@@ -1020,7 +964,7 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
             raise ValueError(f"unknown {name}: {settings[name]}")
     unknown: list[str] = [s for s in sections if s not in SECTIONS]
     if unknown:
-        raise ValueError(f"unknown context sections: {', '.join(unknown)}")
+        raise ValueError(f"unknown context sections: {', '.join(unknown)} (known: {', '.join(SECTIONS)})")
     base: str = pr["baseRefOid"]
     head: str = pr["headRefOid"]
     files: list[DiffFile] = parse_diff(diff)
@@ -1045,8 +989,6 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
         dropped["reach"] = "no reach.toml (copy reach.example.toml and edit it)"
     if "migrations" in wanted and not MIGRATION_DIRS:
         dropped["migrations"] = "local.toml sets no migration_dirs"
-    if "wiki" in wanted and (WIKI_DIR is None or not WIKI_DIR.exists()):
-        dropped["wiki"] = "local.toml sets no wiki_repo, or its wiki_dir does not exist"
 
     caller_files: dict[str, list[str]] = {}
     footers: dict[str, list[str]] = {}
@@ -1112,9 +1054,6 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
     if "migrations" in wanted and "migrations" not in dropped:
         items["migrations"] = [f"- {line}" for line in migration_items(files)]
 
-    if "wiki" in wanted and "wiki" not in dropped:
-        items["wiki"] = [f"- {line}" for line in wiki_items(changed_code)]
-
-    return Pack(items=items, skipped_common=skipped_common, dropped=dropped, wiki_sha=wiki_sha() if "wiki" in wanted and "wiki" not in dropped else None,
+    return Pack(items=items, skipped_common=skipped_common, dropped=dropped,
                 footers=footers, new_in_pr=new_in_pr, fields_dropped=fields_dropped,
                 caller_files=caller_files, precise=reasons, contract=contract)

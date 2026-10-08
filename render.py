@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a run's answer.yaml as the PR body, and as a standalone HTML page.
 
-usage: render.py <run dir>      e.g. runs/42/diagram_walkthrough_v24
+usage: render.py <run dir>      e.g. runs/42/diagram_walkthrough_v25
 
 Reads answer.yaml, run.json and pr.json from the run dir.
 Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.

@@ -1,5 +1,5 @@
 description = "A diagram of the change and a walkthrough of stops in reading order, each stop on one diagram box"
-context = ["callers", "reach", "contract", "migrations", "wiki"]
+context = ["callers", "reach", "contract", "migrations"]
 extra_instructions = """
 For changes_diagram:
 - Always fill it in; never leave it empty.
@@ -15,7 +15,7 @@ For changes_diagram:
 - Label an arrow only when the two boxes alone don't say what moves along it or why it fires. Use one to four words for one of these: a user action (`pick report type`), a condition (`flag on`, `no match`, `on POST`), the data handed over (`value or null`), a write (`insert row`), or a return to an earlier box (`redirect back`). Leave the arrow unlabelled when it is a plain call to the next box and that box's name already says what happens. Never use filler labels such as "calls", "uses" or "then". Each arrow joins two boxes that are really connected in the flow.
 - Do not number the nodes.
 
-The Repository context section lists who calls the changed code, which apps it ships in, contract changes, destructive migration statements and background from the codebase wiki. Use it to judge blast radius when you write each stop's why. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Treat wiki text as background that may be out of date, and trust the diff where they disagree. Do not summarize the Repository context in the description.
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
 
 For walkthrough:
 - Give a top-level `walkthrough`: 3 to 10 stops, in the order a reader should follow the change from where it enters to where it lands. Stops may return to a file or a box already visited.
@@ -49,7 +49,6 @@ walkthrough:
 
 [context_options]
 callers_code_only = true
-wiki_match = "exact"
 callers_skip_new_files = true
 callers_require_owner = true
 callers_skip_fields = true
