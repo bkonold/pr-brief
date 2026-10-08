@@ -10,13 +10,15 @@ diagram's boxes, the walkthrough stops and the contract and data lines go to rev
 """
 import html
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import yaml
 
@@ -498,8 +500,12 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
 
 DIAGRAM_SVG = "diagram.svg"
 SVG_ID = "pr-diagram"
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 CHROME_TIMEOUT_SECONDS = 90
+CHROME_ENV = "PR_DESCRIBE_CHROME"
+CHROME_PATH_NAMES: tuple[str, ...] = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+CHROME_MACOS = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+MERMAID_PACKAGE = ROOT / "node_modules" / "mermaid" / "package.json"
+MERMAID_JS = ROOT / "node_modules" / "mermaid" / "dist" / "mermaid.min.js"
 MERMAID_FENCE = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
 SVG_OUT = re.compile(r'<pre id="svg-out">(.*?)</pre>', re.DOTALL)
 
@@ -563,7 +569,7 @@ function restyleDiagramSvg(svg) {
 # serialized SVG in #svg-out, since HTML serialization of the SVG would not be well-formed XML.
 SVG_PAGE = """<!doctype html><html><head><meta charset="utf-8"></head><body>
 <pre class="mermaid" id="diagram"></pre><pre id="svg-out"></pre>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="__MERMAID_SRC__"></script>
 <script>
 __DIAGRAM_STYLE__
  const out = document.getElementById('svg-out');
@@ -579,39 +585,77 @@ __DIAGRAM_STYLE__
 </script></body></html>"""
 
 
+def chrome_order() -> str:
+    """The places `find_chrome` looks, in order, as a sentence for an error message."""
+    return (f"the {CHROME_ENV} environment variable, then the `chrome` key in local.toml, then "
+            f"{', '.join(CHROME_PATH_NAMES)} on PATH, then {CHROME_MACOS}")
+
+
+def find_chrome(environ: Mapping[str, str], local: Mapping[str, Any], macos: str = CHROME_MACOS) -> str:
+    """The Chrome to render with: the first of the environment variable, local.toml's `chrome`, a Chrome-like program on
+    PATH and the macOS install. A path that is set but is not an executable file is an error rather than a reason to
+    try the next place, so a pinned Chrome is never swapped for another. Raises AnswerError when there is none."""
+    for source, configured in ((CHROME_ENV, environ.get(CHROME_ENV)), ("`chrome` in local.toml", local.get("chrome"))):
+        if configured:
+            path: Path = Path(str(configured)).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+            raise AnswerError(f"{source} names {configured}, which is not an executable file. Chrome is looked for in this order: {chrome_order()}.")
+    for name in CHROME_PATH_NAMES:
+        found: str | None = shutil.which(name, path=environ.get("PATH", ""))
+        if found:
+            return found
+    if Path(macos).is_file():
+        return macos
+    raise AnswerError(f"No Chrome was found, so diagram.svg cannot be drawn. Chrome is looked for in this order: {chrome_order()}. "
+                      f"Install Chrome or Chromium, or set {CHROME_ENV}.")
+
+
+def mermaid_version() -> str:
+    """The version of the Mermaid build that draws diagrams, from the lockfile-installed package. Raises AnswerError when
+    it is not installed."""
+    if not MERMAID_JS.is_file() or not MERMAID_PACKAGE.is_file():
+        raise AnswerError(f"Mermaid is not installed ({MERMAID_JS} is missing): run `npm ci` in {ROOT}.")
+    return str(json.loads(MERMAID_PACKAGE.read_text())["version"])
+
+
+def svg_page(diagram_text: str) -> str:
+    """The page headless Chrome draws the diagram in. It loads Mermaid from the installed package and nothing else."""
+    return (SVG_PAGE.replace("__MERMAID_SRC__", MERMAID_JS.as_uri()).replace("__DIAGRAM_STYLE__", DIAGRAM_STYLE)
+            .replace("__TEXT__", json.dumps(diagram_text).replace("</", "<\\/")))
+
+
 def render_svg(diagram_text: str) -> str:
     """The diagram as an SVG document, rendered by headless Chrome. Raises AnswerError when it can't be."""
-    if not Path(CHROME).exists():
-        raise AnswerError("Chrome is not installed")
+    mermaid_version()
+    chrome: str = find_chrome(os.environ, load_local(), CHROME_MACOS)
     with tempfile.TemporaryDirectory() as tmp:
         page: Path = Path(tmp) / "diagram.html"
-        page.write_text(SVG_PAGE.replace("__DIAGRAM_STYLE__", DIAGRAM_STYLE).replace("__TEXT__", json.dumps(diagram_text).replace("</", "<\\/")))
+        page.write_text(svg_page(diagram_text))
         try:
             out: subprocess.CompletedProcess[str] = subprocess.run(
-                [CHROME, "--headless=new", "--disable-gpu", f"--user-data-dir={tmp}/profile", "--virtual-time-budget=15000",
-                 "--dump-dom", page.as_uri()],
+                [chrome, "--headless=new", "--disable-gpu", "--disable-background-networking", "--no-first-run",
+                 f"--user-data-dir={tmp}/profile", "--virtual-time-budget=15000", "--dump-dom", page.as_uri()],
                 capture_output=True, text=True, timeout=CHROME_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired as e:
-            raise AnswerError("Chrome timed out") from e
+        except (subprocess.TimeoutExpired, OSError) as e:
+            raise AnswerError(f"Chrome ({chrome}) could not render diagram.svg: {e}") from e
     found: re.Match[str] | None = SVG_OUT.search(out.stdout)
     svg: str = html.unescape(found.group(1)).strip() if found else ""
     root: re.Match[str] | None = re.match(r'<svg id="([^"]+)"', svg)
     if not root:
-        raise AnswerError(f"Chrome did not produce an SVG: {svg[:200] or 'no output'}")
+        raise AnswerError(f"Chrome ({chrome}) did not produce diagram.svg: {svg[:200] or 'no output'}")
     return svg.replace(root.group(1), SVG_ID)  # mermaid derives its id from the clock; a fixed one keeps the file stable
 
 
-def write_diagram_svg(md: str, run_dir: Path, notes: list[str]) -> bool:
-    """Writes diagram.svg for the diagram in `md`; a failure is noted and skipped, never fatal."""
+def write_diagram_svg(md: str, run_dir: Path) -> str | None:
+    """Writes diagram.svg for the diagram in `md` and returns the Mermaid version that drew it; None when `md` has no
+    diagram. Raises AnswerError when it can't be drawn: a brief is never kept without its diagram."""
     fence: re.Match[str] | None = MERMAID_FENCE.search(md)
     if not fence:
-        return False
-    try:
-        (run_dir / DIAGRAM_SVG).write_text(render_svg(fence.group(1)) + "\n")
-    except (AnswerError, OSError) as e:
-        notes.append(f"{DIAGRAM_SVG} skipped: {e}")
-        return False
-    return True
+        return None
+    svg: str = render_svg(fence.group(1))
+    (run_dir / DIAGRAM_SVG).write_text(svg + "\n")
+    return mermaid_version()
 
 
 # ---------------------------------------------------------------- pages
@@ -692,7 +736,9 @@ def main() -> int:
         diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
         diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_text)
         brief: Brief = build_body(run, pr, data, diff_lines, notes, contract, diff_text)
+        mermaid: str | None = write_diagram_svg(brief.body, run_dir)
     except AnswerError as e:
+        (run_dir / DIAGRAM_SVG).unlink(missing_ok=True)
         (run_dir / "error.txt").write_text(f"{e}\n")
         (run_dir / "body.html").write_text(ERROR_PAGE.replace("__ERROR__", html.escape(str(e))).replace("__RAW__", html.escape(raw)))
         print(f"{run_dir}: {e}", file=sys.stderr)
@@ -700,10 +746,12 @@ def main() -> int:
 
     labelled, total = brief.edges
     run["diagram_edges"] = {"labelled": labelled, "total": total}
+    if mermaid is not None:
+        run["mermaid"] = mermaid
     (run_dir / "run.json").write_text(json.dumps(run, indent=2) + "\n")
     (run_dir / "body.md").write_text(brief.body)
     (run_dir / "body.html").write_text(markdown_page(brief.body))
-    has_diagram: bool = write_diagram_svg(brief.body, run_dir, notes)
+    has_diagram: bool = mermaid is not None
     (run_dir / "review.json").write_text(json.dumps(review_json(run, brief, has_diagram), indent=2) + "\n")
     if notes:
         (run_dir / "error.txt").write_text("Rendered with these fixes:\n" + "\n".join(f"- {n}" for n in notes) + "\n")

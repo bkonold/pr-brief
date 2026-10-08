@@ -19,6 +19,11 @@ repo = "example-org/example-repo"
 # forgejo_url = "http://localhost:3000"
 # forgejo_token_file = "~/.config/forgejo/token"
 
+# The Chrome or Chromium that draws diagram.svg. Without this key, render.py looks at the PR_DESCRIBE_CHROME environment
+# variable first, then (when this key is unset) google-chrome, google-chrome-stable, chromium and chromium-browser on PATH,
+# then the macOS install. With none the run fails; it never ships a brief without its diagram.
+# chrome = "/usr/bin/chromium"
+
 # Sections "callers" and "contract" search a bare mirror of the repository kept in .cache/.
 # source_checkout is a local clone the mirror is first cloned from; without it no mirror is created.
 source_checkout = "/path/to/your/clone/of/example-repo"

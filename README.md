@@ -14,6 +14,7 @@ One variant is current, `diagram_walkthrough_v24`. Earlier variants live in git 
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install jinja2 pyyaml
+npm ci        # the pinned Mermaid build that draws diagram.svg, into node_modules/
 ```
 
 You also need:
@@ -22,9 +23,15 @@ You also need:
   `copilot login` for `--runner copilot`;
 - the `gh` CLI, signed in, which reads a GitHub PR and its diff (not needed for Forgejo, which is read
   through its REST API with a token file named in `local.toml`);
-- Google Chrome, for prerendering the diagram to `diagram.svg` (a run still works without it; the
-  failure is noted in `error.txt`);
-- Node 18 or later, only for the extension's tests (`node --test extension/test/*.test.js`). The host
+- Google Chrome or Chromium, which draws the diagram to `diagram.svg`. `render.py` takes the first of: the
+  `PR_DESCRIBE_CHROME` environment variable, the `chrome` key in `local.toml`, `google-chrome`,
+  `google-chrome-stable`, `chromium` or `chromium-browser` on `PATH`, then the macOS install in
+  `/Applications`. A path that is set but is not an executable file is an error, not a reason to try the next place.
+  With none found, or when the drawing fails (also when `npm ci` has not been run), the run fails with a message that
+  names that order and keeps no `body.md`, `review.json` or `diagram.svg`: a brief is never shipped without its diagram.
+  The drawing page loads Mermaid from `node_modules/` and makes no network request; `run.json` records the Mermaid
+  version as `mermaid`. Mermaid's version is pinned exactly in `package.json`, with `package-lock.json` committed;
+- Node 24 or later with npm, for `npm ci` and the extension's tests (`node --test extension/test/*.test.js`). The host
   and mirror tests run with `.venv/bin/python -m unittest discover -s tests`.
 
 ### Per-repository settings

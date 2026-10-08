@@ -8,3 +8,4 @@ local.toml
 reach.toml
 archetypes.toml
 review_floor.toml
+node_modules/

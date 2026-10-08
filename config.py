@@ -27,7 +27,7 @@ KEYS: frozenset[str] = frozenset({
     "test_dirs", "callers_exclude_globs",
     "host", "forgejo_url", "forgejo_token_file",
     "default_variant", "serve_repos",
-    "model",
+    "chrome", "model",
 })
 
 
