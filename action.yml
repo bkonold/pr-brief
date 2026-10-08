@@ -1,0 +1,141 @@
+name: pr-brief
+description: Comment a short brief on a pull request, with a diagram and a walkthrough of where to read, written by the GitHub Copilot CLI.
+
+inputs:
+  config:
+    description: The TOML file, relative to the checkout, that names the repository's settings, such as its reach and archetype tables. A missing file means no settings.
+    default: .github/pr-brief.toml
+  model:
+    description: The model id the Copilot CLI uses.
+    default: claude-opus-5.5
+  copilot-token:
+    description: A fine-grained personal access token with the "Copilot Requests" permission, from an account that has Copilot.
+    required: true
+  github-token:
+    description: The token that reads the pull request and, unless `post` is false, writes its comment.
+    default: ${{ github.token }}
+  post:
+    description: '"true" comments on the pull request. "false" posts nothing: the comment goes to the job summary instead, for a trial run.'
+    default: "true"
+  pr:
+    description: The pull request number. A pull_request event supplies its own; a workflow_dispatch run names one here.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.13"
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "24"
+
+    - name: Install pr-brief
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python -m venv "$RUNNER_TEMP/pr-brief-venv"
+        "$RUNNER_TEMP/pr-brief-venv/bin/pip" install --quiet jinja2==3.1.6 pyyaml==6.0.3
+        npm ci --prefix "$ACTION_PATH"
+        npm install --global @github/copilot@1.0.93
+
+    - name: Resolve the pull request and the settings
+      id: target
+      shell: bash
+      env:
+        PR_FROM_EVENT: ${{ github.event.pull_request.number }}
+        PR_FROM_INPUT: ${{ inputs.pr }}
+        CONFIG: ${{ inputs.config }}
+        POST: ${{ inputs.post }}
+      run: |
+        pr="${PR_FROM_EVENT:-$PR_FROM_INPUT}"
+        if [ -z "$pr" ]; then
+          echo "::error::No pull request number: this event has none and the 'pr' input is empty."
+          exit 1
+        fi
+        if ! [[ "$pr" =~ ^[0-9]+$ ]]; then
+          echo "::error::The pull request number must be digits only, not '$pr'."
+          exit 1
+        fi
+        if [ "$POST" != "true" ] && [ "$POST" != "false" ]; then
+          echo "::error::The 'post' input must be true or false, not '$POST'."
+          exit 1
+        fi
+        config=""
+        if [ -f "$GITHUB_WORKSPACE/$CONFIG" ]; then
+          config="$GITHUB_WORKSPACE/$CONFIG"
+        else
+          echo "::notice::No $CONFIG in the checkout, so pr-brief runs without repository settings."
+        fi
+        echo "pr=$pr" >> "$GITHUB_OUTPUT"
+        echo "config=$config" >> "$GITHUB_OUTPUT"
+        echo "PR_BRIEF_HOME=$RUNNER_TEMP/pr-brief" >> "$GITHUB_ENV"
+
+    # render.py starts Chrome without --no-sandbox. When the runner's Chrome cannot sandbox, a wrapper adds the flag; it
+    # only ever opens the diagram page that render.py writes.
+    - name: Check that Chrome can draw the diagram
+      shell: bash
+      run: |
+        chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+        if [ -z "$chrome" ]; then
+          echo "::error::No Chrome or Chromium on this runner, so the diagram cannot be drawn."
+          exit 1
+        fi
+        probe="$(mktemp -d)"
+        if ! "$chrome" --headless=new --disable-gpu --no-first-run "--user-data-dir=$probe/profile" --dump-dom about:blank > /dev/null 2> "$probe/err"; then
+          echo "::notice::$chrome could not start with its sandbox ($(tail -n 1 "$probe/err")); drawing the diagram with --no-sandbox."
+          printf '#!/bin/sh\nexec "%s" --no-sandbox "$@"\n' "$chrome" > "$RUNNER_TEMP/chrome-no-sandbox"
+          chmod +x "$RUNNER_TEMP/chrome-no-sandbox"
+          echo "PR_BRIEF_CHROME=$RUNNER_TEMP/chrome-no-sandbox" >> "$GITHUB_ENV"
+        fi
+
+    - name: Write the brief
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PR: ${{ steps.target.outputs.pr }}
+        CONFIG: ${{ steps.target.outputs.config }}
+        MODEL: ${{ inputs.model }}
+        REPOSITORY: ${{ github.repository }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        COPILOT_GITHUB_TOKEN: ${{ inputs.copilot-token }}
+      run: |
+        mkdir -p "$PR_BRIEF_HOME"
+        args=(--runner copilot --model "$MODEL" --repo "$REPOSITORY")
+        if [ -n "$CONFIG" ]; then
+          args+=(--config "$CONFIG")
+        fi
+        "$RUNNER_TEMP/pr-brief-venv/bin/python" "$ACTION_PATH/run.py" "$PR" "${args[@]}"
+
+    - name: Post the brief as a comment
+      if: inputs.post == 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PR: ${{ steps.target.outputs.pr }}
+        REPOSITORY: ${{ github.repository }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        "$RUNNER_TEMP/pr-brief-venv/bin/python" "$ACTION_PATH/post.py" "$PR_BRIEF_HOME/runs/$PR" --repo "$REPOSITORY" --pr "$PR"
+
+    - name: Write the brief to the job summary
+      if: inputs.post != 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PR: ${{ steps.target.outputs.pr }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        "$RUNNER_TEMP/pr-brief-venv/bin/python" "$ACTION_PATH/post.py" "$PR_BRIEF_HOME/runs/$PR" --repo "$REPOSITORY" --pr "$PR" --dry-run >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Keep the run folder
+      if: always() && steps.target.outputs.pr != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: pr-brief-${{ steps.target.outputs.pr }}
+        path: ${{ runner.temp }}/pr-brief/runs/${{ steps.target.outputs.pr }}
+        overwrite: true
+        if-no-files-found: ignore

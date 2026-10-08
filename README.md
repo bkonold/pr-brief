@@ -4,8 +4,8 @@ Helps a reviewer who did not write a change orient in under a minute: what kind 
 the contract and data it touches, a diagram of the change and a walkthrough of where to read, in order. It sends a modified PR-Agent
 `/describe` prompt (vendored in `vendor/`) through `claude -p` (or the Copilot CLI), renders the YAML answer into
 a brief (`body.md`, `body.html`, `diagram.svg`) and a `review.json` that a browser extension reads to guide the
-reviewer through a GitHub or Forgejo pull request. It only reads from GitHub or Forgejo and never posts
-anything. The brief is a guide, never a verdict: highlights can anchor a reviewer toward what is flagged, and
+reviewer through a GitHub or Forgejo pull request. The tool only reads from GitHub or Forgejo. The one write is
+`post.py`, which the GitHub Action runs to leave a single comment on a PR (see "Use as a GitHub Action"). The brief is a guide, never a verdict: highlights can anchor a reviewer toward what is flagged, and
 the first file shown is the likeliest to have its bug found.
 
 One variant is current, `diagram_walkthrough_v25`. Earlier variants live in git history (see "Variant history").
@@ -107,6 +107,105 @@ folder. `runs/` is git-ignored: it holds the diffs and prompts of whatever repos
 branch, base and head SHA, commits with headlines, and files with additions and deletions. On Forgejo the base
 SHA is the PR's merge base, since the diff is taken against it. Both hosts only read. The body's file and line
 links point at the host the run came from (`run.json`'s `host`; a run without one is GitHub).
+
+## Use as a GitHub Action
+
+The repository is a composite Action. For each pull request it writes a brief with the GitHub Copilot CLI on the
+runner, then adds one comment to the PR, or updates the one an earlier run left. The comment holds the brief, the
+diagram as a `mermaid` block that GitHub draws, a walkthrough whose stops link to their lines in the diff, and a
+hidden payload of `review.json` for the browser extension. It stays under GitHub's 65536-character limit by dropping
+the payload first, then the last walkthrough stops, then the end of the brief, each with a note.
+
+Put this in `.github/workflows/pr-brief.yml`. Pin `bkonold/pr-brief` to a full commit SHA, and create a fine-grained
+personal access token with the "Copilot Requests" permission, from an account that has Copilot, as the repository
+secret `COPILOT_PAT`.
+
+```yaml
+name: PR brief
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+      post:
+        description: Comment on the pull request (otherwise the brief goes to the job summary)
+        type: boolean
+        default: false
+
+concurrency:
+  group: pr-brief-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  brief:
+    # A pull_request run skips drafts, Dependabot (which gets no secrets) and forks (likewise).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+       github.actor != 'dependabot[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr) || '' }}
+      - uses: bkonold/pr-brief@<full commit sha>
+        with:
+          copilot-token: ${{ secrets.COPILOT_PAT }}
+          pr: ${{ inputs.pr }}
+          post: ${{ github.event_name == 'pull_request' || inputs.post }}
+```
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `copilot-token` | required | The personal access token above. The Copilot CLI reads it from `COPILOT_GITHUB_TOKEN`, which takes precedence over `GH_TOKEN` and `GITHUB_TOKEN`; `run.py` removes those two from the CLI's environment. |
+| `config` | `.github/pr-brief.toml` | The settings file, relative to the checkout. A missing file means no settings. |
+| `model` | `claude-opus-5.5` | The model id the CLI uses. |
+| `github-token` | `${{ github.token }}` | Reads the PR through `gh` and writes the comment. |
+| `post` | `true` | `false` posts nothing: the comment goes to the job summary instead. |
+| `pr` | empty | The PR number when the event has none, as with `workflow_dispatch`. A run with neither fails. |
+
+Whatever `post` says, the run folder (the prompt, the repository context that went into it, the answer and the
+rendered brief) is uploaded as the artifact `pr-brief-<pr>`, so anyone who can read the repository's workflow runs can
+read them. To try the Action without commenting, start the workflow by hand from the Actions tab with `post` unchecked.
+
+The checkout supplies the repository context (callers, reach, contract and migrations): the Action clones its mirror
+from `GITHUB_WORKSPACE`, so the checkout needs `fetch-depth: 0`, and a commit it lacks is fetched from the repository the
+job runs in. The Action also checks that the runner's Chrome can start; when its sandbox cannot, the diagram is drawn
+through a wrapper that adds `--no-sandbox`. Only the page `render.py` writes is ever opened.
+
+The settings file takes the keys of `local.example.toml`, plus the reach and archetype tables inline, so one file holds
+them all. `repo` is not needed in it: the Action passes the workflow's repository.
+
+```toml
+# .github/pr-brief.toml
+openapi_path = "api/openapi.json"
+migration_dirs = ["db/migrations/"]
+
+[[reach.app]]
+name = "web app"
+globs = ["web/app/**"]
+
+[[reach.app]]
+name = "API"
+globs = ["api/**", "model/**"]
+```
+
+The same file works locally: `run.py 42 --repo owner/name --config .github/pr-brief.toml` (and `render.py <run dir>
+--config <file>`) read it in place of `local.toml`, and a `[reach]` or `[archetypes]` table in it replaces
+`reach.toml` and `archetypes.toml`. The file is read from the PR's checkout, so a PR that edits it changes its own
+brief. The example workflow skips fork PRs, so that only people who can already use the secret can change it.
+
+`run.py` prints the Copilot command line it starts (arguments only: the prompt goes on stdin and no token is in it), so
+a run's log shows exactly what ran.
 
 ## Serve the runs and load the extension
 
@@ -276,7 +375,8 @@ The pack is trimmed to 6000 estimated tokens by dropping whole items, callers fi
 contract and migrations, and the text says how many were left out.
 
 The mirror is a bare clone of your local checkout at `.cache/<mirror_name>` (git-ignored). `ensure_commits`
-fetches any base or head commit it lacks, for a GitHub PR from `github_url` through the `gh` credential helper
+fetches any base or head commit it lacks, for a GitHub PR from `github_url` (in a GitHub Actions job, the job's own repository when
+the config names none) through the `gh` credential helper
 and for a Forgejo PR from `source_checkout` (the commits of a Forgejo branch are normally already in your clone;
 GitHub is never asked), under an
 `fcntl` lock on `.cache/mirror.lock`, so parallel runs are safe. With several PRs, call it once for all their
