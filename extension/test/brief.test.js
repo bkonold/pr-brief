@@ -220,6 +220,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const callouts = [];
   const emphasized = [];
   const centered = [];
+  const centeredWith = [];
   const lineEvents = [];
   const diagramHandlers = [];
   const revealed = [];
@@ -277,7 +278,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
       titleOf: (nodeId) => `title of ${nodeId}`,
-      centerOn: (nodeIds) => centered.push(nodeIds),
+      centerOn: (nodeIds, options) => (centered.push(nodeIds), centeredWith.push(options)),
       remove() {},
       owns: () => false,
     },
@@ -294,7 +295,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -748,6 +749,32 @@ test("every action that focuses a box centres the diagram on it", async () => {
   assert.deepEqual(plain(centered.at(-1)), ["a"]);
   await renders.at(-1).handlers.onMode("github");
   assert.deepEqual(plain(centered.at(-1)), ["a"]);
+});
+
+test("every way into a stop zooms the diagram to it, and a click on a diagram box only pans", async () => {
+  const { renders, callouts, centeredWith, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  assert.deepEqual(plain(centeredWith), [{ zoom: true }]);
+  centeredWith.length = 0;
+  await renders.at(-1).handlers.onSelectStop(3);
+  const { onGo, stops } = callouts.at(-1)[0].render();
+  await onGo(stops[3]);
+  await onGo(stops[0]);
+  assert.deepEqual(plain(centeredWith), [{ zoom: true }, { zoom: true }, { zoom: true }]);
+  centeredWith.length = 0;
+  diagramHandlers.at(-1).onNode("b");
+  await settle();
+  assert.deepEqual(plain(centeredWith), [{ zoom: false }]);
+});
+
+test("opening a stop's anchor, or restoring the saved stop, zooms to it", async () => {
+  const linked = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
+  await settle();
+  assert.deepEqual(plain([linked.centered, linked.centeredWith]), [[["b"]], [{ zoom: true }]]);
+  const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "review", selectedNode: "c", selectedStop: 2, variant: "v24" }) };
+  const saved = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
+  await settle();
+  assert.deepEqual(plain([saved.centered, saved.centeredWith]), [[["c"]], [{ zoom: true }]]);
 });
 
 test("the diagram's Reset restores the load-time state: nothing selected, no box marked, nothing saved", async () => {

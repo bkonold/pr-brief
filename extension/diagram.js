@@ -45,6 +45,9 @@
   const ZOOM_STEP = 1.25;
   const REST_MARGIN = 8;
   const BOX_MARGIN = 16;
+  const WALK_SHARE = 0.9;
+  const WALK_MIN_SCALE = 0.5;
+  const WALK_MAX_SCALE = 1.25;
   const DRAG_THRESHOLD = 4;
   const WHEEL_ZOOM_RATE = 0.0025;
   const WHEEL_ZOOM_CAP = 100;
@@ -93,6 +96,12 @@
       x: clampAxis(view.x, content.w * view.scale, viewport.w),
       y: clampAxis(view.y, content.h * view.scale, viewport.h),
     };
+  }
+
+  // The zoom at which `rect`, the focused box with its halo, takes WALK_SHARE of the viewport's width, kept within
+  // WALK_MIN_SCALE and WALK_MAX_SCALE so titles stay readable and never grow past the diagram's own size by much.
+  function walkScale(rect, viewport) {
+    return Math.min(WALK_MAX_SCALE, Math.max(WALK_MIN_SCALE, (WALK_SHARE * viewport.w) / rect.w));
   }
 
   // The view that follows `rect` (a box's bounds in diagram units, its halo included) without changing the zoom. The rect is
@@ -487,9 +496,11 @@
 
     // `ids` is a list of box ids; an empty list leaves the canvas as it is and forgets the boxes it was following. The
     // boxes stay the canvas's target until the reader pans or zooms: a viewport that has no size yet, or gets its first
-    // one after this call, is taken to them once it has one.
-    function centerOn(ids) {
-      target = ids.length > 0 ? ids : null;
+    // one after this call, is taken to them once it has one. With `zoom`, the canvas also zooms so the boxes, halo
+    // included, take most of the viewport's width (see walkScale), keeping the boxes where they are vertically on screen;
+    // without it the zoom stays the reader's.
+    function centerOn(ids, { zoom = false } = {}) {
+      target = ids.length > 0 ? { ids, zoom } : null;
       if (!target || size().w <= 0) return;
       const rect = boundsOf(ids);
       if (!rect) return;
@@ -497,7 +508,10 @@
       const own = grown(rect);
       const joined = boundsOf(neighboursOf(ids));
       const band = joined ? union(own, joined) : own;
-      glide(followBoxView(view, own, band, content, size()));
+      const scale = zoom ? walkScale(own, size()) : view.scale;
+      const onScreen = view.y + (own.y + own.h / 2) * view.scale;
+      const start = { scale, x: view.x, y: onScreen - (own.y + own.h / 2) * scale };
+      glide(followBoxView(start, own, band, content, size()));
     }
 
     function union(a, b) {
@@ -578,7 +592,7 @@
             rest();
           } else if (resting) rest();
           else show(view, false);
-          if (appeared && target) centerOn(target);
+          if (appeared && target) centerOn(target.ids, { zoom: target.zoom });
         })
       : null;
     resizeObserver?.observe(viewport);
@@ -700,10 +714,10 @@
     if (card && found) applyEmphasis(card, found, emphasis);
   }
 
-  // Zooms to the listed boxes, halo included, and follows them through the boxes joined to them (see createCanvas).
-  // Does nothing without a diagram.
-  function centerOn(nodeIds) {
-    canvas?.centerOn(nodeIds);
+  // Pans to the listed boxes, halo included, and follows them through the boxes joined to them, zooming too with
+  // `{ zoom: true }` (see createCanvas). Does nothing without a diagram.
+  function centerOn(nodeIds, options) {
+    canvas?.centerOn(nodeIds, options);
   }
 
   // The title of a box: the bold first line of its label, without the box number; "" for an unknown box or one the
@@ -726,7 +740,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor, clampScale, contentSize, restingView, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor, clampScale, contentSize, restingView, walkScale, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

@@ -241,9 +241,10 @@
 
   // Makes the stop's file the active one, gives the stop's box the diagram's halo and jumps to the stop's line, or to its
   // file's header when the stop has no line. A stop on no box selects no box. `scroll: false` leaves the diff where it
-  // is, so only the box, the list and the highlight follow; any other option, e.g. `{ pulse: false }`, passes on to the
+  // is, so only the box, the list and the highlight follow. The diagram zooms to the stop's box, except with `zoom: false`,
+  // which a click on the box itself passes so that it only pans; any other option, e.g. `{ pulse: false }`, passes on to the
   // jump.
-  async function selectStop(session, stop, { scroll = true, ...jump } = {}) {
+  async function selectStop(session, stop, { scroll = true, zoom = true, ...jump } = {}) {
     const mine = startSelection(session);
     await change(session, () => {
       leaveLine();
@@ -254,7 +255,7 @@
       session.activeBox = activation(stop.path);
     });
     if (current !== session || !live() || session.selection !== mine) return;
-    if (stop.node) diagram.centerOn([stop.node]);
+    if (stop.node) diagram.centerOn([stop.node], { zoom });
     tree.revealStop(stop.i);
     if (scroll) await jumpToStop(session, stop, Object.keys(jump).length ? jump : undefined);
   }
@@ -282,7 +283,7 @@
     if (!box) return;
     const stop = session.stops.find((candidate) => candidate.i === box.stops[0]);
     if (stop) {
-      await selectStop(session, stop);
+      await selectStop(session, stop, { zoom: false });
       return;
     }
     const path = box.files[0];

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { applyEmphasis, resetAction, zoomControls, clampScale, contentSize, restingView, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas } = require("../diagram.js");
+const { applyEmphasis, resetAction, zoomControls, clampScale, contentSize, restingView, walkScale, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas } = require("../diagram.js");
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
 
@@ -311,6 +311,35 @@ test("centerOn uses the pane's size at the moment of focus, and the same box aga
   const after = views.at(-1);
   close(after.x, 250 - 550);
   assert.notEqual(before.x, after.x);
+});
+
+test("walkScale takes 90% of the viewport's width for the box, kept between 0.5 and 1.25", () => {
+  close(walkScale({ w: 360 }, { w: 392 }), 0.98);
+  assert.equal(walkScale({ w: 100 }, { w: 400 }), 1.25);
+  assert.equal(walkScale({ w: 2000 }, { w: 400 }), 0.5);
+  close(walkScale({ w: 600 }, { w: 600 }), 0.9);
+});
+
+test("centerOn with zoom sets the zoom from the box's width and keeps its place on screen vertically", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.centerOn(["a"], { zoom: true });
+  assert.deepEqual(views.at(-1), { scale: 1.25, x: 200 - 550 * 1.25, y: -103.5 });
+});
+
+test("centerOn with zoom fits a box that is wide for the pane, down to half size", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.centerOn(["huge"], { zoom: true });
+  assert.equal(views.at(-1).scale, 0.5);
+});
+
+test("centerOn without zoom, however it is called, leaves the zoom as the reader has it", () => {
+  const { canvas, views } = boxCanvas();
+  canvas.zoomIn();
+  const zoomed = views.at(-1).scale;
+  canvas.centerOn(["a"]);
+  canvas.centerOn(["b"], {});
+  canvas.centerOn(["a"], { zoom: false });
+  close(views.at(-1).scale, zoomed);
 });
 
 test("centerOn keeps a zoom the reader chose", () => {
