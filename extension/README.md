@@ -103,7 +103,7 @@ that expands it.
 
 - Motion: the line jump scrolls smoothly (a target more than 1.5 windows away is first approached instantly to one window
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
-  250ms. The emphasized box gets a halo in `#534ab7` and keeps its own stroke and fill. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
+  250ms. The emphasized box gets a concentric 8px halo (22% of the accent, `#534ab7` in the light theme and `#9d94f5` in the dark), an 11% accent tint over its fill and an accent-dark title, and keeps its own stroke. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
   the viewport, a fifth of the viewport by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
 - Each box shows the numbers of the stops that land on it as a purple badge (`2 · 5`) before its bold title, and a
@@ -121,11 +121,9 @@ that expands it.
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
   The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
   a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas, over about 200ms (at once under reduced motion). The stop's box
-  is centred horizontally at the current zoom. Vertically the canvas moves only as far as it takes to keep the boxes
-  one solid arrow before and after the box in view (inside the fit margin), and not at all when they already are;
-  a dotted arrow, which returns to an earlier box, joins nothing, and a box with no arrows (the "Also in this PR" boxes) has
-  no neighbours. When the box and its neighbours are taller than the pane, the box is centred vertically
-  instead. A box larger than the pane zooms out just enough to fit with the fit margin. A stop on no box leaves the canvas
+  and its halo are fitted to the pane, whichever of width and height is tighter, with a 16px margin and centred on both
+  axes, within the 25% to 400% zoom range. The pane's size is read at that moment, so a resized pane fits too. Panning
+  and zooming by hand work until the next stop is focused. A stop on no box leaves the canvas
   where it is, and a collapsed panel moves to the focused box when it is expanded again. Each
   new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
   position are not saved.
