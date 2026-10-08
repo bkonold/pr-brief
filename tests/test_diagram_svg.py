@@ -233,10 +233,10 @@ def run_node(script_text: str) -> str:
 
 
 class DiagramSize(unittest.TestCase):
-    def test_the_diagram_is_drawn_in_mermaids_default_font_and_wrapping_width(self) -> None:
+    def test_the_diagram_is_drawn_in_a_16px_font_and_a_240_wrapping_width(self) -> None:
         text = render.render_diagram("```mermaid\nflowchart TD\n  a[\"A\"] --> b[\"B\"]\n```")
         self.assertIn('"themeVariables": {"fontSize": "16px"}', text)
-        self.assertIn('"wrappingWidth": 200', text)
+        self.assertIn('"wrappingWidth": 240', text)
 
     def test_the_theme_sets_the_label_size_itself_and_undoes_a_page_s_label_class(self) -> None:
         self.assertRegex(render.DIAGRAM_STYLE, r"\.nodeLabel, \.edgeLabel, \.edgeLabel p \{ font-size: 16px;")

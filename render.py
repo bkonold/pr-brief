@@ -34,10 +34,10 @@ sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: E402
 
 DIAGRAM_THRESHOLD = 5
-# The diagram's text size and the width its labels wrap at, in diagram units: Mermaid's own defaults. The theme sets the
+# The diagram's text size (Mermaid's default) and the width its labels wrap at, in diagram units. The theme sets the
 # label size explicitly (see DIAGRAM_STYLE), so a page whose CSS styles `.label` cannot change what the boxes were laid out for.
 DIAGRAM_FONT_SIZE = 16
-DIAGRAM_WRAPPING_WIDTH = 200
+DIAGRAM_WRAPPING_WIDTH = 240
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 CONTEXT_CAPTION = "Dashed boxes are unchanged context"
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
