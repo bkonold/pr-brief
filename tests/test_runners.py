@@ -63,7 +63,19 @@ class CommandTest(unittest.TestCase):
             runners.invocation("gemini", SYSTEM, USER, "m", {})
 
     def test_each_runner_has_a_default_model(self) -> None:
-        self.assertEqual(runners.DEFAULT_MODELS, {"claude": "opus", "copilot": "claude-opus-5.5"})
+        self.assertEqual(runners.DEFAULT_MODELS, {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"})
+
+    def test_the_flag_wins_over_local_toml_which_wins_over_the_default(self) -> None:
+        local = {"model": {"claude": "claude-from-local"}}
+        self.assertEqual(runners.resolve_model("claude", "from-flag", local), "from-flag")
+        self.assertEqual(runners.resolve_model("claude", None, local), "claude-from-local")
+        self.assertEqual(runners.resolve_model("copilot", None, local), "claude-opus-5.5")
+        self.assertEqual(runners.resolve_model("claude", None, {}), "claude-opus-5-5")
+
+    def test_a_local_toml_model_that_is_not_a_table_of_runners_is_refused(self) -> None:
+        for bad in ("claude-opus-5-5", {"gemini": "m"}, {"claude": ""}, {"claude": 5}):
+            with self.assertRaises(ValueError):
+                runners.resolve_model("claude", None, {"model": bad})
 
 
 class RunDirTest(unittest.TestCase):
@@ -221,13 +233,21 @@ class RunTest(unittest.TestCase):
         self.assertEqual((run_dir / "answer.raw.txt").read_text(), self.model_output)
         self.assertEqual(json.loads((run_dir / "run.json").read_text())["answer_cleanup"], "took the first fenced yaml block out of the text around it")
 
+    def test_local_toml_picks_the_model_a_run_records_and_passes(self) -> None:
+        with mock.patch.object(run, "load_local", lambda: {"model": {"claude": "claude-from-local"}}), \
+                mock.patch.object(run.subprocess, "run", lambda argv, **kwargs: (self.calls.append({"argv": argv, **kwargs}), subprocess.CompletedProcess(argv, 0, ANSWER, ""))[1]):
+            self.assertEqual(self.execute(), 0)
+        self.assertEqual(self.calls[0]["argv"][-2:], ["--model", "claude-from-local"])
+        self.assertEqual(json.loads((self.home / "runs" / "7" / "v" / "run.json").read_text())["model"], "claude-from-local")
+
     def test_a_claude_run_keeps_its_folder_and_its_command(self) -> None:
         with mock.patch.object(run.subprocess, "run", lambda argv, **kwargs: (self.calls.append({"argv": argv, **kwargs}), subprocess.CompletedProcess(argv, 0, ANSWER, ""))[1]):
             self.assertEqual(self.execute(), 0)
         self.assertEqual(self.calls[0]["argv"][:2], ["claude", "-p"])
         self.assertIsNone(self.calls[0]["env"])
         record = json.loads((self.home / "runs" / "7" / "v" / "run.json").read_text())
-        self.assertEqual((record["runner"], record["model"]), ("claude", "opus"))
+        self.assertEqual((record["runner"], record["model"]), ("claude", "claude-opus-5-5"))
+        self.assertEqual(self.calls[0]["argv"][-2:], ["--model", "claude-opus-5-5"])
         self.assertFalse((self.home / "runs" / "7" / "v_copilot").exists())
 
 

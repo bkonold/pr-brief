@@ -5,8 +5,8 @@ usage: run.py <pr> --variant NAME [--with-body] [--runner claude|copilot] [--mod
               [--host github|forgejo] [--repo owner/name] [--prompt-only]
 
 --runner defaults to claude. A copilot run uses the CLI's own stored login and is written beside the Claude run, to
-runs/<key>/<variant>_copilot/, with the same variant settings; --model defaults to opus for claude and
-claude-opus-5.5 for copilot.
+runs/<key>/<variant>_copilot/, with the same variant settings; --model defaults to the runner's entry in
+local.toml's [model] table, else claude-opus-5-5 for claude and claude-opus-5.5 for copilot.
 
 --host defaults to local.toml's `host`, else github. --repo is the host's `owner/name` and is required
 unless local.toml sets `repo` for that host (`repo` applies to the host named by `host`, github by default).
@@ -32,7 +32,7 @@ from compare import write_variants_json
 from config import HOME, ROOT, load_local, variant_file
 from context_pack import Pack, build, ensure_commits
 from hosts import get_host, host_names, run_key
-from runners import CLAUDE, DEFAULT_MODELS, RUNNERS, clean_answer, invocation, run_dir_name
+from runners import CLAUDE, RUNNERS, clean_answer, invocation, resolve_model, run_dir_name
 from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
@@ -129,15 +129,17 @@ def execute(progress: Progress) -> int:
     p.add_argument("--variant", required=True)
     p.add_argument("--with-body", action="store_true", help="show the model the PR's existing description")
     p.add_argument("--runner", choices=RUNNERS, default=CLAUDE, help="the program that runs the model (default: claude)")
-    p.add_argument("--model", help="the runner's model name (default: opus for claude, claude-opus-5.5 for copilot)")
+    p.add_argument("--model", help="the runner's model id (default: local.toml's [model] entry for the runner, else claude-opus-5-5 for claude and claude-opus-5.5 for copilot)")
     local: dict[str, Any] = load_local()
     p.add_argument("--host", choices=host_names(), default=local.get("host", "github"),
                    help="where the PR lives (default: local.toml's `host`, else github)")
     p.add_argument("--repo", help="the host's repository as owner/name (default: local.toml's `repo`, for the host local.toml names)")
     p.add_argument("--prompt-only", action="store_true", help="print the rendered prompt and stop")
     a = p.parse_args()
-    if a.model is None:
-        a.model = DEFAULT_MODELS[a.runner]
+    try:
+        a.model = resolve_model(a.runner, a.model, local)
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
     if a.repo is None and a.host == local.get("host", "github"):
         a.repo = local.get("repo")
     key: str = run_key(a.host, a.pr)

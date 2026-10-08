@@ -58,7 +58,8 @@ and carry this tool as a submodule.
 # run one variant on one PR (calls the model, then render.py)
 .venv/bin/python run.py 42 --variant diagram_walkthrough_v24 --repo owner/name
 #   --with-body       show the model the PR's existing description (default: empty body)
-#   --model opus      model passed to the runner (default: opus for claude, claude-opus-5.5 for copilot)
+#   --model ID        model id passed to the runner (default: the runner's entry in local.toml's [model] table, else
+#                     claude-opus-5-5 for claude and claude-opus-5.5 for copilot; run.json records the id used)
 #   --runner copilot  run through the Copilot CLI instead of `claude -p`: the system prompt and the user prompt go on
 #                     stdin in two fenced blocks, GH_TOKEN and GITHUB_TOKEN are removed from its environment so the
 #                     CLI uses its own login, and the run is written beside the Claude run, to

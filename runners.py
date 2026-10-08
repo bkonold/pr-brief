@@ -12,7 +12,7 @@ import yaml
 CLAUDE = "claude"
 COPILOT = "copilot"
 RUNNERS: tuple[str, ...] = (CLAUDE, COPILOT)
-DEFAULT_MODELS: dict[str, str] = {CLAUDE: "opus", COPILOT: "claude-opus-5.5"}
+DEFAULT_MODELS: dict[str, str] = {CLAUDE: "claude-opus-5-5", COPILOT: "claude-opus-5.5"}
 
 # Copilot takes the system prompt as part of its one input, so the two prompts are fenced off from each other.
 SYSTEM_OPEN = "=====SYSTEM INSTRUCTIONS====="
@@ -33,6 +33,18 @@ class Invocation:
     argv: list[str]
     input: str
     env: dict[str, str] | None
+
+
+def resolve_model(runner: str, flag: str | None, local: Mapping[str, Any]) -> str:
+    """The model id a run uses: `--model`, else local.toml's `[model]` table entry for the runner, else the runner's
+    pinned default. Raises ValueError when local.toml's `model` is not a table of runner names to ids."""
+    if flag:
+        return flag
+    configured: Any = local.get("model", {})
+    if not isinstance(configured, dict) or not all(name in RUNNERS and isinstance(model, str) and model
+                                                   for name, model in configured.items()):
+        raise ValueError(f"`model` in local.toml must be a table of runner ({', '.join(RUNNERS)}) to model id, not {configured!r}")
+    return configured.get(runner) or DEFAULT_MODELS[runner]
 
 
 def copilot_input(system: str, user: str) -> str:

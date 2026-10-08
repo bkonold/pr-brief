@@ -71,3 +71,9 @@ default_variant = "diagram_walkthrough_v24"
 [serve_repos]
 github = ["example-org/example-repo"]
 # forgejo = ["me/example-repo"]
+
+# The model each runner uses, by runner name; `run.py --model` overrides it. Unset runners use their pinned default
+# (claude-opus-5-5 for claude, claude-opus-5.5 for copilot), and run.json records the id a run used. Keep this table last:
+# keys after a table header belong to it.
+# [model]
+# claude = "claude-opus-5-5"
