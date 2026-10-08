@@ -95,7 +95,7 @@
     fetchHeadSha,
     blockSelector: DIFF_BLOCK,
     pathOfBlock,
-    // The element to hide so the spacing between diffs collapses with it.
+    // The whole entry of one file's diff, which holds the file callout above its header.
     entryOf: (block) => block.closest(DIFF_ENTRY) ?? block,
     diffId,
     findRow,

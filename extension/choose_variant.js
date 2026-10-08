@@ -1,4 +1,4 @@
-// Orders variant names so a higher version sorts later: digit runs compare as numbers, so v9 < v10 < v11b < v12.
+// Orders variant names so a higher version sorts later: digit runs compare as numbers, so v9 < v10 < v23.
 function compareNames(a, b) {
   const left = a.match(/\d+|\D+/g) ?? [];
   const right = b.match(/\d+|\D+/g) ?? [];

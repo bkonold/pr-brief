@@ -1,5 +1,5 @@
 // The page behaviour shared by every host: scrolling a diff under the sticky chrome, jumping to a line, the
-// callouts shown above the start lines and start files, and watching for changes. createPage(spec) returns the adapter the rest of the extension
+// callouts shown above the stops' lines and files, and watching for changes. createPage(spec) returns the adapter the rest of the extension
 // calls through prFocus.page (see page.js). The spec holds everything that differs per host, which is all
 // the DOM knowledge and nothing else; a host's spec lives in its own file (github_page.js, forgejo_page.js).
 //
@@ -212,7 +212,7 @@
       return entry.file ? fileCalloutOf(entryOfId(entry.anchor)) === element : element.nextElementSibling === findRow(entry.anchor);
     }
 
-    // A line callout is a full-width table row directly above its start line, so the host's columns stay as they are.
+    // A line callout is a full-width table row directly above its stop's line, so the host's columns stay as they are.
     function placeLineCallout(entry) {
       const row = findRow(entry.anchor);
       if (!row || calloutRowOf(row)) return;
@@ -253,7 +253,7 @@
       }
     }
 
-    // Shows a callout for each start: entries are { key, anchor, file?, render() }. `anchor` is a line's anchor, or, with
+    // Shows a callout for each stop: entries are { key, anchor, file?, render() }. `anchor` is a line's anchor, or, with
     // `file: true`, a file's diff id, whose callout goes above that file's header. `render` builds the content of one
     // callout. An empty list removes them all. Calling again with the same entries changes nothing.
     function showCallouts(entries) {
@@ -266,7 +266,7 @@
       for (const row of document.querySelectorAll(`.${LINE_TARGET}, .${PULSE}`)) row.classList.remove(LINE_TARGET, PULSE);
     }
 
-    // Pulses the start line and its callout together (a file start, its callout alone), once the jump has landed: the
+    // Pulses the stop's line and its callout together (a stop with no line, its callout alone), once the jump has landed: the
     // same animation, started at the same moment. Skipped under reduced motion.
     function pulseTarget(elements) {
       if (reducedMotion()) return;

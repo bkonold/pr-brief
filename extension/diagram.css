@@ -1,5 +1,5 @@
-/* The panel is the leftmost item of the page's flex row, before the file pane, so the diagram, the chunk list and
-   the code read left to right. It shares the page surface and ends at a single divider before the chunk list.
+/* The panel is the leftmost item of the page's flex row, before the file pane, so the diagram, the walkthrough list
+   and the code read left to right. It shares the page surface and ends at a single divider before the list.
    Its footprint is the width plus a 12px margin; collapsed, it is a 30px rail with a vertical label. The diagram
    sits in a clipped viewport and is moved by a transform, so the pane's width does not set the zoom. */
 .prd-panel {
