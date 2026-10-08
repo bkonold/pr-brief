@@ -121,8 +121,12 @@ that expands it.
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
   The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
   a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas, over about 200ms (at once under reduced motion). The stop's box
-  and its halo are fitted to the pane, whichever of width and height is tighter, with a 16px margin and centred on both
-  axes, within the 25% to 400% zoom range. The pane's size is read at that moment, so a resized pane fits too. Panning
+  and its halo are zoomed to the pane's width with a 16px margin and centred horizontally, within the 25% to 400% zoom
+  range, and the zoom drops further if the box's own height would not fit. The box keeps the vertical position it has
+  on screen, and the canvas moves vertically only as far as it takes to bring the box and the boxes joined to it by
+  solid arrows into view (dotted return arrows count for nothing); when they already are, it does not move vertically.
+  When they are taller than the pane, the side the box is nearer shows, and the box stays in view. The pane's size is
+  read at that moment, so a resized pane fits too. Panning
   and zooming by hand work until the next stop is focused. A stop on no box leaves the canvas
   where it is, and a collapsed panel moves to the focused box when it is expanded again. Each
   new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
