@@ -328,3 +328,7 @@ into Contract and Data sections and dropped the review order; v23 replaced the s
 dropped the chunks, so that the diagram and the walkthrough are the whole brief; v25 is v24 without the wiki context (`git log --diff-filter=D -- variants/diagram_walkthrough_v24.toml` finds the
 commit that removed v24). Runs
 made by v23 and earlier are not shown by the extension.
+
+## License
+
+MIT, see `LICENSE`. `vendor/` keeps the MIT notice of PR-Agent, whose prompts and helpers it contains (`vendor/LICENSE`).
