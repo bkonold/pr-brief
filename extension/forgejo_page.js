@@ -54,6 +54,10 @@
     --borderColor-muted: var(--color-secondary);
     --borderColor-accent-emphasis: var(--color-primary);
     --borderColor-attention-emphasis: var(--color-warning-border);
+    --controlTrack-bgColor-rest: var(--color-box-header);
+    --controlTrack-bgColor-hover: var(--color-hover);
+    --controlKnob-bgColor-rest: var(--color-body);
+    --controlKnob-borderColor-rest: var(--color-secondary);
   }`;
 
   function installTheme() {

@@ -4,8 +4,11 @@
   const HOST_HIDDEN = "prf-tree-hidden";
   const SHORT_SHA = 7;
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const LIST_TREE_ICON = "M2.5 3h11M5.5 8h8M5.5 13h8M3 3.5v9.5M3 8h2.5M3 13h2.5";
-  const FOLDER_ICON = "M1.75 3.5h4.25l1.5 1.75h6.75v7.5h-12.5z";
+  // Octicons' list-ordered and file-directory, 16-unit filled paths.
+  const LIST_ORDERED_ICON =
+    "M5 3.25a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 5 3.25Zm0 5a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 5 8.25Zm0 5a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1-.75-.75ZM.924 10.32a.5.5 0 0 1-.851-.525l.001-.001.001-.002.002-.004.007-.011c.097-.144.215-.273.348-.384.228-.19.588-.392 1.068-.392.468 0 .858.181 1.126.484.259.294.377.673.377 1.038 0 .987-.686 1.495-1.156 1.845l-.047.035c-.303.225-.522.4-.654.597h1.357a.5.5 0 0 1 0 1H.5a.5.5 0 0 1-.5-.5c0-1.005.692-1.52 1.167-1.875l.035-.025c.531-.396.8-.625.8-1.078a.57.57 0 0 0-.128-.376C1.806 10.068 1.695 10 1.5 10a.658.658 0 0 0-.429.163.835.835 0 0 0-.144.153ZM2.003 2.5V6h.503a.5.5 0 0 1 0 1H.5a.5.5 0 0 1 0-1h.503V3.308l-.28.14a.5.5 0 0 1-.446-.895l1.003-.5a.5.5 0 0 1 .723.447Z";
+  const DIRECTORY_ICON =
+    "M0 2.75C0 1.784.784 1 1.75 1H5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 0 0 .2.1h6.75c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 0 0-.2-.1Z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
   function staleMessage(review, pageSha) {
@@ -33,6 +36,13 @@
     for (const [name, value] of [["fill", "none"], ["stroke", "currentColor"], ["stroke-width", "1.5"], ["stroke-linecap", "round"], ["stroke-linejoin", "round"]]) {
       svg.firstChild.setAttribute(name, value);
     }
+    return svg;
+  }
+
+  // A 16-unit icon filled with the current text colour.
+  function filledIcon(d, size, className) {
+    const svg = svgIcon(d, size, className);
+    svg.firstChild.setAttribute("fill", "currentColor");
     return svg;
   }
 
@@ -101,9 +111,9 @@
 
   function modeToggle(state, handlers) {
     const toggle = make("div", "prf-modes");
-    for (const [mode, label, icon] of [["review", "By review", LIST_TREE_ICON], ["github", ns.page.treeLabel, FOLDER_ICON]]) {
+    for (const [mode, label, icon] of [["review", "By review", LIST_ORDERED_ICON], ["github", ns.page.treeLabel, DIRECTORY_ICON]]) {
       const choice = button("prf-mode", undefined, () => handlers.onMode(mode));
-      choice.append(outlineIcon(icon, 14, "prf-mode-icon"), make("span", undefined, label));
+      choice.append(filledIcon(icon, 14, "prf-mode-icon"), make("span", undefined, label));
       choice.setAttribute("aria-pressed", String(state.mode === mode));
       toggle.append(choice);
     }

@@ -39,49 +39,45 @@
 .prf-modes {
   display: inline-flex;
   padding: 2px;
-  background: var(--bgColor-neutral-muted, #818b981f);
-  border: 1px solid var(--borderColor-default, #d0d7de);
+  background: var(--controlTrack-bgColor-rest, #eff2f5);
+  border: 1px solid var(--controlTrack-borderColor-rest, transparent);
   border-radius: 8px;
 }
 
 .prf-mode,
-.prf-head-main,
-
+.prf-head-main {
   font: inherit;
   color: inherit;
   cursor: pointer;
 }
 
+/* Both segments share one box; only the selected one changes its background and border. */
 .prf-mode {
   display: inline-flex;
-  gap: 5px;
+  gap: 6px;
   align-items: center;
-  padding: 3px 8px;
-  color: var(--fgColor-muted, #59636e);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--fgColor-default, #1f2328);
   background: none;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 6px;
 }
 
 .prf-mode:hover {
-  color: var(--fgColor-default, #1f2328);
+  background: var(--controlTrack-bgColor-hover, #e6eaef);
 }
 
-.prf-mode[aria-pressed="true"] {
-  font-weight: 600;
-  color: var(--fgColor-default, #1f2328);
-  background: var(--bgColor-default, #ffffff);
-  box-shadow:
-    0 0 0 1px var(--borderColor-muted, #d1d9e0b3),
-    0 1px 2px var(--borderColor-default, #d0d7de);
+.prf-mode[aria-pressed="true"],
+.prf-mode[aria-pressed="true"]:hover {
+  background: var(--controlKnob-bgColor-rest, #ffffff);
+  border-color: var(--controlKnob-borderColor-rest, #818b98);
 }
 
 .prf-mode-icon {
   flex: none;
-}
-
-.prf-mode[aria-pressed="true"] .prf-mode-icon {
-  color: var(--fgColor-accent, #0969da);
 }
 
 .prf-banner {
