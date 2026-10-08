@@ -41,7 +41,7 @@ from compare import write_variants_json  # noqa: E402
 from config import DEFAULT_VARIANT, HOME, ROOT, load_local, variant_file  # noqa: E402
 from context_pack import Pack, build, ensure_commits  # noqa: E402
 from hosts import get_host, host_names, run_key  # noqa: E402
-from runners import CLAUDE, RUNNERS, clean_answer, invocation, resolve_model, run_dir_name  # noqa: E402
+from runners import CLAUDE, COPILOT, RUNNERS, clean_answer, command_line, invocation, resolve_model, run_dir_name  # noqa: E402
 from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status  # noqa: E402
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
@@ -202,6 +202,8 @@ def execute(progress: Progress) -> int:
     progress.stage("write")
     started: datetime = now()
     command = invocation(a.runner, system, user, a.model, os.environ)
+    if a.runner == COPILOT:
+        print(f"running: {command_line(command)} ({len(command.input)} characters on stdin)", file=sys.stderr, flush=True)
     try:
         out = subprocess.run(command.argv, input=command.input, env=command.env, capture_output=True, text=True)
     except FileNotFoundError:
