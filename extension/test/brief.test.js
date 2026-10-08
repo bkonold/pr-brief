@@ -37,7 +37,7 @@ const MARKDOWN = [
   '  a["1 · Step"]',
   "```",
   "",
-  'Legend: <span style="display:inline-block;width:14px;background:#fff"></span> changed step',
+  "Dashed boxes are unchanged context",
   "",
   "___",
   "",
@@ -84,8 +84,8 @@ test("renderBody drops every script, whether in body.html or in the markdown it 
     "Enhancement",
     'Enhancement <script>alert(1)</script><img src=x onerror="alert(2)"><a href="javascript:alert(3)">x</a><a href="jav&#x61;script:alert(4)">y</a><a href="java\tscript:alert(5)">z</a><SCRIPT SRC=//evil.example/x.js></SCRIPT><iframe src="//evil.example"></iframe><p onclick="alert(6)">p</p>',
   );
-  const { html, legend } = briefText.renderBody(bodyHtml(hostile), FILES_URL);
-  for (const text of [html, legend]) {
+  const { html, caption } = briefText.renderBody(bodyHtml(hostile), FILES_URL);
+  for (const text of [html, caption]) {
     assert.doesNotMatch(text, /<script|<\/script|<iframe|onerror|onclick|javascript:|alert\(/i);
   }
   assert.match(html, /<p>Enhancement/);
@@ -107,11 +107,11 @@ test("sanitize in svg mode keeps a diagram's style and drops what can run script
 });
 
 test("renderBody renders the description and leaves the title, the mermaid source and its heading out", () => {
-  const { html, legend } = briefText.renderBody(bodyHtml(), FILES_URL);
-  assert.doesNotMatch(html, /Example title|mermaid|flowchart|Diagram Walkthrough|pr-agent-generated|Legend/);
+  const { html, caption } = briefText.renderBody(bodyHtml(), FILES_URL);
+  assert.doesNotMatch(html, /Example title|mermaid|flowchart|Diagram Walkthrough|pr-agent-generated|Dashed boxes/);
   assert.match(html, /<h3><strong>PR Type<\/strong><\/h3>/);
   assert.match(html, /<li>Adds <code>thing<\/code> to the pipeline\n<ul>\n<li>nested <strong>point<\/strong>/);
-  assert.match(legend, /^Legend: <span style="display:inline-block; width:14px; background:#fff"><\/span> changed step$/);
+  assert.equal(caption, "Dashed boxes are unchanged context");
 });
 
 test("links into the files view point at this host's files view and keep their fragment", () => {
@@ -169,7 +169,7 @@ test("the card is a closed details that reads and writes no storage", () => {
     assert.match(shadow, /<a class="files-link" href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files">Review in files view<\/a>/);
     const diagramBox = /<details class="diagram-box"><summary>Diagram<\/summary>(.*?)<\/details>/s.exec(shadow);
     assert.ok(diagramBox, "the diagram is in its own details headed Diagram");
-    assert.match(diagramBox[1], /^<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<p class="legend">Legend:.*<\/figure>$/s);
+    assert.match(diagramBox[1], /^<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<p class="caption">Dashed boxes are unchanged context<\/p><\/figure>$/s);
     const at = (needle) => shadow.indexOf(needle);
     assert.ok(at("Second point") < at('<details class="diagram-box">'), "the diagram follows the description's bullets");
     assert.equal(shadow.match(/<details class="diagram-box">/g).length, 1);
@@ -220,7 +220,6 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const callouts = [];
   const emphasized = [];
   const centered = [];
-  const marked = [];
   const lineEvents = [];
   const diagramHandlers = [];
   const revealed = [];
@@ -265,17 +264,15 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       },
     },
     tree: {
-      chunkOfNode: require("../tree.js").chunkOfNode,
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
       stopsOf: require("../tree.js").stopsOf,
-      firstStopOf: require("../tree.js").firstStopOf,
-      stopCallout: (stop, stops, onGo, chunks) => ({ stop, stops, onGo, chunks }),
+      stopCallout: (stop, stops, onGo, nodes) => ({ stop, stops, onGo, nodes }),
       revealStop: (i) => revealed.push(i),
       remove() {},
       owns: () => false,
     },
-    focus: { markChunk: (chunk) => marked.push(chunk?.n ?? null), clearBox() {}, markBox: (paths) => boxes.push(paths), scrollTo: async (path) => scrolled.push(path), announceBox() {} },
+    focus: { clearBox() {}, markBox: (paths) => boxes.push(paths), scrollTo: async (path) => scrolled.push(path), announceBox() {} },
     diagram: {
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
@@ -297,7 +294,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, marked, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -597,141 +594,134 @@ test("the callouts are shown in the review and removed in the host's own tree vi
 });
 
 const WALK_REVIEW = {
-  schema: 3,
+  schema: 4,
   repo: "acme/widgets",
   pr: 7,
-  variant: "v23",
+  variant: "v24",
   diagramSvg: "<svg></svg>",
-  chunks: [
-    { n: 1, name: "Screen", step: "UI", review: "skim", why: "w", nodes: ["a"], files: [{ path: "src/ui.js" }] },
-    { n: 2, name: "Endpoint", step: "API", review: "read", why: "w", nodes: ["b"], files: [{ path: "src/api.js" }] },
-    { n: 3, name: "Table", step: "Database", review: "verify", why: "w", nodes: ["c"], files: [{ path: "db/V1.sql" }] },
-  ],
+  nodes: {
+    a: { title: "Screen", files: ["src/ui.js"], stops: [1, 3] },
+    b: { title: "Endpoint", files: ["src/api.js"], stops: [4] },
+    c: { title: "Table", files: ["db/V1.sql"], stops: [2] },
+    d: { title: "Search index", files: [], stops: [] },
+  },
   walkthrough: [
-    { i: 1, title: "List is built", why: "Entry point.", path: "src/ui.js", side: "R", line: 4, chunk: 1 },
-    { i: 2, title: "Query filters", why: "The call lands here.", path: "db/V1.sql", side: "R", line: 2, chunk: 3 },
-    { i: 3, title: "Back to the screen", why: "It renders here.", path: "src/ui.js", side: "R", line: 30, chunk: 1 },
-    { i: 4, title: "The whole endpoint", why: "No single line.", path: "src/api.js", side: null, line: null, chunk: 2 },
+    { i: 1, title: "List is built", why: "Entry point.", path: "src/ui.js", side: "R", line: 4, node: "a" },
+    { i: 2, title: "Query filters", why: "The call lands here.", path: "db/V1.sql", side: "R", line: 2, node: "c" },
+    { i: 3, title: "Back to the screen", why: "It renders here.", path: "src/ui.js", side: "R", line: 30, node: "a" },
+    { i: 4, title: "The whole endpoint", why: "No single line.", path: "src/api.js", side: null, line: null, node: "b" },
   ],
 };
 
-test("a walkthrough run has a callout for every stop, a file stop anchored at its file's diff, and chunks need no start", async () => {
+test("a walkthrough run has a callout for every stop and a file stop anchored at its file's diff", async () => {
   const { callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   assert.deepEqual(
     callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file ?? false]),
     [[1, "src/ui.jsR4", false], [2, "db/V1.sqlR2", false], [3, "src/ui.jsR30", false], [4, "diff-src/api.js", true]],
   );
-  const { stop, stops, chunks } = callouts.at(-1)[1].render();
-  assert.deepEqual([stop.i, stops.length, chunks.length], [2, 4, 3]);
+  const { stop, stops, nodes } = callouts.at(-1)[1].render();
+  assert.deepEqual([stop.i, stops.length, Object.keys(nodes)], [2, 4, ["a", "b", "c", "d"]]);
 });
 
-test("walking the stops with a callout's buttons crosses and revisits chunks, from the first stop to the last", async () => {
-  const { callouts, jumps, fileJumps, renders, centered, marked, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+test("walking the stops with a callout's buttons gives each stop's box the halo and centres on it", async () => {
+  const { callouts, jumps, fileJumps, centered, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const { onGo, stops } = callouts.at(-1)[0].render();
   const walked = [];
   for (const stop of stops) {
     await onGo(stop);
-    walked.push([stop.i, marked.at(-1), emphasized.at(-1), centered.at(-1)]);
+    walked.push([stop.i, emphasized.at(-1), centered.at(-1)]);
   }
-  assert.deepEqual(walked, [
-    [1, 1, ["a"], ["a"]],
-    [2, 3, ["c"], ["c"]],
-    [3, 1, ["a"], ["a"]],
-    [4, 2, ["b"], ["b"]],
+  assert.deepEqual(plain(walked), [
+    [1, ["a"], ["a"]],
+    [2, ["c"], ["c"]],
+    [3, ["a"], ["a"]],
+    [4, ["b"], ["b"]],
   ]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["src/ui.js", "R", 4, { pulse: false }], ["db/V1.sql", "R", 2, { pulse: false }], ["src/ui.js", "R", 30, { pulse: false }]]));
   assert.equal(JSON.stringify(fileJumps), JSON.stringify([["src/api.js", { pulse: false }]]));
 });
 
-test("a stop in a file no chunk lists selects no chunk but still jumps there", async () => {
-  const outside = { ...WALK_REVIEW, walkthrough: [{ i: 1, title: "Docs", why: "w", path: "docs/readme.md", side: "R", line: 3, chunk: null }] };
-  const { callouts, jumps, renders, marked } = loadContent({ run: null, view: "files", review: outside });
+test("a stop on no box selects no box but still jumps there", async () => {
+  const outside = { ...WALK_REVIEW, walkthrough: [{ i: 1, title: "Docs", why: "w", path: "docs/readme.md", side: "R", line: 3, node: null }] };
+  const { callouts, jumps, renders, emphasized, centered } = loadContent({ run: null, view: "files", review: outside });
   await settle();
   await callouts.at(-1)[0].render().onGo(outside.walkthrough[0]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["docs/readme.md", "R", 3, { pulse: false }]]));
-  assert.deepEqual([renders.at(-1).state.selectedStop, marked.at(-1)], [1, null]);
+  assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1), centered]), [1, null, []]);
 });
 
 test("clicking Previous or Next quickly ends at the last stop clicked, jumping only there", async () => {
-  const { callouts, jumps, renders, marked } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { callouts, jumps, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const { onGo, stops } = callouts.at(-1)[0].render();
   await Promise.all([onGo(stops[1]), onGo(stops[2])]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["src/ui.js", "R", 30, { pulse: false }]]));
-  assert.equal(marked.at(-1), 1);
-});
-
-test("a diagram box click goes to the first stop of the first chunk that lists it", async () => {
-  const { jumps, diagramHandlers, renders, marked } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
-  await settle();
-  diagramHandlers.at(-1).onNode("c");
-  await settle();
-  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["db/V1.sql", "R", 2]]);
-  assert.equal(marked.at(-1), 3);
+  assert.deepEqual(plain(emphasized.at(-1)), ["a"]);
 });
 
 test("opening the files page on a stop's diff anchor goes to that stop", async () => {
-  const { fileJumps, renders, marked } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
+  const { fileJumps, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
   await settle();
   assert.deepEqual(fileJumps, [["src/api.js", undefined]]);
-  assert.equal(marked.at(-1), 2);
+  assert.deepEqual(plain(emphasized.at(-1)), ["b"]);
 });
 
 test("the sidebar opens with every stop listed and none current", async () => {
-  const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const { state } = renders.at(-1);
   assert.deepEqual([state.stops.map((stop) => stop.i), state.selectedStop], [[1, 2, 3, 4], null]);
   assert.deepEqual(Object.keys(state).sort(), ["mode", "note", "pageSha", "selectedStop", "stops"]);
+  assert.equal(emphasized.at(-1), null);
 });
 
 test("choosing a stop in the list goes to it and makes it the current stop", async () => {
-  const { renders, jumps, revealed, marked } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, jumps, revealed, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   await renders.at(-1).handlers.onSelectStop(3);
   assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/ui.js", "R", 30]]);
   assert.deepEqual(revealed, [3]);
-  assert.deepEqual([renders.at(-1).state.selectedStop, marked.at(-1)], [3, 1]);
+  assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1)]), [3, ["a"]]);
 });
 
-test("the current stop is restored after a reload of the same run, and dropped for another run", async () => {
+test("the current stop and its box are restored after a reload of the same run, and dropped for another run", async () => {
   const first = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   await first.renders.at(-1).handlers.onSelectStop(2);
   const same = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
   await settle();
-  assert.deepEqual([same.renders.at(-1).state.selectedStop, same.marked.at(-1)], [2, 3]);
-  const other = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, variant: "v24" }, stored: first.stored });
+  assert.deepEqual(plain([same.renders.at(-1).state.selectedStop, same.emphasized.at(-1)]), [2, ["c"]]);
+  const other = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, variant: "v25" }, stored: first.stored });
   await settle();
-  assert.deepEqual([other.renders.at(-1).state.selectedStop, other.marked.at(-1)], [null, null]);
+  assert.deepEqual([other.renders.at(-1).state.selectedStop, other.emphasized.at(-1)], [null, null]);
 });
 
-test("every action that focuses a chunk centres the diagram on the chunk's boxes", async () => {
+test("every action that focuses a box centres the diagram on it", async () => {
   const { renders, callouts, centered, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(centered, []);
+  assert.deepEqual(plain(centered), []);
   diagramHandlers.at(-1).onNode("b");
   await settle();
-  assert.deepEqual(centered, [["b"]]);
+  assert.deepEqual(plain(centered), [["b"]]);
   await renders.at(-1).handlers.onSelectStop(2);
-  assert.deepEqual(centered.at(-1), ["c"]);
+  assert.deepEqual(plain(centered.at(-1)), ["c"]);
   const { onGo, stops } = callouts.at(-1)[0].render();
   await onGo(stops[2]);
-  assert.deepEqual(centered.at(-1), ["a"]);
+  assert.deepEqual(plain(centered.at(-1)), ["a"]);
   await renders.at(-1).handlers.onMode("github");
-  assert.deepEqual(centered.at(-1), ["a"]);
+  assert.deepEqual(plain(centered.at(-1)), ["a"]);
 });
 
-test("the diagram's Reset restores the load-time state: nothing selected, no chunk or box marked, nothing saved", async () => {
-  const { renders, callouts, marked, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+test("the diagram's Reset restores the load-time state: nothing selected, no box marked, nothing saved", async () => {
+  const { renders, callouts, emphasized, lineEvents, stored, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("c");
   await settle();
   await renders.at(-1).handlers.onSelectStop(2);
   assert.deepEqual(renders.at(-1).state.selectedStop, 2);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: 3, selectedStop: 2, variant: "v23" });
+  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedNode: "c", selectedStop: 2, variant: "v24" });
 
   lineEvents.length = 0;
   const shownBefore = callouts.length;
@@ -739,32 +729,35 @@ test("the diagram's Reset restores the load-time state: nothing selected, no chu
   await settle();
   const { state } = renders.at(-1);
   assert.deepEqual([state.mode, state.selectedStop], ["review", null]);
-  assert.equal(marked.at(-1), null);
   assert.equal(emphasized.at(-1), null);
   assert.deepEqual(lineEvents.slice(0, 2), ["cancelJump", "clearLineTarget"]);
   assert.equal(callouts.length > shownBefore, true);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: null, selectedStop: null, variant: "v23" });
+  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedNode: null, selectedStop: null, variant: "v24" });
 });
 
 test("Reset also clears a mode of GitHub's own tree", async () => {
-  const { renders, marked, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, emphasized, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("b");
   await settle();
   await renders.at(-1).handlers.onMode("github");
   assert.equal(renders.at(-1).state.mode, "github");
-  assert.equal(marked.at(-1), null);
+  assert.equal(emphasized.at(-1), null);
   diagramHandlers.at(-1).onReset();
   await settle();
   assert.equal(renders.at(-1).state.mode, "review");
   diagramHandlers.at(-1).onNode("b");
   await settle();
-  assert.equal(marked.at(-1), 2);
+  assert.deepEqual(plain(emphasized.at(-1)), ["b"]);
 });
 
-const NO_STOP_REVIEW = { ...WALK_REVIEW, walkthrough: WALK_REVIEW.walkthrough.filter((stop) => stop.chunk !== 2) };
+const NO_STOP_REVIEW = {
+  ...WALK_REVIEW,
+  nodes: { ...WALK_REVIEW.nodes, b: { ...WALK_REVIEW.nodes.b, stops: [] } },
+  walkthrough: WALK_REVIEW.walkthrough.filter((stop) => stop.node !== "b"),
+};
 
-test("a diagram box click goes to its chunk's first stop, jumping again on every click", async () => {
+test("a diagram box click goes to the first stop on that box, jumping again on every click", async () => {
   const { jumps, diagramHandlers, renders, revealed } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   for (const click of [1, 2]) {
@@ -776,14 +769,14 @@ test("a diagram box click goes to its chunk's first stop, jumping again on every
   }
 });
 
-test("a box whose chunk has no stop scrolls to the chunk's first file header and marks it", async () => {
-  const { jumps, fileJumps, diagramHandlers, renders, scrolled, boxes, marked, emphasized } = loadContent({ run: null, view: "files", review: NO_STOP_REVIEW });
+test("a box with files and no stop scrolls to its first file header and marks it", async () => {
+  const { jumps, fileJumps, diagramHandlers, renders, scrolled, boxes, emphasized } = loadContent({ run: null, view: "files", review: NO_STOP_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("b");
   await settle();
   assert.deepEqual([jumps, fileJumps, scrolled], [[], [], ["src/api.js"]]);
-  assert.deepEqual(plain([boxes.at(-1), marked.at(-1), emphasized.at(-1)]), [["src/api.js"], 2, ["b"]]);
-  assert.deepEqual([renders.at(-1).state.selectedStop, renders.at(-1).state.stops.map((stop) => stop.chunk)], [null, [1, 3, 1]]);
+  assert.deepEqual(plain([boxes.at(-1), emphasized.at(-1)]), [["src/api.js"], ["b"]]);
+  assert.deepEqual([renders.at(-1).state.selectedStop, renders.at(-1).state.stops.map((stop) => stop.node)], [null, ["a", "c", "a"]]);
 });
 
 test("a box with a stop after a stop-less one clears the current stop only when it has none", async () => {
@@ -799,26 +792,27 @@ test("a box with a stop after a stop-less one clears the current stop only when 
   assert.equal(renders.at(-1).state.selectedStop, 2);
 });
 
-test("a box no chunk lists does nothing", async () => {
+test("a context box, which covers no file, and a box the review does not list do nothing", async () => {
   const { jumps, scrolled, diagramHandlers, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const before = renders.length;
+  diagramHandlers.at(-1).onNode("d");
   diagramHandlers.at(-1).onNode("zzz");
   await settle();
   assert.deepEqual([jumps, scrolled, renders.length], [[], [], before]);
 });
 
-test("the sidebar draws no chunk list or tabs: its state and handlers are the stops and the mode", async () => {
+test("the sidebar's state and handlers are the stops and the mode", async () => {
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onMode", "onSelectStop"]);
 });
 
-test("the saved state keeps no tab, and an old tab in storage is ignored", async () => {
-  const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "review", tab: "chunks", selectedN: 3, selectedStop: 2, variant: "v23" }) };
-  const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
+test("a saved box that the run no longer has is ignored, and the saved state keeps no tab", async () => {
+  const stored = { "prFocus:acme/widgets#7": JSON.stringify({ mode: "review", tab: "chunks", selectedNode: "gone", selectedStop: 2, variant: "v24" }) };
+  const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored });
   await settle();
+  assert.equal(emphasized.at(-1), null);
   await renders.at(-1).handlers.onSelectStop(1);
-  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedN: 1, selectedStop: 1, variant: "v23" });
+  assert.deepEqual(JSON.parse(stored["prFocus:acme/widgets#7"]), { mode: "review", selectedNode: "a", selectedStop: 1, variant: "v24" });
 });
-

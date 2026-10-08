@@ -1,7 +1,3 @@
-.prf-chunk-mark {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--prf-guide) 40%, transparent);
-}
-
 .prf-box-active {
   box-shadow: inset 3px 0 0 #534ab7 !important;
 }
@@ -22,7 +18,7 @@
   }
 }
 
-/* The purple of the guide layer, the same as the diagram's selected-chunk outline. */
+/* The purple of the guide layer, the same as the diagram's selected-box outline. */
 :root {
   --prf-guide: #534ab7;
   --prf-guide-soft: color-mix(in srgb, var(--prf-guide) 45%, transparent);

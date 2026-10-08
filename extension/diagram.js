@@ -198,7 +198,7 @@
     return ring;
   }
 
-  // null restores; an empty list dims the whole diagram a little, for a chunk that isn't on it. Otherwise the listed
+  // null restores; an empty list dims the whole diagram a little. Otherwise the listed
   // boxes are marked and ringed with a halo, and so is every edge with an end on one of them, which also points with
   // an accent arrowhead. Nothing else changes.
   function applyEmphasis(card, found, ids) {
@@ -239,7 +239,7 @@
   let emphasis = null;
   let canvas = null;
   let panelWidth = DEFAULT_WIDTH;
-  let legend = [];
+  let caption = "";
 
   // The remembered width is read once when the script loads, so it is usually known before the first render.
   function readStoredWidth() {
@@ -296,76 +296,15 @@
   }
 
   const SHAPES = "rect, polygon, path, circle, ellipse";
-  const LEGEND_LABELS = {
-    verify: "Verify",
-    read: "Read",
-    skim: "Skim",
-    save: "Writes data",
-    context: "Unchanged context",
-    selected: "Selected chunk",
-  };
+  const CONTEXT_CAPTION = "Dashed boxes are unchanged context";
 
-  // The legend entries a diagram needs, given how many boxes of each style it has: only the styles it uses, plus
-  // the extension's own "selected chunk" state.
-  function legendKinds({ save, context, verify, read, skim }) {
-    return [
-      ...(verify > 0 ? ["verify"] : []),
-      ...(read > 0 ? ["read"] : []),
-      ...(skim > 0 ? ["skim"] : []),
-      ...(save > 0 ? ["save"] : []),
-      ...(context > 0 ? ["context"] : []),
-      "selected",
-    ];
+  // The line under the diagram explaining its dashed boxes; empty when the diagram has none.
+  function captionFor(svg) {
+    return svg.querySelector("g.node.context") ? CONTEXT_CAPTION : "";
   }
 
-  // The look of one kind of box as the page draws it, read from a throwaway copy of the diagram so the live
-  // boxes' emphasis doesn't leak into the swatch.
-  function sampleSwatches(svg) {
-    const measure = make("div", "prd-card prd-measure");
-    const copy = svg.cloneNode(true);
-    for (const element of copy.querySelectorAll(".prd-on")) element.classList.remove("prd-on");
-    for (const ring of copy.querySelectorAll(".prd-halo")) ring.remove();
-    measure.append(copy);
-    document.body.append(measure);
-    const look = (selector) => {
-      const shape = copy.querySelector(`${selector} > :is(${SHAPES})`);
-      if (!shape) return null;
-      const style = getComputedStyle(shape);
-      return { fill: style.fill, stroke: style.stroke, width: parseFloat(style.strokeWidth), dashed: style.strokeDasharray !== "none" };
-    };
-    const swatches = {
-      verify: look("g.node.lv-verify"),
-      read: look("g.node.lv-read"),
-      skim: look("g.node.lv-skim"),
-      save: look("g.node.save"),
-      context: look("g.node.context"),
-    };
-    const counts = {
-      verify: copy.querySelectorAll("g.node.lv-verify").length,
-      read: copy.querySelectorAll("g.node.lv-read").length,
-      skim: copy.querySelectorAll("g.node.lv-skim").length,
-      save: copy.querySelectorAll("g.node.save").length,
-      context: copy.querySelectorAll("g.node.context").length,
-    };
-    measure.remove();
-    return legendKinds(counts).map((kind) => ({ kind, label: LEGEND_LABELS[kind], look: swatches[kind] ?? null }));
-  }
-
-  function buildLegend(entries) {
-    const list = make("ul", "prd-legend");
-    for (const { kind, label, look } of entries) {
-      const item = make("li", undefined, label);
-      const swatch = make("span", `prd-swatch prd-swatch-${kind}`);
-      if (look) {
-        swatch.style.background = look.fill;
-        swatch.style.borderColor = look.stroke;
-        swatch.style.borderStyle = look.dashed ? "dashed" : "solid";
-        if (look.width > 0) swatch.style.borderWidth = `${look.width}px`;
-      }
-      item.prepend(swatch);
-      list.append(item);
-    }
-    return list;
+  function buildCaption(text) {
+    return make("p", "prd-caption", text);
   }
 
   function readCollapsed() {
@@ -655,7 +594,7 @@
     zoom.fit.addEventListener("click", () => canvas.fit());
     zoom.reset.addEventListener("click", resetAction(() => canvas, handlers));
     panel.classList.toggle("prd-collapsed", collapsed);
-    panel.append(resizeHandle(panel), header, cardElement, buildLegend(legend));
+    panel.append(resizeHandle(panel), header, cardElement, ...(caption ? [buildCaption(caption)] : []));
     setWidth(panel, panelWidth);
     return panel;
   }
@@ -671,7 +610,7 @@
       if (!svg) return;
       canvas?.destroy();
       root?.remove();
-      legend = sampleSwatches(svg);
+      caption = captionFor(svg);
       root = build(svg, handlers, readCollapsed());
       card = root.querySelector(".prd-card");
       found = index(svg);
@@ -716,7 +655,7 @@
 
   readStoredWidth();
 
-  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, captionFor, clampScale, contentSize, fitView, zoomAround, stepScale, clampView, centerView, followView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

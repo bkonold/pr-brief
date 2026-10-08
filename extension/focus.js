@@ -11,10 +11,8 @@
 
   const ACTIVE = "prf-box-active";
   const FLASH = "prf-box-flash";
-  const CHUNK = "prf-chunk-mark";
 
   let boxGeneration = 0;
-  let chunkGeneration = 0;
   let announceGeneration = 0;
 
   function reducedMotion() {
@@ -40,19 +38,6 @@
     for (const header of headers) header.classList.add(ACTIVE);
   }
 
-  // Tints the headers of the chunk's files with a quiet accent stripe and takes it off every other header. A null
-  // chunk takes it off all of them. No diff is hidden: the stripe only shows where the chunk's files are. GitHub
-  // re-renders diffs, so this is re-applied on each refresh.
-  async function markChunk(chunk) {
-    const mine = ++chunkGeneration;
-    const headers = new Set(chunk ? await headersOf(chunk.files.map(({ path }) => path)) : []);
-    if (mine !== chunkGeneration || !ns.alive?.()) return;
-    for (const header of document.querySelectorAll(`.${CHUNK}`)) {
-      if (!headers.has(header)) header.classList.remove(CHUNK);
-    }
-    for (const header of headers) header.classList.add(CHUNK);
-  }
-
   function flash(header) {
     header.classList.remove(FLASH);
     void header.offsetWidth;
@@ -75,7 +60,7 @@
     for (const header of document.querySelectorAll(`.${ACTIVE}, .${FLASH}`)) header.classList.remove(ACTIVE, FLASH);
   }
 
-  ns.focus = { scrollTo, markBox, markChunk, announceBox, clearBox };
+  ns.focus = { scrollTo, markBox, announceBox, clearBox };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.focus;

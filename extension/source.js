@@ -22,8 +22,7 @@
     }
   }
 
-  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg, chunks, headSha } (`chunks` being each chunk's
-  // n, name, review and step from review.json), or null when the PR has no run or
+  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg, headSha }, or null when the PR has no run or
   // the page server is down.
   async function loadBrief(owner, repo, pr, key = String(pr)) {
     if (!alive()) return null;

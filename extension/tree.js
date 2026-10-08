@@ -2,22 +2,12 @@
   const ns = (globalThis.prFocus ??= {});
   const ROOT_ID = "pr-focus-tree";
   const HOST_HIDDEN = "prf-tree-hidden";
-  const UNCHUNKED = "Unchunked";
   const SHORT_SHA = 7;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const LIST_TREE_ICON = "M2.5 3h11M5.5 8h8M5.5 13h8M3 3.5v9.5M3 8h2.5M3 13h2.5";
   const FOLDER_ICON = "M1.75 3.5h4.25l1.5 1.75h6.75v7.5h-12.5z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
-  // The first chunk, in review.json's order, that lists the diagram box `nodeId`; null when none does.
-  function chunkOfNode(chunks, nodeId) {
-    return chunks.find((chunk) => chunk.nodes?.includes(nodeId)) ?? null;
-  }
-
-  function chunkByNumber(chunks, n) {
-    return chunks.find((chunk) => chunk.n === n) ?? null;
-  }
-
   function staleMessage(review, pageSha) {
     if (!review.head_sha || !pageSha || review.head_sha.toLowerCase() === pageSha.toLowerCase()) return null;
     return `Review was generated for ${review.head_sha.slice(0, SHORT_SHA)}; the PR has newer commits. Focus still works by path.`;
@@ -64,11 +54,6 @@
     return review.walkthrough;
   }
 
-  // The first stop that lies in chunk `n`; null when the walkthrough never stops there.
-  function firstStopOf(stops, n) {
-    return stops.find((stop) => stop.chunk === n) ?? null;
-  }
-
   // Keeps an empty slot of the callout's nav column in the layout so the other slot stays where it is, while the slot
   // can't be seen, focused, clicked or announced. `control` is the button inside it, when the slot is not itself one.
   function inertSlot(slot, control = slot) {
@@ -79,16 +64,17 @@
   }
 
   // The card shown above a stop's line, or above its file's header, in the diff: which stop of how many this is, the
-  // chunk it lies in and its title, why to stop here, and, in a column beside them, buttons to the previous and the next
-  // stop, each in a slot that is kept, hidden, when there is no such stop. `onGo(stop)` opens a stop; `chunks` names the chunk a stop lies in.
-  function stopCallout(stop, stops, onGo, chunks = []) {
+  // diagram box it belongs to and its title, why to stop here, and, in a column beside them, buttons to the previous and
+  // the next stop, each in a slot that is kept, hidden, when there is no such stop. `onGo(stop)` opens a stop; `nodes`
+  // is review.json's `nodes`, which names the box a stop belongs to.
+  function stopCallout(stop, stops, onGo, nodes = {}) {
     const card = make("div", "prf-callout");
     const main = make("div", "prf-callout-main");
     const head = make("div", "prf-callout-head");
     head.append(outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"));
-    const chunk = chunkByNumber(chunks, stop.chunk);
+    const box = nodes[stop.node];
     head.append(
-      make("strong", "prf-callout-chunk", `Stop ${stop.i} of ${stops.length}${chunk ? ` · ${chunk.n} ${chunk.name}` : ""}`),
+      make("strong", "prf-callout-where", `Stop ${stop.i} of ${stops.length}${box ? ` · ${box.title}` : ""}`),
       outlineIcon(CHEVRON_ICON, 14, "prf-callout-sep"),
       make("span", "prf-callout-name", stop.title),
     );
@@ -130,20 +116,14 @@
     return element;
   }
 
-  // What names the chunk a stop lies in: its step word, else its name; empty for a stop in no chunk.
-  function stopChunkWord(review, stop) {
-    const chunk = chunkByNumber(review.chunks, stop.chunk);
-    return chunk ? chunk.step || chunk.name : "";
-  }
-
-  // One row per stop: its number, its title and the chunk it lies in. The current stop is marked.
-  function stopRow(review, stop, state, handlers) {
+  // One row per stop: its number and its title. The current stop is marked.
+  function stopRow(stop, state, handlers) {
     const current = stop.i === state.selectedStop;
     const main = button("prf-head-main", undefined, () => handlers.onSelectStop(stop.i));
     if (current) main.setAttribute("aria-current", "step");
     const title = make("span", "prf-title");
     title.append(make("span", "prf-name", stop.title));
-    main.append(make("span", "prf-num", String(stop.i)), title, make("span", "prf-level", stopChunkWord(review, stop)));
+    main.append(make("span", "prf-num", String(stop.i)), title);
     const header = make("div", "prf-head");
     header.append(main);
     const element = make("section", "prf-group prf-stop");
@@ -153,10 +133,10 @@
     return element;
   }
 
-  function stopList(review, state, handlers) {
+  function stopList(state, handlers) {
     const list = make("div", "prf-groups");
     if (state.stops.length === 0) list.append(make("p", "prf-banner", "This run has no stops to walk through."));
-    for (const stop of state.stops) list.append(stopRow(review, stop, state, handlers));
+    for (const stop of state.stops) list.append(stopRow(stop, state, handlers));
     return list;
   }
 
@@ -189,7 +169,7 @@
     if (stale) root.append(make("p", "prf-banner", stale));
     if (state.note) root.append(make("p", "prf-banner", state.note));
     if (reviewMode) {
-      root.append(stopList(review, state, handlers));
+      root.append(stopList(state, handlers));
       root.querySelector(".prf-groups").scrollTop = scrolled;
     }
   }
@@ -279,7 +259,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, stopsOf, firstStopOf, stopCallout, bar, stopList, remove, owns, chunkOfNode, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, stopsOf, stopCallout, bar, stopList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

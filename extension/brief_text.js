@@ -21,12 +21,14 @@
     }
   }
 
+  const CAPTION = /^Dashed boxes are unchanged context$/;
+
   function escapeText(text) {
     return text.replace(/&(?!#?\w+;)/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  // Inline markdown: code spans, bold, italics and links. Tags written inline (the legend's swatches) pass through
-  // for sanitize to judge; every other `<` is text.
+  // Inline markdown: code spans, bold, italics and links. Tags written inline pass through for sanitize to judge;
+  // every other `<` is text.
   function inline(text) {
     return text
       .split(/(`[^`]+`)/)
@@ -65,13 +67,13 @@
 
   // Renders the markdown render.py writes: headings, rules, nested lists, pipe tables, paragraphs, fenced code and raw
   // HTML blocks. The title heading and the "Diagram Walkthrough" section's heading and mermaid fence are left out (the
-  // page shows the title and the card shows the rendered diagram); the paragraph after them that starts with
-  // "Legend:" is returned apart so it can sit under the diagram.
+  // page shows the title and the card shows the rendered diagram); the paragraph after them that says the diagram's
+  // dashed boxes are unchanged context is returned apart as `caption` so it can sit under the diagram.
   function renderMarkdown(md) {
     const lines = md.replace(/\r\n?/g, "\n").split("\n");
     const out = [];
     const lists = [];
-    let legend = "";
+    let caption = "";
     let paragraph = [];
 
     function closeLists(toIndent = -1) {
@@ -84,7 +86,7 @@
     function flushParagraph() {
       if (!paragraph.length) return;
       const html = inline(paragraph.join("\n"));
-      if (/^Legend:/.test(paragraph[0].trim())) legend = html;
+      if (CAPTION.test(paragraph.join(" ").trim())) caption = html;
       else out.push(`<p>${html}</p>`);
       paragraph = [];
     }
@@ -168,7 +170,7 @@
     }
     flushParagraph();
     closeLists();
-    return { html: out.join("\n"), legend };
+    return { html: out.join("\n"), caption };
   }
 
   // ---- sanitizing
@@ -286,13 +288,13 @@
     return match ? match[1] : bodyHtml;
   }
 
-  // The HTML of the card's text for a run's body.html: `html` is the description, `legend`
-  // the diagram's legend (empty when there is none). A body.html with no markdown string is used as written.
+  // The HTML of the card's text for a run's body.html: `html` is the description, `caption`
+  // the line under the diagram (empty when there is none). A body.html with no markdown string is used as written.
   function renderBody(bodyHtml, filesUrl) {
     const md = extractMarkdown(bodyHtml);
-    const rendered = md === null ? { html: bodyOf(bodyHtml), legend: "" } : renderMarkdown(md);
+    const rendered = md === null ? { html: bodyOf(bodyHtml), caption: "" } : renderMarkdown(md);
     const finish = (html) => rewriteLinks(sanitize(html), filesUrl);
-    return { html: finish(rendered.html), legend: finish(rendered.legend) };
+    return { html: finish(rendered.html), caption: finish(rendered.caption) };
   }
 
   ns.briefText = { extractMarkdown, renderMarkdown, sanitize, rewriteLinks, renderBody };

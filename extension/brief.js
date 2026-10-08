@@ -95,7 +95,7 @@
     .diagram { margin: 8px 0 0; }
     .paper { padding: 8px; overflow: auto; color: #1f2328; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; }
     .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
-    .legend { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+    .caption { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
     .pill.p0 { font-weight: 600; color: var(--surface); background: var(--fg); border-color: var(--fg); }
     .pill.p1 { font-weight: 600; color: var(--fg); border-color: var(--fg); }
     .text details { margin: 0 0 6px; }
@@ -167,10 +167,10 @@
     if (view.kind === "error") {
       return bar(`${badge(key, null, "local, not posted")}<button class="btn" type="button" data-action="generate">Retry</button>`) + `<p class="error" role="alert">${formatMessage(view.message)}</p></div>`;
     }
-    const { html, legend } = ns.briefText.renderBody(view.bodyHtml, filesUrl);
+    const { html, caption } = ns.briefText.renderBody(view.bodyHtml, filesUrl);
     const svg = /^\s*<svg[\s>]/.test(view.diagramSvg ?? "") ? ns.briefText.sanitize(view.diagramSvg, "svg") : "";
     const diagram = svg
-      ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${legend ? `<p class="legend">${legend}</p>` : ""}</figure></details>`
+      ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${caption ? `<p class="caption">${caption}</p>` : ""}</figure></details>`
       : "";
     const stale = isStale(view.runSha, view.pageSha);
     const label = stale ? `for ${short(view.runSha)}, PR is at ${short(view.pageSha)}` : "local, not posted";

@@ -201,13 +201,6 @@
   overflow-wrap: anywhere;
 }
 
-.prf-level {
-  flex: none;
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--fgColor-muted, #59636e);
-}
-
 .prf-callout {
   box-sizing: border-box;
   display: flex;
@@ -252,7 +245,7 @@
   stroke-width: 2;
 }
 
-.prf-callout-chunk {
+.prf-callout-where {
   font-weight: 600;
   color: var(--fgColor-default, #1f2328);
 }

@@ -23,7 +23,7 @@ function namesPr(review, owner, repo, pr) {
 
 // A review.json this version writes: the current schema, with the walkthrough the pane lists.
 function isCurrentRun(review) {
-  return review.schema === 3 && Array.isArray(review.chunks) && Array.isArray(review.walkthrough);
+  return review.schema === 4 && review.nodes !== null && typeof review.nodes === "object" && Array.isArray(review.walkthrough);
 }
 
 // A text file of a run, or null when it can't be read.

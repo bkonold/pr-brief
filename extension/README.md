@@ -1,30 +1,30 @@
 # Review focus extension
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
-(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 3,
-variant v23) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 4,
+variant v24) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
 where it describes the page, and the Forgejo selectors are in their own table at the end.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
 - A toggle, "By review" / "GitHub tree". "GitHub tree" brings GitHub's own tree back; the toggle stays so you can
-  switch again. No mode, chunk or stop ever hides a diff: every file's diff is always in the page, so the host's find
-  and page-down work across chunks.
-- Under the toggle in "By review" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs and no
-  chunk list. The chunks stay in `review.json` and drive the diagram's boxes and halo, the marked diff headers and the
-  chunk named in each stop's row and callout.
+  switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
+  and page-down work across the whole change.
+- Under the toggle in "By review" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
+  diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout.
 
 ## The walkthrough
 
 `review.json`'s `walkthrough` is an ordered list of stops, each `{i, title, why, path, side, line,
-chunk}`: the model's reading order through the change, which can cross chunks and come back to one. `line` is null for a
-stop that names only a file. `chunk` is the chunk whose files hold the stop's file, or null for a file no chunk lists.
-A run that is not schema 3 with a `walkthrough` (made by an earlier variant) is not shown: see "Older runs".
+node}`: the model's reading order through the change, which can return to a box it has visited. `line` is null for a
+stop that names only a file. `node` is the id of the diagram box the stop belongs to, or null when no box holds the
+stop's file. `nodes` is an object from box id to `{title, files, stops}`, the box's title, the paths it covers and the
+numbers of the stops that land on it. A run that is not schema 4 with `nodes` and a `walkthrough` (made by an earlier
+variant) is not shown: see "Older runs".
 
-- The list has one row per stop: its number, its title and, right-aligned, its chunk's step word (else its name). The
-  current stop is highlighted and scrolled into view. A row goes to its stop: it marks the stop's chunk and its files in
-  the diff, makes the stop's file the active one, and jumps to the stop's line and centres it, or, for a stop with no line,
-  scrolls to the file's callout above its header. The diagram follows the stop's chunk: its box takes the halo and the
+- The list has one row per stop: its number and its title. The current stop is highlighted and scrolled into view. A
+  row goes to its stop: it makes the stop's file the active one, and jumps to the stop's line and centres it, or, for a stop with no line,
+  scrolls to the file's callout above its header. The diagram follows the stop: its box takes the halo and the
   canvas centres on it. GitHub renders a diff's rows only once the diff is near the window, so the jump scrolls to the
   file's diff, waits up to 10 seconds for the row, then centres it, measuring the row again after each scroll and
   nudging until it sits mid-window; on a timeout the view stays at the file's header. Opening the files page on a link to
@@ -33,8 +33,8 @@ A run that is not schema 3 with a `walkthrough` (made by an earlier variant) is 
   the review shows and as GitHub or Forgejo load more of the diff, in both unified and split views. It is a full-width
   table row holding a neutral card (the host's muted surface, a 1px purple border, rounded, from the file pane's left
   edge, in 14px text, as wide as its left column plus a 24px gap plus its nav column, and never wider than the diff
-  column) in two columns. The left column has a route icon and a header in bold default text, `Stop <i> of <n> · <chunk
-  number> <chunk name>` (without the chunk part for a stop in no chunk), a small muted chevron, then the stop's title in
+  column) in two columns. The left column has a route icon and a header in bold default text, `Stop <i> of <n> · <box
+  title>` (without the box part for a stop on no box), a small muted chevron, then the stop's title in
   normal weight, and then on its own line a small muted "Why stop here" over the stop's `why`, wrapping within the
   header's width. The right column is top-aligned with the header and right-aligned, with no divider before it, and always has two
   slots: a "↑ Previous" button (its tooltip is the previous stop's title) over a row of the muted "Next" caption and a
@@ -59,8 +59,8 @@ A run that is not schema 3 with a `walkthrough` (made by an earlier variant) is 
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-The mode, selected chunk and current stop are remembered per PR in `sessionStorage`. The chunk and the stop come back
-only for the variant they were chosen in.
+The mode, selected box and current stop are remembered per PR in `sessionStorage`. The box and the stop come back
+only for the variant they were chosen in, and a saved box the run no longer has is dropped.
 
 ## When the page server is down
 
@@ -80,10 +80,10 @@ control; the PR brief card on the conversation page names the variant it shows.
 
 ## Boxes and files
 
-Clicking a diagram box goes to the first stop of the first chunk, in `review.json`'s order, whose `nodes` include it. A
-chunk the walkthrough never stops at is marked in the diff and scrolled to its first file's header, which becomes the
-active file with a 3px accent bar, and no stop is current. The box takes no stroke, tint or pulse of its own beyond the
-chunk's halo. A box no chunk lists, and a context box (dashed, default cursor), do nothing when clicked.
+Clicking a diagram box goes to the first stop on that box (the first of its `stops`). A box with files and no stop is
+scrolled to its first file's header, which becomes the active file with a 3px accent bar, and no stop is current. The
+box takes no stroke, tint or pulse of its own beyond the halo. A context box (dashed, default cursor, covering no file)
+and an id the review does not list do nothing when clicked.
 
 The active file clears when another box or stop is used or the mode toggle is. A landing on a file's header puts it just
 below GitHub's sticky chrome (the offset is measured when the click happens, as the lowest stuck edge of the page's
@@ -103,34 +103,30 @@ that expands it.
 
 - Motion: the line jump scrolls smoothly (a target more than 1.5 windows away is first approached instantly to one window
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
-  250ms. The emphasized box gets a halo in `#534ab7` (`#b26a00` on save boxes) and keeps its own stroke and fill. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
+  250ms. The emphasized box gets a halo in `#534ab7` and keeps its own stroke and fill. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
   the viewport, 280px by default (double-click the handle to reset), and is remembered in `chrome.storage.local`.
-- Each box shows `<n> · title` in bold at its top left, its effort level as a small secondary word at its
-  top right and its chips along the bottom (the effort level and check chips), and its border follows the level: `verify`
-  2px in the text colour, `read` 1px, `skim` dashed and muted. 
-- A legend under the card lists only the styles the SVG uses (verify, read, skim, writes data,
-  unchanged context), each swatch coloured from the page's computed style of a real box, plus "Selected chunk" (the
-  halo).
-- Selecting a chunk (a stop or a box click) highlights its `nodes` and dims nothing. Each highlighted
-  box keeps its own stroke and fill and gains a halo: a 5px ring in the accent colour at 30% opacity, 6px outside the
-  box (amber on save boxes). Every edge with an end on a highlighted box, incoming or outgoing and dashed return edges
-  included, is drawn 2px in the accent colour with an accent arrowhead. The halo is not part of the box's bounds, so
-  centring and following measure the box itself. A chunk with no nodes dims the whole
-  diagram slightly. "GitHub tree" mode or no selection restores it.
-- Clicking a box selects its chunk and goes to its first stop (see "Boxes and files").
+- Each box shows the numbers of the stops that land on it as a purple badge (`2 · 5`) before its bold title, and a
+  box with no stop has no badge. A box covering no changed file is dashed and muted. When the diagram has one, a line
+  under the card reads "Dashed boxes are unchanged context".
+- Focusing a stop highlights its box and dims nothing. The box keeps its own stroke and fill and gains a halo: a 5px
+  ring in the accent colour at 30% opacity, 6px outside the box. Every edge with an end on the highlighted box, incoming
+  or outgoing and dashed return edges included, is drawn 2px in the accent colour with an accent arrowhead. The halo is
+  not part of the box's bounds, so centring and following measure the box itself. A selection with no box leaves the
+  diagram as it was; "GitHub tree" mode or no selection restores it.
+- Clicking a box goes to its first stop (see "Boxes and files").
 - The diagram is a pan-and-zoom canvas whose zoom is independent of the panel's width. Any scroll wheel or trackpad
   scroll over the canvas zooms around the pointer (25% to 400%), as does a pinch (Chrome reports a trackpad pinch as
   Ctrl + wheel); the page does not scroll while the pointer is over the canvas. Pressing and dragging anywhere on
   the canvas pans it; a drag that starts on a box pans once it moves more than 4px, and a shorter press is a box click.
-  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no chunk or stop selected, no chunk marked, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
-  a chunk, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas, over about 200ms (at once under reduced motion). The chunk's box, or the bounding box of its
-  boxes, is centred horizontally at the current zoom. Vertically the canvas moves only as far as it takes to keep the boxes
-  one solid arrow before and after the chunk's boxes in view (inside the fit margin), and not at all when they already are;
+  The header has −, the current zoom (click it for 100%), +, Fit and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop callout highlighted, the saved selection cleared, GitHub's tree swapped back out for the review list, and the canvas fitted to the pane. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge reaches the middle of the canvas. Focusing
+  a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas, over about 200ms (at once under reduced motion). The stop's box
+  is centred horizontally at the current zoom. Vertically the canvas moves only as far as it takes to keep the boxes
+  one solid arrow before and after the box in view (inside the fit margin), and not at all when they already are;
   a dotted arrow, which returns to an earlier box, joins nothing, and a box with no arrows (the "Also in this PR" boxes) has
-  no neighbours. When the boxes and their neighbours are taller than the pane, the chunk's boxes are centred vertically
-  instead. A box larger than the pane zooms out just enough to fit with the fit margin. A chunk with no box leaves the canvas
-  where it is, and a collapsed panel moves to the focused chunk when it is expanded again. Each
+  no neighbours. When the box and its neighbours are taller than the pane, the box is centred vertically
+  instead. A box larger than the pane zooms out just enough to fit with the fit margin. A stop on no box leaves the canvas
+  where it is, and a collapsed panel moves to the focused box when it is expanded again. Each
   new diagram opens fitted; resizing the panel keeps the zoom and position, and a fitted diagram stays fitted. Zoom and
   position are not saved.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.
@@ -170,7 +166,7 @@ a one-second clock between polls and reports to the page. The card and the files
 
 ## Older runs
 
-A run whose `review.json` names this PR but is not schema 3 with `chunks` and a `walkthrough` was made by an earlier
+A run whose `review.json` names this PR but is not schema 4 with `nodes` and a `walkthrough` was made by an earlier
 variant. `background.js` answers it with `{error: "old"}` and the files view shows one line, "This brief predates v1;
 re-run it.", with a "Re-run" button that starts a run with the server's `default_variant` like "Generate brief". Nothing
 else of the old run is shown.
@@ -188,20 +184,20 @@ the page's data, and its header links to the files view. Without a run it is the
   script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
   `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
-  description's bullets, with the legend under it, on a white panel in both themes. The
+  description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - The brief's "Contract" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
   in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is
   collapsed. Opened it is one table of every line (Contract: Impact, Side, Change, On, ↗; Data: Impact, Change, Table,
-  ↗), with no grouping by chunk. The body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its
+  ↗), for the whole PR. The body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its
   own container, and a name cut in the middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's
   files view like the others. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a
   filled chip, the second a bold outlined one and the rest outlined, drawn by the card's own style. The brief has no
-  review-order table; the files view lists the chunks and stops.
+  review-order table; the files view lists the stops.
 - Links into the PR's files view are rewritten to this host's files view, fragment kept. When the files page loads with a
   fragment that is a stop's anchor, `content.js` goes to that stop; any other fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,
-  the way it fetches `review.json` (and the run's `head_sha`, and each chunk's `n`, `name`, `review` and `step`). With no run, or the page server down, the card is the
+  the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the
   "Generate brief" bar, except where the server says it will not run the PR's repository: then nothing is mounted.
 - The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
   back above the description; `onNavigate` mounts it again after client-side navigation, and one card exists at a time.
@@ -234,12 +230,12 @@ Run the pure tests with `node --test test/*.test.js`.
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
-| `focus.js` | Marks the focused chunk's file headers and the active file's, and scrolls to a diff. It hides nothing |
+| `focus.js` | Marks the active file's header, and scrolls to a diff. It hides nothing |
 | `tree.js`, `tree.css`, `focus.css` | The stop list, the stop callout card with its previous and next stop, and the classes `focus.js` and the line jump toggle |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
-| `diagram.js`, `diagram.css` | The diagram panel, its overlay and chunk emphasis |
+| `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
 | `source.js` | Content-script side of the fetch |
 | `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
 | `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |

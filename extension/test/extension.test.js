@@ -7,8 +7,8 @@ const githubPage = require("../github_page.js");
 const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, centeringDelta, correctLanding } = githubPage;
-const { staleMessage, chunkOfNode, revealTarget } = require("../tree.js");
-const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, legendKinds } = require("../diagram.js");
+const { staleMessage, revealTarget } = require("../tree.js");
+const { nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, captionFor } = require("../diagram.js");
 
 test("prFromUrl matches the changes and files pages", () => {
   const expected = { owner: "example-org", repo: "example-repo", pr: 42, view: "files" };
@@ -176,22 +176,10 @@ test("the switcher lists only variants that are active and present, in the PR's 
   assert.deepEqual(switcherVariants(OLD_AND_NEW, config).map((entry) => entry.variant), ["v15", "v16"]);
 });
 
-const NODE_CHUNKS = [
-  { n: 1, name: "Screen", step: "UI", review: "skim", nodes: ["ui", "shared"] },
-  { n: 2, name: "Endpoint", step: "API", review: "verify", nodes: ["api", "shared"] },
-  { n: 3, name: "Notes", review: "read" },
-];
-
-test("chunkOfNode picks the first chunk in review.json's order that lists the box", () => {
-  assert.equal(chunkOfNode(NODE_CHUNKS, "shared").n, 1);
-  assert.equal(chunkOfNode(NODE_CHUNKS, "api").n, 2);
-  assert.equal(chunkOfNode(NODE_CHUNKS, "missing"), null);
-});
-
-test("legendKinds lists only the styles a diagram uses, then the selection state", () => {
-  assert.deepEqual(legendKinds({ save: 0, context: 0, verify: 0, read: 0, skim: 0 }), ["selected"]);
-  assert.deepEqual(legendKinds({ save: 1, context: 2, verify: 0, read: 0, skim: 0 }), ["save", "context", "selected"]);
-  assert.deepEqual(legendKinds({ save: 1, context: 0, verify: 1, read: 2, skim: 1 }), ["verify", "read", "skim", "save", "selected"]);
+test("captionFor explains the dashed boxes only when the diagram has one", () => {
+  const svgWith = (context) => ({ querySelector: (selector) => (selector === "g.node.context" && context ? {} : null) });
+  assert.equal(captionFor(svgWith(true)), "Dashed boxes are unchanged context");
+  assert.equal(captionFor(svgWith(false)), "");
 });
 
 test("classifyFetch tells a down server from a missing review", async () => {
@@ -419,18 +407,18 @@ test("GitHub's conversation page, which embeds no head sha, asks the run server 
   }
 });
 
-const { stopsOf, firstStopOf, stopCallout } = require("../tree.js");
+const { stopsOf, stopCallout } = require("../tree.js");
 
-const CHUNKS = [
-  { n: 1, name: "Screen", why: "Every user's reports." },
-  { n: 2, name: "Endpoint", why: "w" },
-  { n: 3, name: "Table", why: "w" },
-];
+const NODES = {
+  screen: { title: "Screen", files: ["a.js"], stops: [1, 3] },
+  endpoint: { title: "Endpoint", files: [], stops: [] },
+  table: { title: "Table", files: ["b.js"], stops: [2] },
+};
 
 const STOPS = [
-  { i: 1, title: "List is built", why: "Where the list is built.", path: "a.js", side: "R", line: 4, chunk: 1 },
-  { i: 2, title: "Query filters by owner", why: "Check the owner filter survives.", path: "b.js", side: "R", line: 9, chunk: 3 },
-  { i: 3, title: "Back to the screen", why: "The result renders here.", path: "a.js", side: "R", line: 30, chunk: 1 },
+  { i: 1, title: "List is built", why: "Where the list is built.", path: "a.js", side: "R", line: 4, node: "screen" },
+  { i: 2, title: "Query filters by owner", why: "Check the owner filter survives.", path: "b.js", side: "R", line: 9, node: "table" },
+  { i: 3, title: "Back to the screen", why: "The result renders here.", path: "a.js", side: "R", line: 30, node: "screen" },
 ];
 
 function fakeDom() {
@@ -461,15 +449,15 @@ function fakeDom() {
 const walk = (element) => [element, ...(element.children ?? []).filter((child) => typeof child === "object").flatMap(walk)];
 const byClass = (root, name) => walk(root).filter((element) => element.className.split(" ").includes(name));
 
-test("a stop callout names the stop, its chunk and title, why to stop here, and its previous and next stops, which go", () => {
+test("a stop callout names the stop, its box and title, why to stop here, and its previous and next stops, which go", () => {
   globalThis.document = fakeDom();
   try {
     const gone = [];
-    const card = stopCallout(STOPS[1], STOPS, (stop) => gone.push(stop.i), CHUNKS);
+    const card = stopCallout(STOPS[1], STOPS, (stop) => gone.push(stop.i), NODES);
     const head = byClass(card, "prf-callout-head")[0];
-    assert.deepEqual(head.children.map((child) => child.className), ["prf-callout-icon", "prf-callout-chunk", "prf-callout-sep", "prf-callout-name"]);
+    assert.deepEqual(head.children.map((child) => child.className), ["prf-callout-icon", "prf-callout-where", "prf-callout-sep", "prf-callout-name"]);
     assert.equal(head.children[1].tag, "strong");
-    assert.equal(head.children[1].textContent, "Stop 2 of 3 \u00b7 3 Table");
+    assert.equal(head.children[1].textContent, "Stop 2 of 3 \u00b7 Table");
     assert.equal(head.children[3].textContent, "Query filters by owner");
     assert.equal(byClass(card, "prf-callout-label")[0].textContent, "Why stop here");
     assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Check the owner filter survives.");
@@ -500,7 +488,7 @@ test("the callout keeps a Previous slot over a Next slot on the first, a middle 
   globalThis.document = fakeDom();
   try {
     const gone = [];
-    const shown = STOPS.map((stop) => navSlots(stopCallout(stop, STOPS, (target) => gone.push(target.i), CHUNKS)));
+    const shown = STOPS.map((stop) => navSlots(stopCallout(stop, STOPS, (target) => gone.push(target.i), NODES)));
     for (const [prevSlot, nextSlot] of shown) {
       assert.deepEqual([prevSlot.classes.includes("prf-callout-prev"), nextSlot.classes.includes("prf-callout-next")], [true, true]);
       assert.equal(nextSlot.caption, "Next");
@@ -523,11 +511,11 @@ test("a hidden slot's placeholder goes nowhere when clicked, and the real button
   globalThis.document = fakeDom();
   try {
     const gone = [];
-    const first = stopCallout(STOPS[0], STOPS, (target) => gone.push(target.i), CHUNKS);
+    const first = stopCallout(STOPS[0], STOPS, (target) => gone.push(target.i), NODES);
     for (const button of walk(first).filter((element) => element.tag === "button")) button.listeners.click();
     assert.deepEqual(gone, [2]);
     gone.length = 0;
-    const last = stopCallout(STOPS[2], STOPS, (target) => gone.push(target.i), CHUNKS);
+    const last = stopCallout(STOPS[2], STOPS, (target) => gone.push(target.i), NODES);
     for (const button of walk(last).filter((element) => element.tag === "button")) button.listeners.click();
     assert.deepEqual(gone, [2]);
   } finally {
@@ -539,7 +527,7 @@ test("a single stop has two hidden slots and keeps the column", () => {
   globalThis.document = fakeDom();
   try {
     const only = [STOPS[0]];
-    const [prevSlot, nextSlot] = navSlots(stopCallout(only[0], only, () => {}, CHUNKS));
+    const [prevSlot, nextSlot] = navSlots(stopCallout(only[0], only, () => {}, NODES));
     assert.deepEqual([prevSlot.hidden, nextSlot.hidden, prevSlot.ariaHidden, nextSlot.ariaHidden], [true, true, "true", "true"]);
     assert.deepEqual([prevSlot.buttons[0].text, nextSlot.caption], ["\u2191 Previous", "Next"]);
   } finally {
@@ -547,11 +535,11 @@ test("a single stop has two hidden slots and keeps the column", () => {
   }
 });
 
-test("a stop with no chunk or no reason leaves the chunk and the reason out of its callout", () => {
+test("a stop on no box or with no reason leaves the box and the reason out of its callout", () => {
   globalThis.document = fakeDom();
   try {
-    const card = stopCallout({ ...STOPS[0], chunk: null, why: "" }, STOPS, () => {}, CHUNKS);
-    assert.equal(byClass(card, "prf-callout-chunk")[0].textContent, "Stop 1 of 3");
+    const card = stopCallout({ ...STOPS[0], node: null, why: "" }, STOPS, () => {}, NODES);
+    assert.equal(byClass(card, "prf-callout-where")[0].textContent, "Stop 1 of 3");
     assert.deepEqual(byClass(card, "prf-callout-reason"), []);
     assert.deepEqual(byClass(card, "prf-callout-label"), []);
   } finally {
@@ -560,37 +548,26 @@ test("a stop with no chunk or no reason leaves the chunk and the reason out of i
 });
 
 test("a run shows its walkthrough's stops as given, even when there are none", () => {
-  assert.deepEqual(stopsOf({ chunks: CHUNKS, walkthrough: STOPS }), STOPS);
-  assert.deepEqual(stopsOf({ chunks: CHUNKS, walkthrough: [] }), []);
+  assert.deepEqual(stopsOf({ nodes: NODES, walkthrough: STOPS }), STOPS);
+  assert.deepEqual(stopsOf({ nodes: NODES, walkthrough: [] }), []);
 });
-
-test("firstStopOf finds the first stop in a chunk, and null for a chunk the walkthrough skips", () => {
-  assert.equal(firstStopOf(STOPS, 1).i, 1);
-  assert.equal(firstStopOf(STOPS, 3).i, 2);
-  assert.equal(firstStopOf(STOPS, 2), null);
-});
-
-const WALK_CHUNKS = [
-  { n: 1, name: "Screen", step: "UI", review: "read", why: "w", files: [] },
-  { n: 2, name: "Endpoint", review: "verify", why: "w", files: [] },
-];
 
 const WALK_STOPS = [
-  { i: 1, title: "List is built", why: "w", path: "a.js", side: "R", line: 4, chunk: 1 },
-  { i: 2, title: "Query filters", why: "w", path: "b.js", side: "R", line: 9, chunk: 2 },
-  { i: 3, title: "Docs", why: "w", path: "c.md", side: null, line: null, chunk: null },
+  { i: 1, title: "List is built", why: "w", path: "a.js", side: "R", line: 4, node: "screen" },
+  { i: 2, title: "Query filters", why: "w", path: "b.js", side: "R", line: 9, node: "endpoint" },
+  { i: 3, title: "Docs", why: "w", path: "c.md", side: null, line: null, node: null },
 ];
 
-test("a walkthrough row shows the stop's number, its title and its chunk's step word, else its name, and marks the current stop", () => {
+test("a walkthrough row shows the stop's number and its title, and marks the current stop", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const picked = [];
-    const list = stopList({ chunks: WALK_CHUNKS }, { stops: WALK_STOPS, selectedStop: 2 }, { onSelectStop: (i) => picked.push(i) });
+    const list = stopList({ stops: WALK_STOPS, selectedStop: 2 }, { onSelectStop: (i) => picked.push(i) });
     const rows = byClass(list, "prf-stop");
     assert.deepEqual(
-      rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-level")[0].textContent]),
-      [["1", "List is built", "UI"], ["2", "Query filters", "Endpoint"], ["3", "Docs", ""]],
+      rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent]),
+      [["1", "List is built"], ["2", "Query filters"], ["3", "Docs"]],
     );
     assert.deepEqual(rows.map((row) => row.className.split(" ").includes("prf-selected")), [false, true, false]);
     assert.deepEqual(rows.map((row) => byClass(row, "prf-head-main")[0].attributes["aria-current"] ?? null), [null, "step", null]);
@@ -605,7 +582,7 @@ test("a run with no stops says so instead of listing rows", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const list = stopList({ chunks: WALK_CHUNKS }, { stops: [], selectedStop: null }, {});
+    const list = stopList({ stops: [], selectedStop: null }, {});
     assert.deepEqual(byClass(list, "prf-stop"), []);
     assert.match(byClass(list, "prf-banner")[0].textContent, /no stops/);
   } finally {
@@ -899,9 +876,9 @@ function fakeHeader() {
   return { classes, classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } };
 }
 
-test("focus offers no way to hide a diff, and markChunk tints only the chunk's headers without touching any diff", async () => {
+test("focus offers no way to hide a diff, and markBox marks only the active files' headers without touching any diff", async () => {
   const focus = require("../focus.js");
-  assert.deepEqual(Object.keys(focus).sort(), ["announceBox", "clearBox", "markBox", "markChunk", "scrollTo"]);
+  assert.deepEqual(Object.keys(focus).sort(), ["announceBox", "clearBox", "markBox", "scrollTo"]);
   const headers = new Map([["a.js", fakeHeader()], ["b.js", fakeHeader()], ["c.js", fakeHeader()]]);
   const saved = { document: globalThis.document, page: globalThis.prFocus.page, alive: globalThis.prFocus.alive };
   globalThis.prFocus.alive = () => true;
@@ -911,14 +888,14 @@ test("focus offers no way to hide a diff, and markChunk tints only the chunk's h
     entryOf: () => null,
     fileHeaderOf: (entry) => headers.get(entry) ?? null,
   };
-  globalThis.document = { querySelectorAll: () => [...headers.values()].filter((header) => header.classes.has("prf-chunk-mark")) };
+  globalThis.document = { querySelectorAll: () => [...headers.values()].filter((header) => header.classes.has("prf-box-active")) };
   try {
-    const marked = () => [...headers].filter(([, header]) => header.classes.has("prf-chunk-mark")).map(([path]) => path);
-    await focus.markChunk({ files: [{ path: "a.js" }, { path: "b.js" }] });
+    const marked = () => [...headers].filter(([, header]) => header.classes.has("prf-box-active")).map(([path]) => path);
+    await focus.markBox(["a.js", "b.js"]);
     assert.deepEqual(marked(), ["a.js", "b.js"]);
-    await focus.markChunk({ files: [{ path: "b.js" }, { path: "c.js" }, { path: "not-loaded.js" }] });
+    await focus.markBox(["b.js", "c.js", "not-loaded.js"]);
     assert.deepEqual(marked(), ["b.js", "c.js"]);
-    await focus.markChunk(null);
+    await focus.markBox([]);
     assert.deepEqual(marked(), []);
   } finally {
     globalThis.document = saved.document;
@@ -928,7 +905,7 @@ test("focus offers no way to hide a diff, and markChunk tints only the chunk's h
   }
 });
 
-test("a newer markChunk wins over an older one that is still looking for its headers", async () => {
+test("a newer markBox wins over an older one that is still looking for its headers", async () => {
   const focus = require("../focus.js");
   const headers = new Map([["a.js", fakeHeader()], ["b.js", fakeHeader()]]);
   const saved = { document: globalThis.document, page: globalThis.prFocus.page, alive: globalThis.prFocus.alive };
@@ -940,15 +917,15 @@ test("a newer markChunk wins over an older one that is still looking for its hea
     entryOf: () => null,
     fileHeaderOf: (entry) => headers.get(entry),
   };
-  globalThis.document = { querySelectorAll: () => [...headers.values()].filter((header) => header.classes.has("prf-chunk-mark")) };
+  globalThis.document = { querySelectorAll: () => [...headers.values()].filter((header) => header.classes.has("prf-box-active")) };
   try {
-    const older = focus.markChunk({ files: [{ path: "a.js" }] });
-    const newer = focus.markChunk({ files: [{ path: "b.js" }] });
+    const older = focus.markBox(["a.js"]);
+    const newer = focus.markBox(["b.js"]);
     gates.get("b.js")();
     await newer;
     gates.get("a.js")();
     await older;
-    assert.deepEqual([...headers].filter(([, header]) => header.classes.has("prf-chunk-mark")).map(([path]) => path), ["b.js"]);
+    assert.deepEqual([...headers].filter(([, header]) => header.classes.has("prf-box-active")).map(([path]) => path), ["b.js"]);
   } finally {
     globalThis.document = saved.document;
     globalThis.prFocus.page = saved.page;

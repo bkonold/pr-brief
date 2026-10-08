@@ -108,7 +108,7 @@
     try {
       sessionStorage.setItem(
         storageKey(session.pr),
-        JSON.stringify({ mode: session.mode, selectedN: session.selectedN, selectedStop: session.selectedStop, variant: session.review?.variant }),
+        JSON.stringify({ mode: session.mode, selectedNode: session.selectedNode, selectedStop: session.selectedStop, variant: session.review?.variant }),
       );
     } catch {
       // The choice just isn't remembered.
@@ -126,10 +126,6 @@
     }, delay);
   }
 
-  function selectedChunk(session) {
-    return session.mode === "review" ? (session.review.chunks.find((c) => c.n === session.selectedN) ?? null) : null;
-  }
-
   function refresh() {
     const session = current;
     if (session?.offline && live()) {
@@ -141,9 +137,7 @@
       return;
     }
     if (!session?.review || !live()) return;
-    const chunk = selectedChunk(session);
-    renderDiagram(session, chunk);
-    focus.markChunk(chunk);
+    renderDiagram(session);
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
     page.showCallouts(session.mode === "review" ? session.callouts : []);
@@ -164,14 +158,14 @@
     );
   }
 
-  // Without a selected chunk, whether in "GitHub tree" mode or with nothing chosen, every node is shown.
-  function renderDiagram(session, chunk) {
+  // Without a selected box, whether in "GitHub tree" mode or with nothing chosen, every node is shown.
+  function renderDiagram(session) {
     if (!session.review.diagramSvg) {
       diagram.remove();
       return;
     }
     diagram.render(session.review.diagramSvg, { onNode: (nodeId) => selectNode(session, nodeId), onReset: () => resetReview(session) });
-    diagram.emphasize(chunk ? (chunk.nodes ?? null) : null);
+    diagram.emphasize(session.mode === "review" && session.selectedNode ? [session.selectedNode] : null);
   }
 
   // Ends any line jump in progress, which would otherwise scroll to its line when the row finally loads, and
@@ -231,7 +225,7 @@
               key: stop.i,
               anchor: anchors[index],
               ...(isFileStop(stop) ? { file: true } : {}),
-              render: () => tree.stopCallout(stop, stops, (target) => selectStop(session, target, { pulse: false }), review.chunks),
+              render: () => tree.stopCallout(stop, stops, (target) => selectStop(session, target, { pulse: false }), review.nodes),
             },
           ]
         : [],
@@ -245,50 +239,26 @@
     return session.selection;
   }
 
-  // Marks the stop's chunk in the diff, makes the stop's file the active one and jumps to the stop's line, or to its
-  // file's header when the stop has no line. A stop in a file no chunk lists selects no chunk. `jump` passes on to the
-  // jump, e.g. `{ pulse: false }`. The diagram follows the stop's chunk.
+  // Makes the stop's file the active one, gives the stop's box the diagram's halo and jumps to the stop's line, or to its
+  // file's header when the stop has no line. A stop on no box selects no box. `jump` passes on to the jump, e.g.
+  // `{ pulse: false }`.
   async function selectStop(session, stop, jump = undefined) {
     const mine = startSelection(session);
-    const chunk = session.review.chunks.find((candidate) => candidate.n === stop.chunk) ?? null;
     await change(session, () => {
       leaveLine();
       deactivate(session);
       session.mode = "review";
       session.selectedStop = stop.i;
-      session.selectedN = chunk?.n ?? null;
+      session.selectedNode = stop.node ?? null;
       session.activeBox = activation(stop.path);
     });
     if (current !== session || !live() || session.selection !== mine) return;
-    if (chunk) centerDiagram(chunk);
+    if (stop.node) diagram.centerOn([stop.node]);
     tree.revealStop(stop.i);
     await jumpToStop(session, stop, jump);
   }
 
-  // Goes to the chunk's first stop; a chunk the walkthrough never stops at is marked in the diff and scrolled to its
-  // first file's header instead. Selecting the same chunk again jumps again.
-  async function selectChunk(session, chunk, jump = undefined) {
-    const stop = tree.firstStopOf(session.stops, chunk.n);
-    if (stop) {
-      await selectStop(session, stop, jump);
-      return;
-    }
-    const mine = startSelection(session);
-    const path = chunk.files[0]?.path;
-    await change(session, () => {
-      leaveLine();
-      deactivate(session);
-      session.mode = "review";
-      session.selectedStop = null;
-      session.selectedN = chunk.n;
-      if (path) session.activeBox = activation(path);
-    });
-    if (current !== session || !live() || session.selection !== mine) return;
-    centerDiagram(chunk);
-    if (path) await landOnFile(session, path);
-  }
-
-  // Puts the review back as it was when it loaded: no chunk or stop selected and no line or box marked. The saved
+  // Puts the review back as it was when it loaded: no box or stop selected and no line or box marked. The saved
   // selection is cleared with it.
   function resetReview(session) {
     return change(
@@ -297,23 +267,37 @@
         leaveLine();
         deactivate(session);
         session.mode = "review";
-        session.selectedN = null;
+        session.selectedNode = null;
         session.selectedStop = null;
       },
     );
   }
 
-  // Moves the diagram to follow the boxes of the chunk that was just focused (see createCanvas in diagram.js); a chunk
-  // with no boxes leaves it be.
-  function centerDiagram(chunk) {
-    diagram.centerOn(chunk.nodes ?? []);
-  }
-
-  // A box goes to the first stop of the first chunk, in review.json's order, that lists it; a chunk with no stop goes to
-  // its first file's header. A box no chunk lists does nothing.
-  function selectNode(session, nodeId) {
-    const chunk = tree.chunkOfNode(session.review.chunks, nodeId);
-    if (chunk) selectChunk(session, chunk);
+  // A box goes to the first stop on it; a box with no stop but with files is marked and scrolled to its first file's
+  // header instead. A context box, which covers no file, and an id the review does not list do nothing. Selecting the
+  // same box again jumps again.
+  async function selectNode(session, nodeId) {
+    const box = session.review.nodes[nodeId];
+    if (!box) return;
+    const stop = session.stops.find((candidate) => candidate.i === box.stops[0]);
+    if (stop) {
+      await selectStop(session, stop);
+      return;
+    }
+    const path = box.files[0];
+    if (!path) return;
+    const mine = startSelection(session);
+    await change(session, () => {
+      leaveLine();
+      deactivate(session);
+      session.mode = "review";
+      session.selectedStop = null;
+      session.selectedNode = nodeId;
+      session.activeBox = activation(path);
+    });
+    if (current !== session || !live() || session.selection !== mine) return;
+    diagram.centerOn([nodeId]);
+    await landOnFile(session, path);
   }
 
   function change(session, update) {
@@ -416,7 +400,6 @@
     stopObserving = null;
     page.cancelJump();
     page.clearLineTarget();
-    focus.markChunk(null);
     focus.clearBox();
     tree.remove();
     diagram.remove();
@@ -475,7 +458,7 @@
     if (token !== loadToken || !review) return;
     const saved = readSaved(pr);
     const sameRun = saved.variant === review.variant;
-    const selectedN = sameRun && review.chunks.some((c) => c.n === saved.selectedN) ? saved.selectedN : null;
+    const selectedNode = sameRun && Object.hasOwn(review.nodes, saved.selectedNode) ? saved.selectedNode : null;
     const stops = tree.stopsOf(review);
     const selectedStop = sameRun && stops.some((stop) => stop.i === saved.selectedStop) ? saved.selectedStop : null;
     current = {
@@ -483,7 +466,7 @@
       pr,
       review,
       mode: saved.mode === "github" ? "github" : "review",
-      selectedN,
+      selectedNode,
       startedAt: Date.now(),
       stops,
       selectedStop,
