@@ -3,7 +3,9 @@ local build and nothing is fetched, and that a run without a drawn diagram fails
 Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import json
 import re
+import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -226,17 +228,58 @@ class Render(unittest.TestCase):
         self.assertNotIn("mermaid", json.loads((self.run_dir / "run.json").read_text()))
 
 
-class DiagramSize(unittest.TestCase):
-    def test_the_diagram_is_drawn_in_a_large_font_wrapped_narrow(self) -> None:
-        text = render.render_diagram("```mermaid\nflowchart TD\n  a[\"A\"] --> b[\"B\"]\n```")
-        self.assertIn(f'"themeVariables": {{"fontSize": "{render.DIAGRAM_FONT_SIZE}px"}}', text)
-        self.assertIn(f'"wrappingWidth": {render.DIAGRAM_WRAPPING_WIDTH}', text)
-        self.assertGreaterEqual(render.DIAGRAM_FONT_SIZE, 20)
-        self.assertLessEqual(render.DIAGRAM_WRAPPING_WIDTH, 200)
+def run_node(script_text: str) -> str:
+    return subprocess.run(["node", "-e", script_text], capture_output=True, text=True, check=True).stdout.strip()
 
-    def test_badges_and_cluster_titles_scale_with_the_text(self) -> None:
+
+class DiagramSize(unittest.TestCase):
+    def test_the_diagram_is_drawn_in_mermaids_default_font_and_wrapping_width(self) -> None:
+        text = render.render_diagram("```mermaid\nflowchart TD\n  a[\"A\"] --> b[\"B\"]\n```")
+        self.assertIn('"themeVariables": {"fontSize": "16px"}', text)
+        self.assertIn('"wrappingWidth": 200', text)
+
+    def test_the_theme_sets_the_label_size_itself_and_undoes_a_page_s_label_class(self) -> None:
+        self.assertRegex(render.DIAGRAM_STYLE, r"\.nodeLabel, \.edgeLabel, \.edgeLabel p \{ font-size: 16px;")
+        self.assertRegex(render.DIAGRAM_STYLE, r"\.label \{ padding: 0; font: inherit; white-space: normal; border: 0; border-radius: 0; \}")
+        self.assertNotIn("__", render.DIAGRAM_STYLE)
+
+    def test_badges_scale_with_the_text_and_never_wrap(self) -> None:
         self.assertNotRegex(render.DIAGRAM_STYLE, r"\.badge \{[^}]*font-size: \d+px")
-        self.assertNotRegex(render.DIAGRAM_STYLE, r"\.cluster-label[^}]*font-size: \d+px")
+        self.assertRegex(render.DIAGRAM_STYLE, r"\.badge \{[^}]*white-space: nowrap")
+
+    def test_cluster_titles_are_three_quarters_of_the_text(self) -> None:
+        self.assertRegex(render.DIAGRAM_STYLE, r"\.cluster-label[^}]*font-size: 12px")
+
+    def test_the_theme_never_breaks_a_word_anywhere(self) -> None:
+        self.assertNotIn("overflow-wrap", render.DIAGRAM_STYLE)
+
+
+@unittest.skipUnless(shutil.which("node"), "node is needed to run the diagram's label script")
+class BreakPoints(unittest.TestCase):
+    def broken(self, text: str) -> str:
+        return run_node(render.DIAGRAM_STYLE + f"console.log(breakable({json.dumps(text)}));")
+
+    def test_a_pascal_case_name_may_wrap_before_each_hump(self) -> None:
+        self.assertEqual(self.broken("UntaggedInventoryUploadController"), "Untagged<wbr>Inventory<wbr>Upload<wbr>Controller")
+
+    def test_a_camel_case_name_and_digits_may_wrap_at_the_humps(self) -> None:
+        self.assertEqual(self.broken("applyRows2Bucket"), "apply<wbr>Rows2<wbr>Bucket")
+
+    def test_an_acronym_stays_whole_before_the_next_word(self) -> None:
+        self.assertEqual(self.broken("parseJSONBody"), "parse<wbr>JSON<wbr>Body")
+
+    def test_a_dot_or_an_underscore_may_wrap_after_it(self) -> None:
+        self.assertEqual(self.broken("pkg.Class_name"), "pkg.<wbr>Class_<wbr>name")
+
+    def test_plain_words_are_left_alone(self) -> None:
+        self.assertEqual(self.broken("builds the attribute row"), "builds the attribute row")
+
+    def test_a_label_gets_the_break_points_in_its_second_line_only(self) -> None:
+        text = "flowchart TD\n  a[\"1 · UploadControl<br/>CreatesNewBucket\"]"
+        script_text = (render.DIAGRAM_STYLE + f"console.log(styleDiagramText({json.dumps(text)}));")
+        out = run_node(script_text)
+        self.assertIn("<span class='t'>UploadControl</span>", out)
+        self.assertIn("<span class='s'>Creates<wbr>New<wbr>Bucket</span>", out)
 
 
 if __name__ == "__main__":
