@@ -14,7 +14,8 @@ python3 -m venv .venv && .venv/bin/pip install jinja2 pyyaml
 
 You also need:
 
-- the `claude` CLI, signed in (runs call `claude -p` with no tools);
+- the `claude` CLI, signed in (runs call `claude -p` with no tools), or the GitHub Copilot CLI signed in with
+  `copilot login` for `--runner copilot`;
 - the `gh` CLI, signed in, which reads a GitHub PR and its diff (not needed for Forgejo, which is read
   through its REST API with a token file named in `local.toml`);
 - Google Chrome, for prerendering the diagram to `diagram.svg` (a run still works without it; the
@@ -54,7 +55,13 @@ and carry this tool as a submodule.
 # run one variant on one PR (calls the model, then render.py)
 .venv/bin/python run.py 42 --variant one_path_risk_chunked_v15_nocontext --repo owner/name
 #   --with-body       show the model the PR's existing description (default: empty body)
-#   --model opus      model passed to claude -p
+#   --model opus      model passed to the runner (default: opus for claude, claude-opus-5.5 for copilot)
+#   --runner copilot  run through the Copilot CLI instead of `claude -p`: the system prompt and the user prompt go on
+#                     stdin in two fenced blocks, GH_TOKEN and GITHUB_TOKEN are removed from its environment so the
+#                     CLI uses its own login, and the run is written beside the Claude run, to
+#                     runs/<key>/<variant>_copilot/ (run.json records `runner` and `model`; `compare.py` shows it
+#                     as its own column). Prose around the YAML is stripped and recorded as `answer_cleanup`, the
+#                     raw output kept in answer.raw.txt
 #   --prompt-only     print the rendered prompt and stop
 #   --host forgejo    read the PR from the Forgejo in local.toml (forgejo_url, forgejo_token_file);
 #                     --repo is then the Forgejo owner/name. Default: local.toml's `host`, else github

@@ -9,7 +9,8 @@ Also writes runs/<pr>/variants.json for the browser extension: the variants of c
 have a run with a review.json, as [{variant, label, description}], in compare.toml's order.
 
 The columns default to the variants in compare.toml, in that order. `--variants` overrides them
-and `--all` shows every variant that has a run for the PR.
+and `--all` shows every variant that has a run for the PR. A variant's copilot run (`<variant>_copilot`, see
+run.py's --runner) gets its own column right after the variant's.
 """
 import argparse
 import html
@@ -21,6 +22,7 @@ from typing import Any
 
 from config import HOME, config_file, variant_file
 from hosts import run_label, run_order
+from runners import CLAUDE, COPILOT, run_dir_name
 
 RUNS = HOME / "runs"
 ARCHETYPES: Path | None = config_file("archetypes")
@@ -96,10 +98,11 @@ def column(run_dir: Path) -> str:
     arrows: str = f" · arrows labelled {edges['labelled']}/{edges['total']}" if edges else ""
     started: str = run["started"][:16].replace("T", " ") + " UTC"
     render_only: str = f" · render-only from {html.escape(run['render_from'])}" if run.get("render_from") else ""
-    return (f'<div class="col"><div class="head"><strong>{html.escape(run["variant"])}</strong>{failed}'
+    runner: str = f" · {html.escape(run['runner'])} {html.escape(run['model'])}" if run.get("runner", CLAUDE) != CLAUDE else ""
+    return (f'<div class="col"><div class="head"><strong>{html.escape(run_dir.name)}</strong>{failed}'
             f'<div>{html.escape(description)}</div>'
-            f'<div>run {started} · with_body: {str(run["with_body"]).lower()}{arrows}{render_only}</div></div>'
-            f'<iframe src="{html.escape(run_dir.name)}/body.html" title="{html.escape(run["variant"])}"></iframe></div>')
+            f'<div>run {started} · with_body: {str(run["with_body"]).lower()}{arrows}{render_only}{runner}</div></div>'
+            f'<iframe src="{html.escape(run_dir.name)}/body.html" title="{html.escape(run_dir.name)}"></iframe></div>')
 
 
 def pr_title(pr_dir: Path) -> str:
@@ -157,7 +160,7 @@ def main() -> int:
         missing: list[str] = [n for n in names if n not in by_name]
         if missing:
             print(f"{run_label(pr)}: no run for {', '.join(missing)}", file=sys.stderr)
-        run_dirs = [by_name[n] for n in names if n in by_name]
+        run_dirs = [d for n in names for d in (by_name.get(n), by_name.get(run_dir_name(n, COPILOT))) if d]
     write_variants_json(pr_dir)
     title: str = f"{run_label(pr)}: {pr_title(pr_dir)}"
     (pr_dir / "index.html").write_text(page(title, f"<h1>{html.escape(title)}</h1><div class=\"cols\" style=\"grid-template-columns: repeat({len(run_dirs)}, minmax(0, 1fr))\">{''.join(column(d) for d in run_dirs)}</div>"))

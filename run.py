@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Run PR-Agent's /describe prompt for one PR and one variant through `claude -p`.
+"""Run PR-Agent's /describe prompt for one PR and one variant through `claude -p` or the GitHub Copilot CLI.
 
-usage: run.py <pr> --variant NAME [--with-body] [--model opus]
+usage: run.py <pr> --variant NAME [--with-body] [--runner claude|copilot] [--model NAME]
               [--host github|forgejo] [--repo owner/name] [--prompt-only]
+
+--runner defaults to claude. A copilot run uses the CLI's own stored login and is written beside the Claude run, to
+runs/<key>/<variant>_copilot/, with the same variant settings; --model defaults to opus for claude and
+claude-opus-5.5 for copilot.
 
 --host defaults to local.toml's `host`, else github. --repo is the host's `owner/name` and is required
 unless local.toml sets `repo` for that host (`repo` applies to the host named by `host`, github by default).
@@ -15,6 +19,7 @@ copies the other variant's prompt, answer and PR data from runs/<key>/ and rende
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -30,6 +35,7 @@ from compare import write_variants_json
 from config import HOME, ROOT, load_local, variant_file
 from context_pack import Pack, build, ensure_commits
 from hosts import get_host, host_names, run_key
+from runners import CLAUDE, DEFAULT_MODELS, RUNNERS, clean_answer, invocation, run_dir_name
 from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
@@ -156,13 +162,16 @@ def execute(progress: Progress) -> int:
     p.add_argument("pr")
     p.add_argument("--variant", required=True)
     p.add_argument("--with-body", action="store_true", help="show the model the PR's existing description")
-    p.add_argument("--model", default="opus")
+    p.add_argument("--runner", choices=RUNNERS, default=CLAUDE, help="the program that runs the model (default: claude)")
+    p.add_argument("--model", help="the runner's model name (default: opus for claude, claude-opus-5.5 for copilot)")
     local: dict[str, Any] = load_local()
     p.add_argument("--host", choices=host_names(), default=local.get("host", "github"),
                    help="where the PR lives (default: local.toml's `host`, else github)")
     p.add_argument("--repo", help="the host's repository as owner/name (default: local.toml's `repo`, for the host local.toml names)")
     p.add_argument("--prompt-only", action="store_true", help="print the rendered prompt and stop")
     a = p.parse_args()
+    if a.model is None:
+        a.model = DEFAULT_MODELS[a.runner]
     if a.repo is None and a.host == local.get("host", "github"):
         a.repo = local.get("repo")
     key: str = run_key(a.host, a.pr)
@@ -175,6 +184,8 @@ def execute(progress: Progress) -> int:
     variant: dict[str, Any] = tomllib.loads(variant_path.read_text())
 
     if "render_from" in variant:
+        if a.runner != CLAUDE:
+            raise SystemExit(f"{a.variant} renders from {variant['render_from']} and makes no model call, so --runner {a.runner} does not apply")
         if a.prompt_only:
             raise SystemExit(f"{a.variant} renders from {variant['render_from']} and has no prompt of its own")
         return render_only(key, a.variant, variant_path, variant["render_from"], progress)
@@ -202,9 +213,9 @@ def execute(progress: Progress) -> int:
             print(f"repo context: {len(context_md)} chars, ~{pack.stats()['estimated_tokens']} tokens", file=sys.stderr)
         return 0
 
-    run_dir: Path = HOME / "runs" / key / a.variant
+    run_dir: Path = HOME / "runs" / key / run_dir_name(a.variant, a.runner)
     run_dir.mkdir(parents=True, exist_ok=True)
-    for stale in ("error.txt", "body.md", "body.html", "context.md", "contract.json"):
+    for stale in ("error.txt", "body.md", "body.html", "context.md", "contract.json", "answer.raw.txt"):
         (run_dir / stale).unlink(missing_ok=True)
     (run_dir / "prompt.txt").write_text(prompt_text)
     if pack:
@@ -215,15 +226,19 @@ def execute(progress: Progress) -> int:
 
     progress.stage("write")
     started: datetime = now()
-    out = subprocess.run(
-        ["claude", "-p", "--system-prompt", system, "--tools", "", "--model", a.model],
-        input=user, capture_output=True, text=True,
-    )
+    command = invocation(a.runner, system, user, a.model, os.environ)
+    try:
+        out = subprocess.run(command.argv, input=command.input, env=command.env, capture_output=True, text=True)
+    except FileNotFoundError:
+        raise SystemExit(f"{command.argv[0]} is not installed or not on PATH") from None
     finished: datetime = now()
-    (run_dir / "answer.yaml").write_text(out.stdout)
+    answer, cleanup = clean_answer(a.runner, out.stdout)
+    if cleanup:
+        (run_dir / "answer.raw.txt").write_text(out.stdout)
+    (run_dir / "answer.yaml").write_text(answer)
     if out.returncode != 0:
-        (run_dir / "error.txt").write_text(f"claude exited with status {out.returncode}\n{out.stderr}")
-        progress.error = f"claude exited with status {out.returncode}: {last_line(out.stderr)}"
+        (run_dir / "error.txt").write_text(f"{a.runner} exited with status {out.returncode}\n{out.stderr}")
+        progress.error = f"{a.runner} exited with status {out.returncode}: {last_line(out.stderr)}"
 
     (run_dir / "run.json").write_text(json.dumps({
         "variant": a.variant,
@@ -233,7 +248,9 @@ def execute(progress: Progress) -> int:
         "host": a.host,
         "repo": a.repo,
         "pr_head_sha": pr["headRefOid"],
+        "runner": a.runner,
         "model": a.model,
+        **({"answer_cleanup": cleanup} if cleanup else {}),
         "with_body": a.with_body,
         "started": started.isoformat(timespec="seconds"),
         "finished": finished.isoformat(timespec="seconds"),

@@ -1685,7 +1685,7 @@ def main() -> int:
 
     try:
         if run["exit_status"] != 0:
-            raise AnswerError(f"claude exited with status {run['exit_status']}")
+            raise AnswerError(f"{run.get('runner', 'claude')} exited with status {run['exit_status']}")
         data: dict[str, Any] = parse_answer(raw)
         prompt_file: Path = run_dir / "prompt.txt"
         diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
