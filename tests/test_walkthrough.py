@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from layout import LineSet  # noqa: E402
 from render import Chunk, build_walkthrough, resolve_stops, review_json  # noqa: E402
 
 FILES = ["api/ItemRepo.java", "web/Page.tsx", "web/Other.tsx"]
@@ -114,13 +115,10 @@ class ReviewJson(unittest.TestCase):
 
     def test_a_walkthrough_is_listed_before_the_chunks_and_a_chunk_has_no_start(self) -> None:
         stops = [{"i": 1, "title": "t", "why": "w", "path": "web/Page.tsx", "side": "R", "line": 5, "chunk": 1}]
-        data = review_json(RUN, PR, self.chunks(), False, None, walkthrough=stops)
+        data = review_json(RUN, PR, self.chunks(), False, None, LineSet([], []), stops)
         self.assertEqual(data["walkthrough"], stops)
         self.assertNotIn("start", data["chunks"][0])
         self.assertLess(list(data).index("walkthrough"), list(data).index("chunks"))
-
-    def test_a_variant_without_the_flag_has_no_walkthrough_key(self) -> None:
-        self.assertNotIn("walkthrough", review_json(RUN, PR, self.chunks(), False, None))
 
 
 if __name__ == "__main__":

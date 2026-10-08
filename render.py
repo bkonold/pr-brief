@@ -33,6 +33,14 @@ sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: E402
 
 DIAGRAM_THRESHOLD = 5
+DIAGRAM_WRAPPING_WIDTH = 400
+# The `[render]` table a variant may carry: each key has the one value the renderer works with. A variant that
+# sets a key to another value, or sets any other key, is refused.
+RENDER_SETTINGS: dict[str, Any] = {
+    "diagram": "force_td", "wrapping_width": DIAGRAM_WRAPPING_WIDTH, "files": "chunks", "numbering": "flow",
+    "chunk_order": "flow", "chunk_box_fallback": True, "one_box_per_chunk": True, "contract_block": True,
+    "review_labels": True, "contract_layout": "by_chunk", "review_order": False, "walkthrough": True,
+}
 SAVE_CLASS_DEF = "classDef save fill:#fff4e5,stroke:#b26a00"
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 LEVEL_CLASS = "lv-"
@@ -40,7 +48,6 @@ CHECK_CLASS = "chk-"
 ALSO_ID = "also"
 ALSO_SUBGRAPH = f'subgraph {ALSO_ID}["Also in this PR"]'
 LEVELS: list[str] = ["skim", "read", "verify"]
-# The level words that older variants ask the model for.
 CHECK_ORDER: list[str] = ["logic", "contract", "breaking", "data", "destructive", "access", "generated"]
 # The labels the model sets; the renderer sets the others (`breaking`, `destructive`, `generated`).
 MODEL_CHECKS: list[str] = ["logic", "contract", "data", "access"]
@@ -58,17 +65,26 @@ class AnswerError(Exception):
 
 # ---------------------------------------------------------------- diagram
 
-def render_diagram(raw: Any, cfg: dict[str, Any]) -> str:
+def check_render_settings(cfg: dict[str, Any]) -> None:
+    """Refuses a variant's `[render]` table that sets a key the renderer does not have, or a key to a value other than
+    the one it works with."""
+    for key, value in cfg.items():
+        if key not in RENDER_SETTINGS:
+            raise AnswerError(f"unknown render setting {key!r}")
+        if value != RENDER_SETTINGS[key]:
+            raise AnswerError(f"render setting {key!r} can only be {RENDER_SETTINGS[key]!r}, not {value!r}")
+
+
+def render_diagram(raw: Any) -> str:
+    """The diagram top-down, with its labels wrapped at DIAGRAM_WRAPPING_WIDTH."""
     diagram: str = sanitize_diagram(raw)  # an empty diagram is dropped, as PR-Agent does
     if not diagram:
         return ""
-    direction: str = {"force_td": "TD", "force_lr": "LR"}.get(cfg.get("diagram", ""), "adaptive")
-    diagram = apply_diagram_direction(diagram, direction, DIAGRAM_THRESHOLD)
+    diagram = apply_diagram_direction(diagram, "TD", DIAGRAM_THRESHOLD)
     lines: list[str] = diagram.split("\n")
-    if cfg.get("wrapping_width"):
-        init: str = '%%{init: {"flowchart": {"wrappingWidth": ' + str(cfg["wrapping_width"]) + '}}}%%'
-        fence: int = next(i for i, line in enumerate(lines) if line.strip().startswith("```mermaid"))
-        lines.insert(fence + 1, init)
+    init: str = '%%{init: {"flowchart": {"wrappingWidth": ' + str(DIAGRAM_WRAPPING_WIDTH) + '}}}%%'
+    fence: int = next(i for i, line in enumerate(lines) if line.strip().startswith("```mermaid"))
+    lines.insert(fence + 1, init)
     if ":::save" in diagram and not re.search(r"^\s*classDef\s+save\b", diagram, re.MULTILINE):
         lines.insert(len(lines) - 1, "  " + SAVE_CLASS_DEF)
     return "\n".join(lines)
@@ -411,8 +427,8 @@ def order_files(files: list[str]) -> list[str]:
 
 
 def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: list[str], floor_cfg: dict[str, Any],
-                 notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None = None,
-                 review_labels: bool = False, lineset: layout.LineSet | None = None) -> list[Chunk]:
+                 notes: list[str], diff_lines: dict[str, list[DiffLine]], contract: dict[str, Any] | None,
+                 lineset: layout.LineSet) -> list[Chunk]:
     chunks: list[Chunk] = []
     seen: set[str] = set()
     for item in raw_chunks if isinstance(raw_chunks, list) else []:
@@ -439,18 +455,14 @@ def build_chunks(raw_chunks: Any, counts: dict[str, tuple[int, int]], paths: lis
             notes.append(f"chunk '{name}': no step")
         chunk: Chunk = Chunk(name, review, str(item.get("why", "")).strip(), order_files(files),
                              clean_nodes(item.get("nodes")), step=step)
-        if review_labels:
-            chunk.checks = clean_checks(item.get("checks"), name, notes)
+        chunk.checks = clean_checks(item.get("checks"), name, notes)
         chunks.append(chunk)
     missing: list[str] = [p for p in paths if p not in seen]
     if missing:
         notes.append("files the model left out of every chunk: " + ", ".join(missing))
         chunks.append(Chunk(UNCHUNKED, "skim", "Not assigned to a chunk by the model", order_files(missing)))
-    if lineset is not None:
-        place_lines(chunks, lineset, floor_cfg, diff_lines)
-    raising: dict[int, list[tuple[str, str]]] = {}
-    if review_labels:
-        raising = apply_labels(chunks, floor_cfg, notes)
+    place_lines(chunks, lineset, floor_cfg, diff_lines)
+    raising: dict[int, list[tuple[str, str]]] = apply_labels(chunks, floor_cfg, notes)
     for index, chunk in enumerate(chunks):
         apply_floor(chunk, counts, floor_cfg, contract, raising.get(index, []))
     # The model's order is the flow of the change; the floors raise a level but do not move a chunk.
@@ -815,11 +827,10 @@ def chunked_sections(run: dict[str, Any], lineset: layout.LineSet, unchecked: li
 
 # ---------------------------------------------------------------- body
 
-def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cfg: dict[str, Any],
-               floor_cfg: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
-               notes: list[str], contract: dict[str, Any] | None = None,
+def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], floor_cfg: dict[str, Any],
+               diff_lines: dict[str, list[DiffLine]], notes: list[str], contract: dict[str, Any] | None = None,
                diff_text: str = "") -> tuple[str, tuple[int, int], list[Chunk], list[dict[str, Any]] | None,
-                                            layout.LineSet | None]:
+                                            layout.LineSet]:
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     paths: list[str] = [f["path"] for f in pr["files"]]
 
@@ -829,30 +840,20 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
     for key in ("type", "description"):
         if key in data:
             ordered[key] = data[key]
-    layout_mode: str | None = cfg.get("contract_layout")
-    if layout_mode not in (None, "by_chunk"):
-        raise AnswerError(f"unknown render contract_layout {layout_mode!r}, expected 'by_chunk'")
-    if layout_mode and not (cfg.get("contract_block") and cfg.get("files") == "chunks"):
-        raise AnswerError("render contract_layout 'by_chunk' needs contract_block and files = 'chunks'")
-    lineset: layout.LineSet | None = build_lineset(run, pr, contract, diff_text) if layout_mode else None
-    if lineset is not None:
-        ordered["contract"] = ordered["data"] = ""
-    chunks: list[Chunk] = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract,
-                                       bool(cfg.get("review_labels")), lineset)
-    if lineset is not None:
-        ordered["contract"], ordered["data"] = chunked_sections(run, lineset, unchecked_sides(run, contract))
-    diagram: str = render_diagram(data.get("changes_diagram"), cfg)
+    lineset: layout.LineSet = build_lineset(run, pr, contract, diff_text)
+    ordered["contract"] = ordered["data"] = ""
+    chunks: list[Chunk] = build_chunks(data.get("chunks"), counts, paths, floor_cfg, notes, diff_lines, contract, lineset)
+    ordered["contract"], ordered["data"] = chunked_sections(run, lineset, unchecked_sides(run, contract))
+    diagram: str = render_diagram(data.get("changes_diagram"))
     node_files: dict[str, list[str]] | None = None
     if diagram and "node_files" in data:
         node_files = clean_node_files(data["node_files"], declaration_positions(diagram.split("\n")), paths, notes)
         diagram = add_context_style(diagram, [node for node, files in node_files.items() if not files])
-    if diagram and chunks and cfg.get("one_box_per_chunk"):
+    if diagram and chunks:
         note_box_sharing(diagram, chunks, notes)
-    if diagram and chunks and cfg.get("chunk_box_fallback"):
         diagram = add_chunk_boxes(diagram, chunks, node_files, counts, notes)
-    if diagram and cfg.get("review_labels"):
-        diagram = style_levels(diagram, chunks, notes)
     if diagram:
+        diagram = style_levels(diagram, chunks, notes)
         diagram = number_by_flow(diagram, chunks, notes)
     edges: tuple[int, int] = count_diagram_edges(diagram)
     legend: str = ""
@@ -866,7 +867,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
         if key == "changes_diagram":
             body += f"### Diagram Walkthrough\n\n{value}\n\n{legend + chr(10) * 2 if legend else ''}"
             continue
-        if lineset is not None and key in ("contract", "data") and value.startswith("<details"):
+        if key in ("contract", "data") and value.startswith("<details"):
             body += f"{value}\n"
         else:
             body += f"### **{'PR Type' if key == 'type' else key.replace('_', ' ').capitalize()}**\n"
@@ -876,8 +877,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
                 value = value.replace("\n-", "\n\n-").strip()
             body += f"{value}\n"
         if idx < len(ordered) - 1:
-            joined: bool = bool(cfg.get("walkthrough")) and key in ("contract", "data")
-            body += "\n\n" if joined else "\n\n___\n\n"
+            body += "\n\n" if key in ("contract", "data") else "\n\n___\n\n"
     body += "\n\n___\n\n"
     nodes: list[dict[str, Any]] | None = None
     if node_files is not None:
@@ -896,11 +896,11 @@ def line_json(line: Line) -> dict[str, Any]:
 
 
 def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], has_diagram: bool,
-                nodes: list[dict[str, Any]] | None, review_labels: bool = False,
-                lineset: layout.LineSet | None = None, walkthrough: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """The chunks in review order, for the browser extension that groups the Files changed page by chunk. With a
-    `lineset`, each chunk lists the contract and data lines it owns and `unchunked` the ones no chunk owns. With a
-    `walkthrough`, the stops are listed in reading order beside the chunks."""
+                nodes: list[dict[str, Any]] | None, lineset: layout.LineSet,
+                walkthrough: list[dict[str, Any]]) -> dict[str, Any]:
+    """The chunks in flow order, for the browser extension that groups the Files changed page by chunk. Each chunk
+    lists the contract and data lines it owns and `unchunked` the ones no chunk owns; the `walkthrough` lists the
+    stops in reading order beside the chunks."""
     counts: dict[str, tuple[int, int]] = {f["path"].lower(): (f["additions"], f["deletions"]) for f in pr["files"]}
     return {
         "schema": 3,
@@ -910,14 +910,13 @@ def review_json(run: dict[str, Any], pr: dict[str, Any], chunks: list[Chunk], ha
         "variant": run["variant"],
         **({"diagram": DIAGRAM_SVG} if has_diagram else {}),
         **({"nodes": nodes} if nodes is not None else {}),
-        **({"unchunked": {"contract": [line_json(line) for line in lineset.loose_contract],
-                          "data": [line_json(line) for line in lineset.loose_data]}} if lineset is not None else {}),
-        **({"walkthrough": walkthrough} if walkthrough is not None else {}),
+        "unchunked": {"contract": [line_json(line) for line in lineset.loose_contract],
+                      "data": [line_json(line) for line in lineset.loose_data]},
+        "walkthrough": walkthrough,
         "chunks": [{"n": c.number, "name": c.name, "review": c.review, "raised_by": c.raised_by, "why": c.why,
                     "nodes": c.nodes,
-                    **({"labels": c.labels} if review_labels else {}),
-                    **({"contract": [line_json(line) for line in c.contract], "data": [line_json(line) for line in c.data]}
-                       if lineset is not None else {}),
+                    "labels": c.labels,
+                    "contract": [line_json(line) for line in c.contract], "data": [line_json(line) for line in c.data],
                     "files": [{"path": path, "additions": counts[path.lower()][0], "deletions": counts[path.lower()][1]}
                               for path in c.files],
                     **({"step": c.step} if c.step else {})} for c in chunks],
@@ -1176,7 +1175,6 @@ def main() -> int:
     variant_path: Path | None = variant_file(run["variant"])
     if variant_path is None:
         raise SystemExit(f"no variant {run['variant']!r} in $PR_DESCRIBE_HOME/variants or the tool's variants")
-    cfg: dict[str, Any] = tomllib.loads(variant_path.read_text()).get("render", {})
     floor_file: Path | None = config_file("review_floor", fall_back_to_example=True)
     floor_cfg: dict[str, Any] = tomllib.loads(floor_file.read_text()) if floor_file else {}
     raw: str = (run_dir / "answer.yaml").read_text()
@@ -1193,7 +1191,8 @@ def main() -> int:
         prompt_file: Path = run_dir / "prompt.txt"
         diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
         diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_text)
-        md, (labelled, total), chunks, nodes, lineset = build_body(run, pr, data, cfg, floor_cfg, diff_lines, notes, contract, diff_text)
+        check_render_settings(tomllib.loads(variant_path.read_text()).get("render", {}))
+        md, (labelled, total), chunks, nodes, lineset = build_body(run, pr, data, floor_cfg, diff_lines, notes, contract, diff_text)
     except AnswerError as e:
         (run_dir / "error.txt").write_text(f"{e}\n")
         (run_dir / "body.html").write_text(ERROR_PAGE.replace("__ERROR__", html.escape(str(e))).replace("__RAW__", html.escape(raw)))
@@ -1205,11 +1204,9 @@ def main() -> int:
     (run_dir / "body.md").write_text(md)
     (run_dir / "body.html").write_text(markdown_page(md))
     has_diagram: bool = write_diagram_svg(md, run_dir, notes)
-    walkthrough: list[dict[str, Any]] | None = (
-        build_walkthrough(data.get("walkthrough"), chunks, [f["path"] for f in pr["files"]], diff_lines, notes)
-        if cfg.get("walkthrough") else None)
+    walkthrough: list[dict[str, Any]] = build_walkthrough(data.get("walkthrough"), chunks, [f["path"] for f in pr["files"]], diff_lines, notes)
     (run_dir / "review.json").write_text(
-        json.dumps(review_json(run, pr, chunks, has_diagram, nodes, bool(cfg.get("review_labels")), lineset, walkthrough), indent=2) + "\n")
+        json.dumps(review_json(run, pr, chunks, has_diagram, nodes, lineset, walkthrough), indent=2) + "\n")
     if notes:
         (run_dir / "error.txt").write_text("Rendered with these fixes:\n" + "\n".join(f"- {n}" for n in notes) + "\n")
     return 0

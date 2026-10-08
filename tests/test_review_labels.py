@@ -6,8 +6,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from layout import LineSet  # noqa: E402
 from render import (  # noqa: E402
-    LEVELS, Chunk, build_chunks, clean_checks, derive_labels, file_floor, generated_share, normalize_level, review_json, style_levels,
+    LEVELS, Chunk, build_chunks, clean_checks, derive_labels, generated_share, normalize_level, review_json, style_levels,
 )
 
 SPEC = "api/openapi.json"
@@ -27,7 +28,7 @@ def raw(name: str, review: str, files: list[str], checks: list[str] | None = Non
 
 def build(chunks: list[dict], contract: dict | None = None, notes: list[str] | None = None,
           paths: list[str] = PATHS, floors: dict = FLOORS) -> list[Chunk]:
-    return build_chunks(chunks, COUNTS, paths, floors, [] if notes is None else notes, {}, contract, review_labels=True)
+    return build_chunks(chunks, COUNTS, paths, floors, [] if notes is None else notes, {}, contract, LineSet([], []))
 
 
 class Levels(unittest.TestCase):
@@ -116,12 +117,11 @@ class DiagramAndJson(unittest.TestCase):
         self.assertEqual(styled[-7:-1], ["  class a lv-verify", "  class c lv-read", "  class b lv-skim", "  class a chk-logic",
                                          "  class a chk-breaking", "  class b chk-generated"])
 
-    def test_review_json_carries_labels_only_for_labelled_variants(self) -> None:
+    def test_review_json_carries_each_chunks_labels(self) -> None:
         run = {"repo": "o/r", "pr": 1, "pr_head_sha": "abc", "variant": "v"}
         pr = {"files": [{"path": SERVICE, "additions": 1, "deletions": 0}]}
         chunk = Chunk("A", "verify", "w", [SERVICE], ["a"], labels=["logic"], number=1)
-        self.assertEqual(review_json(run, pr, [chunk], False, None, True)["chunks"][0]["labels"], ["logic"])
-        self.assertNotIn("labels", review_json(run, pr, [chunk], False, None)["chunks"][0])
+        self.assertEqual(review_json(run, pr, [chunk], False, None, LineSet([], []), [])["chunks"][0]["labels"], ["logic"])
 
 
 if __name__ == "__main__":

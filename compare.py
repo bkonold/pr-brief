@@ -29,23 +29,7 @@ ARCHETYPES: Path | None = config_file("archetypes")
 UNCLASSIFIED = "Unclassified"
 
 # The labels the browser extension's dropdown shows; a variant without one is listed under its name.
-VARIANT_LABELS: dict[str, str] = {
-    "one_path_risk_chunked_v10": "V10 (original)",
-    "one_path_risk_chunked_v11b": "B",
-    "one_path_risk_chunked_v12": "12: rule + fallback",
-    "one_path_risk_chunked_v13": "13: rule only",
-    "one_path_risk_chunked_v14": "14: fallback only",
-    "one_path_risk_chunked_v15": "15: line reason",
-    "one_path_risk_chunked_v15_nocontext": "15: no context pack",
-    "one_path_risk_chunked_v16": "16: flow order + contract block",
-    "one_path_risk_chunked_v17": "17: conceptual start line",
-    "one_path_risk_chunked_v18": "18: 10-box diagram path",
-    "one_path_risk_chunked_v19": "19: one box per chunk",
-    "one_path_risk_chunked_v20": "20: file or line start",
-    "one_path_risk_chunked_v21": "21: effort levels + check labels",
-    "one_path_risk_chunked_v22": "22: contract and data by chunk",
-    "one_path_risk_chunked_v23": "23: walkthrough stops",
-}
+VARIANT_LABELS: dict[str, str] = {"one_path_risk_chunked_v23": "23: walkthrough stops"}
 
 STYLE = """
  :root { color-scheme: light; }
@@ -63,10 +47,6 @@ STYLE = """
  th, td { text-align: left; padding: 6px 14px; border: 1px solid #d0d7de; }
  th { background: #f6f8fa; }
 """
-
-
-def variant_order(name: str) -> tuple[int, str]:
-    return (0 if name == "control" else 1, name)
 
 
 def variant_description(name: str) -> str:
@@ -97,11 +77,10 @@ def column(run_dir: Path) -> str:
     edges: dict[str, int] | None = run.get("diagram_edges")
     arrows: str = f" · arrows labelled {edges['labelled']}/{edges['total']}" if edges else ""
     started: str = run["started"][:16].replace("T", " ") + " UTC"
-    render_only: str = f" · render-only from {html.escape(run['render_from'])}" if run.get("render_from") else ""
     runner: str = f" · {html.escape(run['runner'])} {html.escape(run['model'])}" if run.get("runner", CLAUDE) != CLAUDE else ""
     return (f'<div class="col"><div class="head"><strong>{html.escape(run_dir.name)}</strong>{failed}'
             f'<div>{html.escape(description)}</div>'
-            f'<div>run {started} · with_body: {str(run["with_body"]).lower()}{arrows}{render_only}{runner}</div></div>'
+            f'<div>run {started} · with_body: {str(run["with_body"]).lower()}{arrows}{runner}</div></div>'
             f'<iframe src="{html.escape(run_dir.name)}/body.html" title="{html.escape(run_dir.name)}"></iframe></div>')
 
 
@@ -153,7 +132,7 @@ def main() -> int:
     pr_dir: Path = RUNS / pr
     on_disk: list[Path] = [d for d in pr_dir.iterdir() if (d / "run.json").exists()]
     if args.all:
-        run_dirs: list[Path] = sorted(on_disk, key=lambda d: variant_order(d.name))
+        run_dirs: list[Path] = sorted(on_disk, key=lambda d: d.name)
     else:
         names: list[str] = args.variants.split(",") if args.variants else tomllib.loads((HOME / "compare.toml").read_text())["variants"]
         by_name: dict[str, Path] = {d.name: d for d in on_disk}

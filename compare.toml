@@ -1,2 +1,2 @@
 # Default column set of compare.py, left to right.
-variants = ["one_path_risk_chunked_v11b", "one_path_risk_chunked_v12", "one_path_risk_chunked_v13", "one_path_risk_chunked_v14", "one_path_risk_chunked_v15", "one_path_risk_chunked_v15_nocontext"]
+variants = ["one_path_risk_chunked_v23"]

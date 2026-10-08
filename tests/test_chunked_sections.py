@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import render  # noqa: E402
-from render import AnswerError, build_body, review_json  # noqa: E402
+from render import build_body, review_json  # noqa: E402
 from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
 from test_contract_impact import operation, props  # noqa: E402
 
@@ -31,7 +31,6 @@ CHUNKS = [
     {"name": "Generated", "review": "skim", "why": "w", "files": [SPEC, SDK], "checks": []},
 ]
 DATA = {"type": "Enhancement", "description": "does things", "chunks": CHUNKS}
-CFG = {"files": "chunks", "contract_block": True, "contract_layout": "by_chunk", "review_labels": True}
 
 PATHS_BEFORE = {"/items": {"post": operation("makeItem", "item-controller", request="ItemRequest", response="Item")},
                 "/gone": {"get": operation("gone", "orphan-controller")}}
@@ -47,10 +46,10 @@ def diff(sql: str = MIGRATION_SQL) -> str:
             + make_diff(MIGRATION, "", sql))
 
 
-def render_body(cfg: dict | None = None, contract: dict | None = None, text: str | None = None, run: dict = RUN):
+def render_body(contract: dict | None = None, text: str | None = None, run: dict = RUN):
     notes: list[str] = []
     contract = contract_of(BASE, HEAD) if contract is None else contract
-    return build_body(run, PR, DATA, {**CFG, **(cfg or {})}, FLOORS, CODE_LINES, notes, contract, diff() if text is None else text), notes
+    return build_body(run, PR, DATA, FLOORS, CODE_LINES, notes, contract, diff() if text is None else text), notes
 
 
 class ChunkedSections(unittest.TestCase):
@@ -62,28 +61,19 @@ class ChunkedSections(unittest.TestCase):
     def section_of(self, text: str, name: str) -> str:
         return re.search(rf'(?s)<details class="section">\n<summary><strong>{name}</strong>.*?</details>', text).group()
 
-    def test_two_closed_sections_follow_the_description_in_place_of_the_old_block(self) -> None:
+    def test_two_closed_sections_follow_the_description_and_no_rule_separates_them(self) -> None:
         (text, _, _, _, _), _ = render_body()
         self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>Contract</strong> '
-                               r'.*___\n\n<details class="section">\n<summary><strong>Data</strong> ')
+                               r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong> ')
         self.assertNotIn("Contract and data", text)
         self.assertNotIn("### **Contract**", text)
         self.assertEqual(text.count('<details class="section">'), 2)
-
-    def test_a_walkthrough_variant_leaves_no_rule_after_the_contract_or_the_data_section(self) -> None:
-        (text, _, _, _, _), _ = render_body({"walkthrough": True})
-        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>Contract</strong> '
-                               r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong> ')
         contract_to_data = text[text.index("<summary><strong>Contract</strong>"):text.index("<summary><strong>Data</strong>")]
         self.assertNotIn("___", contract_to_data)
         after_data = text[text.index("<summary><strong>Data</strong>"):]
         self.assertEqual(after_data.count("___"), 1)
         self.assertTrue(after_data.rstrip().endswith("___"))
         self.assertEqual(text.count("___"), 3)
-
-    def test_a_variant_without_a_walkthrough_keeps_the_rules_after_both_sections(self) -> None:
-        (text, _, _, _, _), _ = render_body()
-        self.assertEqual(text.count("___"), 4)
 
     def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
         (text, _, _, _, lineset), _ = render_body()
@@ -122,7 +112,7 @@ class ChunkedSections(unittest.TestCase):
 
     def test_review_json_lists_each_chunks_lines_and_the_unchunked_ones(self) -> None:
         (_, _, chunks, _, lineset), _ = render_body()
-        data = review_json(RUN, PR, chunks, False, None, True, lineset)
+        data = review_json(RUN, PR, chunks, False, None, lineset, [])
         by_name = {c["name"]: c for c in data["chunks"]}
         self.assertEqual(set(by_name["Item endpoints"]), {"n", "name", "review", "raised_by", "why", "nodes", "labels", "contract", "data", "files"})
         first = by_name["Item endpoints"]["contract"][0]
@@ -135,13 +125,6 @@ class ChunkedSections(unittest.TestCase):
         self.assertEqual([l["text"] for l in data["unchunked"]["contract"]], ["`GET /gone` removed"])
         self.assertEqual(data["unchunked"]["data"], [])
         self.assertEqual(data["schema"], 3)
-
-    def test_an_older_variant_has_none_of_these_fields(self) -> None:
-        (text, _, chunks, _, lineset), _ = render_body({"contract_layout": None})
-        self.assertIsNone(lineset)
-        data = review_json(RUN, PR, chunks, False, None, True)
-        self.assertNotIn("unchunked", data)
-        self.assertTrue(all("contract" not in c and "data" not in c for c in data["chunks"]))
 
     def test_no_changes_keeps_the_old_sentences(self) -> None:
         (text, _, _, _, _), _ = render_body(contract=document({}, {}) | {"path": SPEC}, text="")
@@ -174,16 +157,10 @@ class ChunkedSections(unittest.TestCase):
         self.assertEqual(text.count("<summary><strong>"), 2)
         self.assertTrue(text.rstrip().endswith("___"))
 
-    def test_the_layout_needs_chunks(self) -> None:
-        with self.assertRaises(AnswerError):
-            render_body({"files": "table"})
-        with self.assertRaises(AnswerError):
-            render_body({"contract_layout": "flat"})
-
 
 def build_body_for(run: dict):
     notes: list[str] = []
-    return build_body(run, PR, DATA, CFG, FLOORS, {}, notes, None, ""), notes
+    return build_body(run, PR, DATA, FLOORS, {}, notes, None, ""), notes
 
 
 if __name__ == "__main__":

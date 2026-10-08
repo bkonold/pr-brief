@@ -1,5 +1,5 @@
-"""Tests that variant v23 is v22 with a walkthrough of stops in place of the chunk start, and that no older variant has
-one. Run with `python3 -m unittest discover -s tests` from the tool's folder."""
+"""Tests that variant v23 loads: its render settings are the renderer's, its prompt asks for stops and no chunk start.
+Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import sys
 import tomllib
 import unittest
@@ -8,27 +8,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import compare  # noqa: E402
+from render import RENDER_SETTINGS, AnswerError, check_render_settings  # noqa: E402
 
-VARIANTS = Path(__file__).resolve().parent.parent / "variants"
-
-
-def load(name: str) -> dict:
-    return tomllib.loads((VARIANTS / f"{name}.toml").read_text())
+V23 = Path(__file__).resolve().parent.parent / "variants" / "one_path_risk_chunked_v23.toml"
 
 
 class VariantV23(unittest.TestCase):
     def setUp(self) -> None:
-        self.v22 = load("one_path_risk_chunked_v22")
-        self.v23 = load("one_path_risk_chunked_v23")
+        self.v23 = tomllib.loads(V23.read_text())
 
-    def test_the_render_settings_are_v22s_with_the_walkthrough_and_without_the_start_flags(self) -> None:
-        expected = {key: value for key, value in self.v22["render"].items() if key not in ("start_line", "file_start")}
-        self.assertEqual(self.v23["render"], {**expected, "walkthrough": True})
-
-    def test_no_older_variant_sets_the_flag(self) -> None:
-        for number in range(10, 23):
-            for path in VARIANTS.glob(f"one_path_risk_chunked_v{number}*.toml"):
-                self.assertNotIn("walkthrough", tomllib.loads(path.read_text()).get("render", {}), path.name)
+    def test_the_render_settings_are_the_renderers(self) -> None:
+        self.assertEqual(self.v23["render"], RENDER_SETTINGS)
+        check_render_settings(self.v23["render"])
 
     def test_the_prompt_asks_for_stops_and_no_chunk_start(self) -> None:
         text = self.v23["extra_instructions"] + self.v23["schema_additions"] + self.v23["example_additions"]
@@ -40,6 +31,20 @@ class VariantV23(unittest.TestCase):
 
     def test_the_comparison_labels_it(self) -> None:
         self.assertEqual(compare.VARIANT_LABELS["one_path_risk_chunked_v23"], "23: walkthrough stops")
+
+
+class RenderSettings(unittest.TestCase):
+    def test_a_variant_may_set_none_of_them(self) -> None:
+        check_render_settings({})
+
+    def test_a_setting_the_renderer_does_not_have_is_refused(self) -> None:
+        with self.assertRaisesRegex(AnswerError, "unknown render setting 'start_line'"):
+            check_render_settings({"start_line": True})
+
+    def test_a_setting_has_one_legal_value(self) -> None:
+        for key, value in (("diagram", "force_lr"), ("files", "table"), ("contract_layout", "flat"), ("walkthrough", False)):
+            with self.assertRaisesRegex(AnswerError, f"render setting '{key}' can only be"):
+                check_render_settings({key: value})
 
 
 if __name__ == "__main__":

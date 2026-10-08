@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from context_pack import contract_breaks, contract_lines  # noqa: E402
+from layout import LineSet  # noqa: E402
 from render import build_chunks, file_floor  # noqa: E402
 
 FLOORS = {"floor": [{"name": "schema file", "level": "verify", "globs": ["**/schema.json"]}]}
@@ -19,7 +20,7 @@ def raw(name: str, review: str, path: str) -> dict:
 
 
 def build(chunks: list[dict], paths: list[str] = PATHS) -> list:
-    return build_chunks(chunks, COUNTS, paths, FLOORS, [], {})
+    return build_chunks(chunks, COUNTS, paths, FLOORS, [], {}, None, LineSet([], []))
 
 
 class CatchAllChunk(unittest.TestCase):

@@ -13,15 +13,12 @@ unless local.toml sets `repo` for that host (`repo` applies to the host named by
 
 Reads from the host only (see hosts/). Writes runs/<key>/<variant>/ under PR_DESCRIBE_HOME (default: the tool's
 folder), where <key> is the PR number on GitHub and `fj-<number>` on Forgejo.
-A variant with `render_from = "<other variant>"` makes no model call and no host call: it
-copies the other variant's prompt, answer and PR data from runs/<key>/ and renders them with its own settings.
 """
 import argparse
 import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tomllib
@@ -128,35 +125,6 @@ class Progress:
         write_status(HOME, self.key, state=FAILED, finished=datetime.now().timestamp(), error=error)
 
 
-def render_only(key: str, name: str, variant_path: Path, source_name: str, progress: Progress) -> int:
-    """Copy the source variant's run into this variant's folder and render it with this variant's settings."""
-    source_dir: Path = HOME / "runs" / key / source_name
-    copied: tuple[str, ...] = ("prompt.txt", "answer.yaml", "pr.json", "run.json")
-    optional: tuple[str, ...] = ("context.md", "contract.json")
-    absent: list[str] = [f for f in copied if not (source_dir / f).exists()]
-    if absent:
-        raise SystemExit(f"{name} renders from {source_name}, but {source_dir} has no {', '.join(absent)}. "
-                         f"Run `run.py` for this PR with `--variant {source_name}` first.")
-    source: dict[str, Any] = json.loads((source_dir / "run.json").read_text())
-    run_dir: Path = HOME / "runs" / key / name
-    run_dir.mkdir(parents=True, exist_ok=True)
-    for stale in ("error.txt", "body.md", "body.html", *optional):
-        (run_dir / stale).unlink(missing_ok=True)
-    for f in (*copied[:3], *(o for o in optional if (source_dir / o).exists())):
-        shutil.copyfile(source_dir / f, run_dir / f)
-    (run_dir / "run.json").write_text(json.dumps({
-        **source,
-        "variant": name,
-        "variant_sha256": hashlib.sha256(variant_path.read_bytes()).hexdigest(),
-        "render_from": source_name,
-    }, indent=2) + "\n")
-    progress.stage("render")
-    code: int = subprocess.run([sys.executable, str(ROOT / "render.py"), str(run_dir)]).returncode
-    if code == 0:
-        write_variants_json(run_dir.parent, name)
-    return code
-
-
 def execute(progress: Progress) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("pr")
@@ -183,12 +151,6 @@ def execute(progress: Progress) -> int:
         raise SystemExit(f"no variant {a.variant!r} in {HOME / 'variants'} or {ROOT / 'variants'}")
     variant: dict[str, Any] = tomllib.loads(variant_path.read_text())
 
-    if "render_from" in variant:
-        if a.runner != CLAUDE:
-            raise SystemExit(f"{a.variant} renders from {variant['render_from']} and makes no model call, so --runner {a.runner} does not apply")
-        if a.prompt_only:
-            raise SystemExit(f"{a.variant} renders from {variant['render_from']} and has no prompt of its own")
-        return render_only(key, a.variant, variant_path, variant["render_from"], progress)
     if not a.repo:
         p.error(f"--repo owner/name is required: local.toml sets no `repo` for the {a.host} host")
     owner, _, name = a.repo.partition("/")

@@ -8,6 +8,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import render  # noqa: E402
+from layout import LineSet  # noqa: E402
 from render import DEFAULT_TEST_GLOBS, build_chunks, is_test_path  # noqa: E402
 
 PATHS = ["web/Page.tsx", "web/Page.test.tsx", "api/ItemService.java", "api/ItemServiceTest.java",
@@ -18,7 +19,7 @@ COUNTS = {path.lower(): (1, 0) for path in PATHS}
 def build(files: list[str]) -> list:
     raw = {"name": "Items", "review": "read", "why": "w", "files": files}
     with mock.patch.object(render, "TEST_GLOBS", DEFAULT_TEST_GLOBS), mock.patch.object(render, "TEST_DIRS", []):
-        return build_chunks([raw], COUNTS, files, {}, [], {})
+        return build_chunks([raw], COUNTS, files, {}, [], {}, None, LineSet([], []))
 
 
 class ChunkFilesOrder(unittest.TestCase):
@@ -29,7 +30,7 @@ class ChunkFilesOrder(unittest.TestCase):
 
     def test_the_catch_all_chunk_also_puts_tests_last(self) -> None:
         with mock.patch.object(render, "TEST_GLOBS", DEFAULT_TEST_GLOBS), mock.patch.object(render, "TEST_DIRS", []):
-            chunks = build_chunks([], COUNTS, ["web/Page.test.tsx", "web/Page.tsx"], {}, [], {})
+            chunks = build_chunks([], COUNTS, ["web/Page.test.tsx", "web/Page.tsx"], {}, [], {}, None, LineSet([], []))
         self.assertEqual(chunks[0].files, ["web/Page.tsx", "web/Page.test.tsx"])
 
 
