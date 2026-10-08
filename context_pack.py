@@ -43,13 +43,11 @@ TITLES: dict[str, str] = {
     "migrations": "Migrations",
     "wiki": "Codebase wiki",
 }
-OWNER_CALLERS_INTRO = ("Files outside this PR that mention a changed symbol and also reference the class or module "
-                       "that declares it, matched by name in the base commit.")
 PRECISE_CALLERS_INTRO = ("Confirmed callers of changed code, from the base commit. The list is partial: every file listed "
                          "really calls the code, but many callers are missing (for example calls over HTTP, through "
                          "interfaces or by reflection).")
 INTROS: dict[str, str] = {
-    "callers": "Files outside this PR that mention a changed symbol, matched by name in the base commit.",
+    "callers": PRECISE_CALLERS_INTRO,
     "reach": "Apps that contain changed files or files that call the changed code.",
     "contract": f"Differences between the base and head `{LOCAL.get('openapi_path', 'OpenAPI document')}`.",
     "migrations": "Statements in the PR's new migration files that change or remove existing data or schema.",
@@ -72,15 +70,12 @@ CODE_ONLY_EXCLUDES: tuple[str, ...] = (
     ":!**/*.md", ":!**/*.mdc", ":!**/package-lock.json",
     *(f":!{glob}" for glob in LOCAL.get("callers_exclude_globs", [])),
 )
-WIKI_MATCH_MODES: frozenset[str] = frozenset({"folder", "exact"})
-CALLERS_MODES: frozenset[str] = frozenset({"default", "precise"})
-# Context options a variant may set in its `[context_options]` table. Each default reproduces the
-# behavior of a variant that sets no options.
-DEFAULT_OPTIONS: dict[str, Any] = {
-    "callers_code_only": False, "list_uncalled": False, "wiki_match": "folder",
-    "callers_skip_new_files": False, "callers_require_owner": False, "callers_skip_fields": False,
-    "callers_mode": "default",
-}
+# Context options a variant may set in its `[context_options]` table, with their defaults.
+DEFAULT_OPTIONS: dict[str, Any] = {"callers_code_only": False, "callers_skip_new_files": False, "callers_skip_fields": False}
+# Options with one legal value: callers are always the precise ones and wiki pages always match by exact path.
+FIXED_OPTIONS: dict[str, str] = {"callers_mode": "precise", "wiki_match": "exact"}
+# Options a variant file may still set that change nothing: precise callers need no owner check.
+IGNORED_OPTIONS: frozenset[str] = frozenset({"callers_require_owner"})
 BOOLEAN_OPTIONS: frozenset[str] = frozenset(k for k, v in DEFAULT_OPTIONS.items() if isinstance(v, bool))
 MAX_NEW_SYMBOLS_LISTED = 15
 MIN_SYMBOL_LENGTH = 4
@@ -102,8 +97,6 @@ JAVA_ANNOTATION = re.compile(r"@\w+(?:\([^)]*\))?\s*")
 JAVA_MODIFIERS = re.compile(r"\b(?:public|protected|private|static|final|abstract|default|synchronized|native)\b")
 JAVA_TYPE_TOKEN = re.compile(r"^(?:<[^>]*>\s*)?[\w.]+(?:<.*>)?(?:\[\])*$")
 NOT_RETURN_TYPES: frozenset[str] = frozenset({"return", "new", "throw", "else", "case", "yield", "await"})
-TS_IMPORT_EXTENSIONS = r"(\.[jt]sx?)?"
-IMPORT_QUOTE = "[\"']"
 
 MIGRATION_DIRS: tuple[str, ...] = tuple(LOCAL.get("migration_dirs", []))
 ALTER_TABLE = re.compile(r"\bALTER\s+TABLE\s+(?:ONLY\s+|IF\s+EXISTS\s+)*([\w.\"]+)", re.IGNORECASE)
@@ -275,11 +268,6 @@ def declarations_by_name(files: list[DiffFile]) -> dict[str, list[Declaration]]:
     return by_name
 
 
-def changed_symbols(files: list[DiffFile]) -> list[str]:
-    """Names declared on changed lines (in order of appearance), then names from hunk headers."""
-    return list(declarations_by_name(files))[:MAX_SYMBOLS]
-
-
 def grep_files(base: str, pattern_args: tuple[str, ...], changed: set[str], code_only: bool,
                includes: tuple[str, ...] | None = None) -> list[str]:
     """Non-test files outside the PR that match `pattern_args`, a `git grep` pattern with its flags,
@@ -295,31 +283,6 @@ def grep_files(base: str, pattern_args: tuple[str, ...], changed: set[str], code
 
 def grep_callers(base: str, name: str, changed: set[str], code_only: bool = False) -> list[str]:
     return grep_files(base, ("-w", name), changed, code_only)
-
-
-def grep_importers(base: str, module: str, changed: set[str], code_only: bool) -> list[str]:
-    """Files with an import line whose module specifier ends with `module`, a file name without its extension."""
-    escaped: str = re.sub(r"([.$*+?()\[\]{}|^\\])", r"\\\1", module)
-    pattern: str = rf"(from|import|require)[[:space:]]*\(?[[:space:]]*{IMPORT_QUOTE}([^\"']*/)?{escaped}{TS_IMPORT_EXTENSIONS}{IMPORT_QUOTE}"
-    return grep_files(base, ("-E", "-e", pattern), changed, code_only)
-
-
-def owner_files(base: str, declarations: list[Declaration], changed: set[str], code_only: bool,
-                cache: dict[tuple[str, str], set[str]]) -> set[str] | None:
-    """Files that reference a declaring class (Java) or import a defining module (TS) of a symbol.
-    None when the symbol needs no owner (it is a type, so it is its own owner)."""
-    if any(d.kind == "type" for d in declarations):
-        return None
-    found: set[str] = set()
-    for d in declarations:
-        stem: str = PurePosixPath(d.path).stem
-        is_java: bool = d.path.endswith(".java")
-        key: tuple[str, str] = ("class" if is_java else "module", stem)
-        if key not in cache:
-            cache[key] = set(grep_callers(base, stem, changed, code_only) if is_java
-                             else grep_importers(base, stem, changed, code_only))
-        found |= cache[key]
-    return found
 
 
 JAVA_IMPORT = re.compile(r"^[ \t]*import\s[^;]*;", re.MULTILINE)
@@ -944,16 +907,11 @@ def load_wiki_pages() -> list[WikiPage]:
     return pages
 
 
-def wiki_items(changed: list[str], match: str = "folder") -> list[str]:
-    """Pages ranked by score. "folder" gives an exact `repo://` path 2 points and a path in the same
-    folder 1. "exact" counts only exact paths, one point each, and skips pages without a description."""
+def wiki_items(changed: list[str]) -> list[str]:
+    """Pages with a description, ranked by how many changed files appear among their `repo://` resources."""
     scored: list[tuple[int, WikiPage]] = []
     for page in load_wiki_pages():
-        if match == "exact":
-            score: int = sum(1 for p in changed if p in page.resources) if page.description else 0
-        else:
-            folders: set[str] = {str(PurePosixPath(r).parent) for r in page.resources}
-            score = sum(2 if p in page.resources else 1 if str(PurePosixPath(p).parent) in folders else 0 for p in changed)
+        score: int = sum(1 for p in changed if p in page.resources) if page.description else 0
         if score:
             scored.append((score, page))
     scored.sort(key=lambda s: (-s[0], s[1].path))
@@ -975,10 +933,8 @@ class Pack:
     wiki_sha: str | None
     trimmed: dict[str, int] = field(default_factory=dict)
     footers: dict[str, list[str]] = field(default_factory=dict)
-    uncalled: list[str] | None = None
     new_in_pr: list[str] | None = None
     fields_dropped: int | None = None
-    intros: dict[str, str] = field(default_factory=dict)
     caller_files: dict[str, list[str]] = field(default_factory=dict)
     precise: dict[str, str | None] | None = None
     contract: dict[str, Any] | None = None
@@ -1006,7 +962,7 @@ class Pack:
         for name in SECTIONS:
             if name not in kept:
                 continue
-            lines: list[str] = [f"### {TITLES[name]}", self.intros.get(name, INTROS[name]), *kept[name], *self.footers.get(name, [])]
+            lines: list[str] = [f"### {TITLES[name]}", INTROS[name], *kept[name], *self.footers.get(name, [])]
             if omitted.get(name):
                 lines.append(f"({omitted[name]} more {OMITTED_UNITS[name]} omitted)")
             blocks.append("\n".join(lines))
@@ -1034,7 +990,6 @@ class Pack:
             dropped[name] = f"{count} items trimmed to fit the token budget"
         return {
             "sections": {name: len(items) - self.trimmed.get(name, 0) for name, items in self.items.items()},
-            **({"uncalled": len(self.uncalled)} if self.uncalled is not None else {}),
             **({"new_in_pr": len(self.new_in_pr)} if self.new_in_pr is not None else {}),
             **({"fields_dropped": self.fields_dropped} if self.fields_dropped is not None else {}),
             **({"callers_precise": self._precise_stats(self.precise)} if self.precise is not None else {}),
@@ -1047,28 +1002,22 @@ class Pack:
 
 def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str, Any] | None = None) -> Pack:
     """`options` overrides DEFAULT_OPTIONS: `callers_code_only` restricts the callers search to code
-    files, `list_uncalled` lists changed symbols without callers outside the PR in the callers
-    section, and `wiki_match` ("folder" or "exact") sets how wiki pages qualify. `callers_skip_new_files`
-    skips the caller search for symbols declared only in files the PR adds and lists them instead,
-    `callers_require_owner` keeps a caller only when it also references the symbol's declaring class
-    (Java) or imports its defining module (TS), and `callers_skip_fields` drops names that are not
-    methods, types or TS exports. `callers_mode` "precise" lists only callers that pass the
-    declaration-specific rules (qualified static calls, unique instance-method names, resolved TS
-    imports, same-language type mentions), says the list is partial and records why each other symbol
-    was dropped."""
+    files, `callers_skip_new_files` skips the caller search for symbols declared only in files the PR
+    adds and lists them instead, and `callers_skip_fields` drops names that are not methods, types or
+    TS exports. Callers are always the precise ones: only callers that pass the declaration-specific
+    rules (qualified static calls, unique instance-method names, resolved TS imports, same-language
+    type mentions) are listed, the section says the list is partial and the stats record why each
+    other symbol was dropped. Wiki pages always match by exact `repo://` path."""
     settings: dict[str, Any] = {**DEFAULT_OPTIONS, **(options or {})}
-    unknown_options: list[str] = [k for k in settings if k not in DEFAULT_OPTIONS]
+    unknown_options: list[str] = [k for k in settings if k not in DEFAULT_OPTIONS and k not in FIXED_OPTIONS and k not in IGNORED_OPTIONS]
     if unknown_options:
         raise ValueError(f"unknown context options: {', '.join(unknown_options)}")
     not_boolean: list[str] = [k for k in BOOLEAN_OPTIONS if not isinstance(settings[k], bool)]
     if not_boolean:
         raise ValueError(f"context options must be true or false: {', '.join(not_boolean)}")
-    if settings["wiki_match"] not in WIKI_MATCH_MODES:
-        raise ValueError(f"unknown wiki_match: {settings['wiki_match']}")
-    if settings["callers_mode"] not in CALLERS_MODES:
-        raise ValueError(f"unknown callers_mode: {settings['callers_mode']}")
-    if settings["callers_mode"] == "precise" and settings["list_uncalled"]:
-        raise ValueError("list_uncalled cannot be used with callers_mode precise")
+    for name, legal in FIXED_OPTIONS.items():
+        if settings.get(name, legal) != legal:
+            raise ValueError(f"unknown {name}: {settings[name]}")
     unknown: list[str] = [s for s in sections if s not in SECTIONS]
     if unknown:
         raise ValueError(f"unknown context sections: {', '.join(unknown)}")
@@ -1101,11 +1050,8 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
 
     caller_files: dict[str, list[str]] = {}
     footers: dict[str, list[str]] = {}
-    intros: dict[str, str] = {}
-    uncalled: list[str] | None = None
     new_in_pr: list[str] | None = None
     fields_dropped: int | None = None
-    precise: bool = settings["callers_mode"] == "precise"
     reasons: dict[str, str | None] | None = None
     if "callers" in wanted and "callers" not in dropped:
         changed_set: set[str] = set(changed)
@@ -1121,39 +1067,18 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
         if settings["callers_skip_new_files"]:
             new_in_pr = [n for n in names if all(d.path in added for d in by_name[n])]
             names = [n for n in names if n not in new_in_pr]
-        if settings["callers_require_owner"]:
-            intros["callers"] = OWNER_CALLERS_INTRO
-        if precise:
-            intros["callers"] = PRECISE_CALLERS_INTRO
-            reasons = {}
-            reader: BlobReader = BlobReader(base)
-        owner_cache: dict[tuple[str, str], set[str]] = {}
-        uncalled = []
+        reasons = {}
+        reader: BlobReader = BlobReader(base)
         for name in names[:MAX_SYMBOLS]:
-            paths: list[str]
-            if precise:
-                paths, reasons[name] = precise_callers(base, reader, name, by_name[name], changed_set, code_only)
-            else:
-                paths = grep_callers(base, name, changed_set, code_only)
-            if settings["callers_require_owner"] and not precise:
-                owners: set[str] | None = owner_files(base, by_name[name], changed_set, code_only, owner_cache)
-                if owners is not None:
-                    paths = [p for p in paths if p in owners]
+            paths, reasons[name] = precise_callers(base, reader, name, by_name[name], changed_set, code_only)
             if len(paths) > MAX_CALLER_FILES_PER_SYMBOL:
                 skipped_common[name] = len(paths)
-                if reasons is not None:
-                    del reasons[name]
+                del reasons[name]
             elif paths:
                 caller_files[name] = paths
                 shown: str = ", ".join(paths[:MAX_CALLER_PATHS_SHOWN])
                 more: str = f", +{len(paths) - MAX_CALLER_PATHS_SHOWN} more" if len(paths) > MAX_CALLER_PATHS_SHOWN else ""
                 items["callers"].append(f"- `{name}`: {len(paths)} caller files: {shown}{more}")
-            elif not precise:
-                uncalled.append(name)
-        if not settings["list_uncalled"]:
-            uncalled = None
-        elif uncalled:
-            footers["callers"] = [f"No callers outside this PR: {', '.join(uncalled)}"]
         if new_in_pr:
             listed: str = ", ".join(new_in_pr[:MAX_NEW_SYMBOLS_LISTED])
             more: str = f", +{len(new_in_pr) - MAX_NEW_SYMBOLS_LISTED} more" if len(new_in_pr) > MAX_NEW_SYMBOLS_LISTED else ""
@@ -1188,8 +1113,8 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
         items["migrations"] = [f"- {line}" for line in migration_items(files)]
 
     if "wiki" in wanted and "wiki" not in dropped:
-        items["wiki"] = [f"- {line}" for line in wiki_items(changed_code, settings["wiki_match"])]
+        items["wiki"] = [f"- {line}" for line in wiki_items(changed_code)]
 
     return Pack(items=items, skipped_common=skipped_common, dropped=dropped, wiki_sha=wiki_sha() if "wiki" in wanted and "wiki" not in dropped else None,
-                footers=footers, uncalled=uncalled, new_in_pr=new_in_pr, fields_dropped=fields_dropped, intros=intros,
+                footers=footers, new_in_pr=new_in_pr, fields_dropped=fields_dropped,
                 caller_files=caller_files, precise=reasons, contract=contract)
