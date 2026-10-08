@@ -11,7 +11,7 @@ from diff_lines import file_diff_lines  # noqa: E402
 from data_lines import (  # noqa: E402
     ADDITIVE, DATA_LEVELS, DESTRUCTIVE, REWRITES, classify_statement, data_lines, narrows, split_statements,
 )
-from test_contract_block import make_diff  # noqa: E402
+from contract_fixtures import make_diff  # noqa: E402
 
 PATH = "db/migration/V9__widgets.sql"
 

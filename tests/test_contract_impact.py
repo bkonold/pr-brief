@@ -13,7 +13,7 @@ from contract_lines import (  # noqa: E402
     ADDITIVE, CALLERS, CONSUMERS, CONTRACT_LEVELS, DEPRECATED, REQUEST, RESPONSE, collect_changes, contract_impact,
     side_phrase,
 )
-from test_contract_block import SPEC, contract_of, document, make_diff  # noqa: E402
+from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
 
 
 def ref(name: str) -> dict:

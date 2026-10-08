@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from diff_lines import file_diff_lines  # noqa: E402
 from contract_lines import ADDITIVE, CALLERS, CONSUMERS, DEPRECATED, Line, contract_lines  # noqa: E402
-from test_contract_block import SPEC, contract_of, document, make_diff  # noqa: E402
+from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
 from test_contract_impact import body, operation, props, ref  # noqa: E402
 
 

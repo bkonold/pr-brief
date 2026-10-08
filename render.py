@@ -25,7 +25,6 @@ import yaml
 
 from config import ROOT, config_file, load_local, variant_file
 import layout
-from contract_block import contract_block, contract_rows, migration_rows
 from diff_lines import file_diff_lines
 from contract_lines import CALLERS, CONSUMERS, CONTRACT_LEVELS, Line, contract_lines
 from data_lines import DATA_LEVELS, DESTRUCTIVE, data_lines
@@ -1208,21 +1207,6 @@ def migration_paths(pr: dict[str, Any]) -> list[str]:
     return [f["path"] for f in pr["files"] if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"]
 
 
-def contract_section(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: str) -> str:
-    """The "Contract and data" block: the run's API contract changes and the tables its migration files touch."""
-    repo: str = run["repo"]
-    number: str = str(run["pr"])
-    unchecked: list[str] = unchecked_sides(run, contract)
-    rows: list[Any] = []
-    if contract is not None:
-        rows += contract_rows(contract, file_diff_lines(diff_text, contract["path"]), contract["path"])
-    if MIGRATION_GLOBS:
-        rows += migration_rows({path: file_diff_lines(diff_text, path) for path in migration_paths(pr)})
-    return contract_block(rows,
-                          lambda path, side, line: line_link(repo, number, {"path": path, "side": side, "line": line}),
-                          lambda path: diff_link(repo, number, path), unchecked)
-
-
 def build_lineset(run: dict[str, Any], pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: str) -> layout.LineSet:
     """The run's contract and data lines, before any chunk owns them."""
     api: list[Line] = contract_lines(contract, file_diff_lines(diff_text, contract["path"]), contract["path"]) if contract else []
@@ -1280,8 +1264,6 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], cf
     lineset: layout.LineSet | None = build_lineset(run, pr, contract, diff_text) if layout_mode else None
     if lineset is not None:
         ordered["contract"] = ordered["data"] = ""
-    elif cfg.get("contract_block"):
-        ordered["contract_and_data"] = contract_section(run, pr, contract, diff_text)
     flow_order: bool = cfg.get("chunk_order") == "flow"
     if cfg.get("chunk_order", "risk") not in ("risk", "flow"):
         raise AnswerError(f"unknown render chunk_order {cfg['chunk_order']!r}, expected 'risk' or 'flow'")

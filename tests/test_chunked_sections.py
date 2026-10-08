@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import render  # noqa: E402
 from render import AnswerError, build_body, review_json  # noqa: E402
-from test_contract_block import SPEC, contract_of, document, make_diff  # noqa: E402
+from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
 from test_contract_impact import operation, props  # noqa: E402
 
 CONTROLLER = "api/ItemController.java"
@@ -138,7 +138,6 @@ class ChunkedSections(unittest.TestCase):
     def test_an_older_variant_has_none_of_these_fields(self) -> None:
         (text, _, chunks, _, lineset), _ = render_body({"contract_layout": None})
         self.assertIsNone(lineset)
-        self.assertIn("### **Contract and data**\n<ul class=\"contract\">", text)
         data = review_json(RUN, PR, chunks, False, None, True)
         self.assertNotIn("unchunked", data)
         self.assertTrue(all("contract" not in c and "data" not in c for c in data["chunks"]))
