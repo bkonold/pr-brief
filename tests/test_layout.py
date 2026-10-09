@@ -1,4 +1,4 @@
-"""Tests for drawing the Contract and Data sections. All data here is invented.
+"""Tests for drawing the API and Data sections. All data here is invented.
 Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import re
 import sys
@@ -33,7 +33,7 @@ class Drawing(unittest.TestCase):
         self.assertNotRegex(re.sub(r"<[^>]+>", "", glance(lines, CONTRACT_LEVELS)), r"\d")
 
     def test_the_glance_line_does_not_repeat_the_section_name(self) -> None:
-        self.assertNotIn("Contract", glance([line("a", ADDITIVE)], CONTRACT_LEVELS))
+        self.assertNotIn("API", glance([line("a", ADDITIVE)], CONTRACT_LEVELS))
         self.assertNotIn(":", re.sub(r"<[^>]+>", "", glance([line("a", ADDITIVE)], CONTRACT_LEVELS)))
 
     def test_the_data_glance_line_has_an_other_chip_for_lines_with_no_level(self) -> None:
@@ -47,11 +47,11 @@ class Drawing(unittest.TestCase):
         self.assertEqual(pill(None, DATA_LEVELS), "")
 
     def draw(self, lines, kind="contract", levels=CONTRACT_LEVELS, files=FILES) -> str:
-        return section(kind, kind.capitalize(), levels, list(lines), URL, files)
+        return section(kind, {"contract": "API", "data": "Data"}[kind], levels, list(lines), URL, files)
 
     def test_a_section_is_a_heading_line_a_chip_line_and_a_closed_list_of_files(self) -> None:
         text = self.draw([line("a", BREAKING), line("b", ADDITIVE), line("c", ADDITIVE)])
-        self.assertEqual(text, f"**Contract** · [View files]({URL}?pr-brief=contract)<br>\n"
+        self.assertEqual(text, f"**API** · [View files]({URL}?pr-brief=api)<br>\n"
                                '<span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span>\n\n'
                                "<details>\n<summary>2 files</summary>\n\n"
                                "- [openapi.json](https://example.test/a)\n- [Widget.java](https://example.test/b)\n\n</details>")
@@ -83,7 +83,7 @@ class Drawing(unittest.TestCase):
 
     def test_with_no_file_there_is_no_link_and_no_list(self) -> None:
         text = self.draw(self.lines(1), files=[])
-        self.assertEqual(text, '**Contract**<br>\n<span class="pill p2">additive</span>')
+        self.assertEqual(text, '**API**<br>\n<span class="pill p2">additive</span>')
 
     def lines(self, count: int, impact: str = ADDITIVE) -> list[Line]:
         return [line(f"t{n}", impact) for n in range(count)]

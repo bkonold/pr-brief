@@ -64,7 +64,7 @@
     return review.walkthrough;
   }
 
-  const FILE_SET_LABELS = { contract: "Contract", data: "Data" };
+  const FILE_SET_LABELS = { contract: "API", data: "Data" };
 
   // The chips that narrow the host's file tree to a set of files: "All" with the PR's changed-file count, then each of the review's
   // file sets that has files. A run with no such set, or an older run that has none, gets no chips. `changed` is how

@@ -1,4 +1,4 @@
-"""Tests for the pattern lines of the Contract section. All data here is invented.
+"""Tests for the pattern lines of the API section. All data here is invented.
 Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import json
 import sys

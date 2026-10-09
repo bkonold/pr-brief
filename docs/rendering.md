@@ -9,7 +9,7 @@ cannot change them. [prompt.md](prompt.md) shows how the variant's rules and fie
 
 | Variant | What it is |
 | --- | --- |
-| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
+| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; an API and a Data section for the whole PR |
 
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.
@@ -37,14 +37,14 @@ re-run it instead.
   A stop's `node` must be a box of the diagram that covers files; when it is missing or is not, the stop takes the first
   box, in diagram order, whose files include the stop's file, with a note, and when no box holds the file `node` is null
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
-- **Contract and Data** are two sections after the description, built without a model call. Each is three parts. The
-  first line is the section's name in bold and a `View files` link to the PR's files page with `?pr-brief=contract` (or
+- **API and Data** are two sections (the API section is built from `contract.json` and the `contract` lines; only its name on screen is API) after the description, built without a model call. Each is three parts. The
+  first line is the section's name in bold and a `View files` link to the PR's files page with `?pr-brief=api` (or
   `data`): `/pull/N/files` on GitHub, `/pulls/N/files` on Forgejo. A `<br>` ends it, so the chips are on a line of their
   own: one for each level present, worst first (`breaking` `may break` `additive`; no counts). Then a closed `<details>`
   whose summary counts the section's files (`3 files`) and which lists them as a markdown list, a link to each file's
   diff on its own line (see Sources and file sets below). The body has no per-line table; every line is in `review.json`. A section with
   no files is its name and chips, with no link and no list. With no lines a section is a heading and "No API changes" or "No database changes",
-  or that its side was not checked (no `openapi_path` or mirror, no `migration_globs`). The Contract side needs
+  or that its side was not checked (no `openapi_path` or mirror, no `migration_globs`). The API side needs
   `contract.json`; the Data side needs `migration_globs` in `local.toml`.
 
   `contract.json` lists `removals`, `newly_required` and, for this
@@ -62,7 +62,7 @@ re-run it instead.
   the others plain. Colour is not used. A level the renderer does not know (an older run's `deprecated`) draws as an
   `other` chip.
 
-  Contract levels, worst first. Every change records the side it reaches, request (a body or a parameter) or response; a
+  API levels (the `contract` lines), worst first. Every change records the side it reaches, request (a body or a parameter) or response; a
   schema used on both sides counts as both and takes the worse level, and a schema no operation reaches counts as both.
   `contract_impact` in `contract_lines.py` holds the full table (every kind of change, per side) in its docstring and is
   the only place that classifies. In short:
@@ -115,7 +115,7 @@ re-run it instead.
   several schemas or operations has the source of its first match in `source`, and every match in the file set.
 
   `file_sets` is `{"contract": [paths], "data": [paths]}`, each sorted without repeats and empty when the PR has none.
-  Contract is the spec when the PR changes it, the source of every contract line and every changed file under a
+  `contract` is the spec when the PR changes it, the source of every contract line and every changed file under a
   `model_dirs` path; data is the migration files and the source of every data line.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,

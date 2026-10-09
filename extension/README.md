@@ -10,7 +10,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
 - Under the toggle in "Files" mode, chips that narrow the host's tree to a set of files: "All N" (the PR's changed
-  files), "Contract N" and "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with
+  files), "API N" and "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with
   no contract or data files (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered,
   and clicking one never moves the diagram. See "File sets" below. "Walkthrough" mode has no chips and is never filtered.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
@@ -18,7 +18,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 ## File sets
 
-In "Files" mode, "Contract" and "Data" narrow the host's own tree and diffs to the files that make up the PR's API contract
+In "Files" mode, "API" and "Data" narrow the host's own tree and diffs to the files that make up the PR's API contract
 change and its data change.
 
 - The tree hides the files that are not in the set, and a directory left with no visible file. The host re-renders its
@@ -26,12 +26,12 @@ change and its data change.
   `#diff-…` link it holds.
 - The chosen chip is kept while the tab is open: switching to "Walkthrough" shows the whole tree again (the walkthrough
   list is never filtered), and switching back to "Files" applies the chip again.
-- Under "Contract" or "Data" only the set's diffs are shown: every other diff's whole file box, header included, gets
+- Under "API" or "Data" only the set's diffs are shown: every other diff's whole file box, header included, gets
   `display: none` through a class and is never removed, so scrolling and the host's j/k move through the set's files only,
   and the browser's find-in-page does not see the hidden ones. A diff the host loads or re-renders later is hidden by the
   next refresh, as the tree rows are. A diff is matched to the set by the same `diff-<hash of path>` id as a tree row.
   Under "All", and in "Walkthrough" mode, every diff is shown again; the diffs stay in the page in every mode.
-- The brief's "View files" links open the files page with `?pr-brief=contract` or `?pr-brief=data`. When the run has
+- The brief's "View files" links open the files page with `?pr-brief=api` or `?pr-brief=data` (the API section's files are the review's `contract` file set; the old value `contract` is not read). When the run has
   that set, the page loads in "Files" mode with its chip chosen and the tree narrowed to it, with no stop selected and no
   jump. Any other value, a set the run does not have, or no parameter gives the usual "Walkthrough" start. The parameter
   stays in the URL.
@@ -216,7 +216,7 @@ the page's data, and its header links to the files view. Without a run it is the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
   description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
-- The brief's "Contract" and "Data" sections are each a bold name and a "View files" link on one line, one chip for
+- The brief's "API" and "Data" sections are each a bold name and a "View files" link on one line, one chip for
   each impact level present (no counts) on the next, and a closed `<details>` whose summary counts the files
   (`3 files`) and which lists them one to a line as links to their diffs. There is no table: the lines stay in `review.json`. The chips come from the run's
   `<span class="pill p0|p1|p2">` markup: the top level is a filled chip, the second a bold outlined one and the rest

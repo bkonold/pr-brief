@@ -17,7 +17,7 @@ REPO = "octo/widgets"
 HEAD = "d" * 40
 BODY = (
     "# Add a widget cache\n\n<!-- pr-agent-generated -->\n### **PR Type**\nEnhancement\n\n\n___\n\n"
-    "### **Description**\n- Cache widgets\n\n\n___\n\n### **Contract**\nNo API changes\n\n\n### **Data**\nNo database changes\n\n\n"
+    "### **Description**\n- Cache widgets\n\n\n___\n\n### **API**\nNo API changes\n\n\n### **Data**\nNo database changes\n\n\n"
     "### Diagram Walkthrough\n\n\n```mermaid\nflowchart TD\n  a[\"Cache\"] --> b[\"Store\"]\n```\n\nDashed boxes are unchanged context\n\n\n___\n\n")
 
 
@@ -61,7 +61,7 @@ class AnchorTest(unittest.TestCase):
 class BodyTest(RunFolderTest):
     def test_the_comment_has_the_brief_the_diagram_fence_the_walkthrough_and_the_hidden_payload_in_that_order(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1), stop(2, "src/Store.java", None)]))
-        order = ["## PR Brief", "### **Description**", "### **Contract**", "### **Data**", "```mermaid", "### Walkthrough", "1. [Stop 1](",
+        order = ["## PR Brief", "### **Description**", "### **API**", "### **Data**", "```mermaid", "### Walkthrough", "1. [Stop 1](",
                  "2. [Stop 2](", "<sub>pr-brief · v · ddddddd</sub>", post.MARKER]
         positions = [comment.index(part) for part in order]
         self.assertEqual(positions, sorted(positions))
@@ -92,10 +92,10 @@ class BodyTest(RunFolderTest):
         self.assertEqual(post.payload(review([stop(1)])), post.payload(review([stop(1)])))
 
     def test_a_contract_section_in_the_brief_is_kept_whole(self) -> None:
-        section = ('**Contract** · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)<br>\n'
+        section = ('**API** · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=api)<br>\n'
                    '<span class="pill p0"><strong>breaking</strong></span>\n\n'
                    '<details>\n<summary>1 file</summary>\n\n- [openapi.json](https://github.com/acme/widgets/pull/7/files#diff-ab)\n\n</details>\n')
-        body = BODY.replace("### **Contract**\nNo API changes\n", section)
+        body = BODY.replace("### **API**\nNo API changes\n", section)
         comment = post.build_comment(self.run_dir([stop(1)], body))
         self.assertIn(section, comment)
 

@@ -11,7 +11,7 @@ and estimated tokens (characters / 4). `run.py --prompt-only` builds the pack to
 | callers | Files outside the PR that mention a changed symbol (at most 15 symbols; more than 50 caller files and the symbol is skipped as too common) | `source_checkout` (and `github_url` to fetch missing commits of a GitHub PR) |
 | reach | Per app, the changed files and caller files, mapped by globs | `reach.toml` |
 | contract | Removed operations, removed schema properties, newly required properties and removed enum values (at most 30 lines), only when the OpenAPI file changed | `openapi_path`, plus the mirror |
-| migrations | `DELETE FROM`, `UPDATE`, `DROP`, `TRUNCATE` and `SET NOT NULL` statements in added migration files | `migration_dirs` (the "Contract and data" block uses `migration_globs`) |
+| migrations | `DELETE FROM`, `UPDATE`, `DROP`, `TRUNCATE` and `SET NOT NULL` statements in added migration files | `migration_dirs` (the "API" and "Data" sections uses `migration_globs`) |
 
 The pack is trimmed to 6000 estimated tokens by dropping whole items, callers first, then reach,
 contract and migrations, and the text says how many were left out.

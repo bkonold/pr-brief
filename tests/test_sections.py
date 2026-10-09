@@ -1,4 +1,4 @@
-"""Tests for the Contract and Data sections of a brief, the diagram caption and badges, and their review.json fields.
+"""Tests for the API and Data sections of a brief, the diagram caption and badges, and their review.json fields.
 All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import json
 import re
@@ -67,11 +67,11 @@ class Sections(unittest.TestCase):
     def test_two_sections_follow_the_description_and_no_rule_separates_them(self) -> None:
         brief, _ = render_body()
         text = brief.body
-        self.assertRegex(text, r"(?s)### \*\*Description\*\*\n.*___\n\n\*\*Contract\*\* .*\n\n\*\*Data\*\* ")
+        self.assertRegex(text, r"(?s)### \*\*Description\*\*\n.*___\n\n\*\*API\*\* .*\n\n\*\*Data\*\* ")
         self.assertNotIn("Contract and data", text)
-        self.assertNotIn("### **Contract**", text)
+        self.assertNotIn("### **API**", text)
         self.assertNotIn('<details class="section">', text)
-        contract_to_data = text[text.index("**Contract** "):text.index("**Data** ")]
+        contract_to_data = text[text.index("**API** "):text.index("**Data** ")]
         self.assertNotIn("___", contract_to_data)
         after_data = text[text.index("**Data** "):]
         self.assertEqual(after_data.count("___"), 1)
@@ -81,9 +81,9 @@ class Sections(unittest.TestCase):
     def test_the_contract_section_has_the_chips_the_files_link_and_the_files_and_no_table(self) -> None:
         brief, _ = render_body()
         text, lineset = brief.body, brief
-        contract = self.section_of(text, "Contract")
+        contract = self.section_of(text, "API")
         first, chips = contract.splitlines()[:2]
-        self.assertEqual(first, "**Contract** · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=contract)<br>")
+        self.assertEqual(first, "**API** · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=api)<br>")
         self.assertEqual(re.sub(r"<[^>]+>", "", chips), "breaking may break")
         self.assertEqual(re.findall(r"<summary>(.*?)</summary>", contract), ["1 file"])
         self.assertEqual(len(lineset.contract), 3)
@@ -103,7 +103,7 @@ class Sections(unittest.TestCase):
     def test_a_forgejo_run_links_its_own_files_page(self) -> None:
         with mock.patch.object(render, "LINK_HOST", Forgejo("http://forge.invalid", None)):
             brief, _ = render_body()
-        self.assertIn("[View files](http://forge.invalid/acme/shop/pulls/7/files?pr-brief=contract)", brief.body)
+        self.assertIn("[View files](http://forge.invalid/acme/shop/pulls/7/files?pr-brief=api)", brief.body)
 
     def test_review_json_lists_the_boxes_the_stops_and_every_line(self) -> None:
         brief, _ = render_body()
@@ -157,7 +157,7 @@ class Sections(unittest.TestCase):
     def test_no_changes_keeps_the_old_sentences(self) -> None:
         brief, _ = render_body(contract=document({}, {}) | {"path": SPEC}, text="")
         text = brief.body
-        self.assertIn("### **Contract**\nNo API changes\n", text)
+        self.assertIn("### **API**\nNo API changes\n", text)
         self.assertIn("### **Data**\nNo database changes\n", text)
 
     def test_a_side_that_could_not_be_checked_is_named(self) -> None:
@@ -165,7 +165,7 @@ class Sections(unittest.TestCase):
         with mock.patch.object(render, "MIGRATION_GLOBS", []):
             brief, _ = build_body_for(unchecked)
             text = brief.body
-        self.assertIn("### **Contract**\nAPI changes not checked\n", text)
+        self.assertIn("### **API**\nAPI changes not checked\n", text)
         self.assertIn("### **Data**\nDatabase changes not checked\n", text)
 
     def test_the_page_centres_the_diagram_when_it_is_narrower_than_the_page(self) -> None:
@@ -188,7 +188,7 @@ class Sections(unittest.TestCase):
         text = brief.body
         headings = re.findall(r"^### (?:\*\*)?(.*?)(?:\*\*)?$", text, re.M)
         self.assertEqual(headings, ["PR Type", "Description", "Diagram Walkthrough"])
-        self.assertEqual(text.count("**Contract**") + text.count("**Data**"), 2)
+        self.assertEqual(text.count("**API**") + text.count("**Data**"), 2)
         self.assertTrue(text.rstrip().endswith("___"))
 
 

@@ -1,6 +1,6 @@
 # pr-brief
 
-A short brief for a reviewer who did not write the change: what kind of change it is, the contract and data it
+A short brief for a reviewer who did not write the change: what kind of change it is, the API and data it
 touches, a diagram, and a walkthrough of where to read, in order. It sends a modified PR-Agent `/describe` prompt
 through `claude -p` or the GitHub Copilot CLI and renders the answer into `body.md`, `body.html`, `diagram.svg` and a
 `review.json` that a browser extension reads. The brief is a guide, never a verdict.

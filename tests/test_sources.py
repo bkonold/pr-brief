@@ -365,8 +365,8 @@ class FileSets(unittest.TestCase):
 
     def test_the_sections_list_their_files_behind_a_files_link(self) -> None:
         text = self.brief().body
-        contract = text[text.index("**Contract** "):text.index("**Data** ")]
-        self.assertIn("[View files](https://github.com/acme/shop/pull/7/files?pr-brief=contract)", contract)
+        contract = text[text.index("**API** "):text.index("**Data** ")]
+        self.assertIn("[View files](https://github.com/acme/shop/pull/7/files?pr-brief=api)", contract)
         listed = contract[contract.index("<details>"):]
         self.assertIn("<summary>5 files</summary>", listed)
         for name in ("openapi.json", "Customer.java", "CustomerController.java", "CustomerStatus.java"):
@@ -377,7 +377,7 @@ class FileSets(unittest.TestCase):
 
     def test_a_section_with_no_files_has_no_list_and_no_link(self) -> None:
         text = self.brief(paths=[MIGRATION]).body
-        contract = text[text.index("**Contract**"):text.index("**Data**")]
+        contract = text[text.index("**API**"):text.index("**Data**")]
         self.assertNotIn("View files", contract)
         self.assertNotIn("<details>", contract)
         self.assertIn("pr-brief=data", text)

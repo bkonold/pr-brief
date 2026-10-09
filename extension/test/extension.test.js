@@ -1111,7 +1111,7 @@ test("fileChips counts all changed files and each set that has files, and shows 
   const { fileChips } = require("../tree.js");
   assert.deepEqual(fileChips({ file_sets: { contract: ["a.js", "api.json"], data: ["m.sql"] } }, 9), [
     { id: "all", label: "All", count: 9 },
-    { id: "contract", label: "Contract", count: 2 },
+    { id: "contract", label: "API", count: 2 },
     { id: "data", label: "Data", count: 1 },
   ]);
   assert.deepEqual(fileChips({ file_sets: SETS }, 5).map((chip) => [chip.id, chip.count]), [["all", 5], ["contract", 2]]);
@@ -1139,7 +1139,7 @@ test("the chips sit under the mode toggle, mark the chosen one and choose a set 
   globalThis.document = fakeDom();
   globalThis.prFocus.page = { treeLabel: "Files" };
   try {
-    const chips = [{ id: "all", label: "All", count: 9 }, { id: "contract", label: "Contract", count: 4 }];
+    const chips = [{ id: "all", label: "All", count: 9 }, { id: "contract", label: "API", count: 4 }];
     const chosen = [];
     const element = bar({ mode: "review", chips, fileSet: { id: "contract" } }, { onMode() {}, onFileSet: (id) => chosen.push(id) });
     const buttons = byClass(element, "prf-chip");

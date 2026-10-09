@@ -7,7 +7,7 @@ usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 
 Reads answer.yaml, run.json and pr.json from the run dir.
 Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.
-The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
+The body is the PR's title, the model's description, the API and Data sections, the diagram and a caption about its dashed boxes; the
 diagram's boxes, the walkthrough stops and the contract and data lines go to review.json.
 """
 import argparse
@@ -433,9 +433,13 @@ def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Lin
             "data": sorted(migrations | {s.path for line in data for s in line.sources})}
 
 
+# What a section is called on screen; its key, in review.json and the run folder, stays `contract`.
+SECTION_NAMES: dict[str, str] = {"contract": "API", "data": "Data"}
+
+
 def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str],
              files: dict[str, list[str]] | None = None) -> tuple[str, str]:
-    """The Contract and Data sections of a body: each one's name, its impact chips, a link to the files page with its file
+    """The API and Data sections of a body: each one's name, its impact chips, a link to the files page with its file
     set selected and its files as links. A section with no lines says so, and says when its side could not be checked."""
     repo: str = run["repo"]
     number: str = str(run["pr"])
@@ -444,7 +448,7 @@ def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: 
     def draw(side: str, none: str, levels: tuple[str, ...], kind: str, lines: list[Line]) -> str:
         if not lines:
             return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
-        return layout.section(kind, kind.capitalize(), levels, lines, files_link(repo, number),
+        return layout.section(kind, SECTION_NAMES[kind], levels, lines, files_link(repo, number),
                               [(path, diff_link(repo, number, path)) for path in file_lists.get(kind, [])])
 
     return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", api),
@@ -514,7 +518,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key in ("contract", "data") and value.startswith("**"):
             body += f"{value}\n"
         else:
-            body += f"### **{'PR Type' if key == 'type' else key.replace('_', ' ').capitalize()}**\n"
+            body += f"### **{'PR Type' if key == 'type' else SECTION_NAMES.get(key) or key.replace('_', ' ').capitalize()}**\n"
             if isinstance(value, list):
                 value = ", ".join(str(v).rstrip() for v in value)
             if key == "description":

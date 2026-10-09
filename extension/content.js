@@ -315,9 +315,10 @@
 
   // A fragment that names a place in the diff: a file or line (`diff-…`) or a review comment (`r…`, `discussion_r…`).
   const DIFF_FRAGMENT = /^(?:diff-|r\d+|discussion_r\d+)/;
-  // The brief's "View files" link adds `?pr-brief=contract` or `=data`, which opens the files page in Files mode with that
-  // file set chosen.
+  // The brief's "View files" link adds `?pr-brief=api` or `=data`, which opens the files page in Files mode with that
+  // file set chosen. The API section's files are the review's `contract` file set.
   const FILE_SET_PARAM = "pr-brief";
+  const FILE_SET_VALUES = { api: "contract", data: "data" };
 
   // A link to a stop, such as the PR brief card's, carries the anchor of that line or file in the URL fragment. Opening
   // the files page on it goes to that stop. Any other fragment is left to the page.
@@ -461,7 +462,7 @@
       return;
     }
     if (token !== loadToken || !review) return;
-    const linkedSet = new URLSearchParams(location.search).get(FILE_SET_PARAM);
+    const linkedSet = FILE_SET_VALUES[new URLSearchParams(location.search).get(FILE_SET_PARAM)] ?? null;
     const startInFiles = tree.fileSetOf(review, linkedSet) !== null;
     current = {
       key,

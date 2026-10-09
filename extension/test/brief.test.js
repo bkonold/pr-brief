@@ -531,7 +531,7 @@ test("clicking a button in the card reports its action, and show redraws the car
 const V22_MARKDOWN = [
   "# T",
   "",
-  "**Contract** · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)<br>",
+  "**API** · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=api)<br>",
   '<span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span>',
   "",
   "<details>",
@@ -556,7 +556,7 @@ const V22_MARKDOWN = [
 
 test("a section is its name and files link, a line break, its chips, then a closed details listing the files one to a line", () => {
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
-  assert.match(html, /<strong>Contract<\/strong> · <a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files\?pr-brief=contract">View files<\/a><br>\s*<span class="pill p0"><strong>breaking<\/strong><\/span> <span class="pill p2">additive<\/span>/);
+  assert.match(html, /<strong>API<\/strong> · <a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files\?pr-brief=api">View files<\/a><br>\s*<span class="pill p0"><strong>breaking<\/strong><\/span> <span class="pill p2">additive<\/span>/);
   assert.match(html, /<ul>\s*<li><a href="[^"]*#diff-abc">openapi\.json<\/a>\s*<\/li>\s*<li><a href="[^"]*#diff-def">Widget\.java<\/a>/);
   assert.match(html, /<details>\s*<summary>2 files<\/summary>/);
   assert.doesNotMatch(html, /<details open/);
@@ -572,7 +572,7 @@ test("rewriting a link into the files view keeps its pr-brief parameter and frag
 test("a v22 brief keeps the diagram after the Data section", () => {
   const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
-  const contract = html.indexOf("<strong>Contract</strong>");
+  const contract = html.indexOf("<strong>API</strong>");
   const data = html.indexOf("<strong>Data</strong>");
   const diagram = html.indexOf('class="diagram-box"');
   assert.ok(contract !== -1 && data > contract && diagram > data, [contract, data, diagram].join());
@@ -872,7 +872,7 @@ test("the chips are All with the page's changed-file count and each non-empty se
   await renders.at(-1).handlers.onMode("github");
   assert.deepEqual(plain(renders.at(-1).state.chips), [
     { id: "all", label: "All", count: 9 },
-    { id: "contract", label: "Contract", count: 2 },
+    { id: "contract", label: "API", count: 2 },
   ]);
   assert.equal(renders.at(-1).state.fileSet, null);
   assert.equal(filters.at(-1), null);
@@ -907,8 +907,8 @@ test("Walkthrough mode shows no chips and leaves the tree whole, and Files mode 
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
 });
 
-test("a files page opened with ?pr-brief=contract starts in Files mode with the Contract chip chosen and the tree filtered", async () => {
-  const { renders, filters, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW, search: "?pr-brief=contract" });
+test("a files page opened with ?pr-brief=api starts in Files mode with the API chip chosen and the tree filtered", async () => {
+  const { renders, filters, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW, search: "?pr-brief=api" });
   await settle();
   const state = renders.at(-1).state;
   assert.deepEqual(plain([state.mode, state.selectedStop, state.fileSet, state.chips.map((chip) => chip.id)]),
@@ -918,7 +918,7 @@ test("a files page opened with ?pr-brief=contract starts in Files mode with the 
 });
 
 test("a file set the run does not have, an unknown value or no parameter leaves the usual Walkthrough start", async () => {
-  for (const search of ["?pr-brief=data", "?pr-brief=elsewhere", "?pr-brief=", "?other=contract", ""]) {
+  for (const search of ["?pr-brief=data", "?pr-brief=contract", "?pr-brief=elsewhere", "?pr-brief=", "?other=contract", ""]) {
     const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW, search });
     await settle();
     assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.selectedStop, filters.at(-1) ?? null]), ["review", 1, null], search);
@@ -926,7 +926,7 @@ test("a file set the run does not have, an unknown value or no parameter leaves 
 });
 
 test("the parameter is read next to other query parameters and a fragment", async () => {
-  const { renders } = loadContent({ run: null, view: "files", review: SET_REVIEW, search: "?w=1&pr-brief=contract", hash: "#diff-abc" });
+  const { renders } = loadContent({ run: null, view: "files", review: SET_REVIEW, search: "?w=1&pr-brief=api", hash: "#diff-abc" });
   await settle();
   assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.fileSet?.id]), ["github", "contract"]);
 });
