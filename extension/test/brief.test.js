@@ -201,7 +201,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {} }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, startState = "running" }) {
   const log = [];
   const description = {
     name: "description",
@@ -223,6 +223,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const centeredWith = [];
   const lineEvents = [];
   const diagramHandlers = [];
+  const briefArgs = [];
   const revealed = [];
   const boxes = [];
   const scrolled = [];
@@ -253,10 +254,10 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       jumpToFile: async (...args) => fileJumps.push(args),
     },
     source: {
-      loadBrief: async () => run,
+      loadBrief: async (...args) => (briefArgs.push(args), run),
       loadReview: async () => review,
       runStatus: async (target) => (calls.push(["status", target]), status),
-      startRun: async (target) => (calls.push(["start", target]), { ok: true, key: target.key, state: "running" }),
+      startRun: async (target) => (calls.push(["start", target]), { ok: true, key: target.key, state: startState }),
       cancelRun: async (target) => (calls.push(["cancel", target]), { ok: true, key: target.key, state: "canceled" }),
     },
     runControl: { ...runControl, create: (options) => runControl.create({ ...options, timers: { setTimeout: context.setTimeout, clearTimeout, setInterval: context.setInterval, clearInterval } }) },
@@ -300,7 +301,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
+  return { briefArgs, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -400,6 +401,32 @@ test("a files page whose repository the server will not run shows no line", asyn
   assert.deepEqual(lines, []);
 });
 
+const UNSET = { ok: false, problem: "unset" };
+
+test("with no run server set and no brief comment, nothing is built, placed or asked of a server", async () => {
+  for (const view of ["conversation", "files"]) {
+    const { built, log, output, lines, calls } = loadContent({ run: null, view, status: UNSET });
+    await settle();
+    assert.deepEqual([built, log, output, lines], [[], [], [], []], view);
+    assert.deepEqual(plain(calls), [["status", { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" }]], view);
+  }
+});
+
+test("a brief read from the comment is drawn with no run server set, and without a Generate or Regenerate affordance", async () => {
+  const { built } = loadContent({ run: { ...RUN, origin: "comment" }, status: UNSET });
+  await settle();
+  assert.deepEqual(plain(built[0].shown), [{ kind: "brief", ...RUN, origin: "comment", runSha: RUN.headSha, pageSha: null, canGenerate: false }]);
+});
+
+test("a run the local server has just written is read from the server, not from the comment", async () => {
+  const { built, briefArgs } = loadContent({ run: { ...RUN, origin: "comment" }, startState: "done" });
+  await settle();
+  assert.deepEqual(plain(briefArgs), [["acme", "widgets", 7, "fj-7"]]);
+  built[0].options.onAction("generate");
+  await settle();
+  assert.deepEqual(plain(briefArgs.at(-1)), ["acme", "widgets", 7, "fj-7", { server: true }]);
+});
+
 const RUN_SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f90abcdef01";
 const PAGE_SHA = "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432";
 const CARD = { key: "fj-7", filesUrl: FILES_URL };
@@ -451,6 +478,22 @@ test("when generating is not allowed the card shows no Regenerate, stale or not"
     const html = cardHtml({ ...BRIEF, pageSha, canGenerate: false }, CARD);
     assert.doesNotMatch(html, /Regenerate|data-action="generate"/);
   }
+});
+
+test("a brief read from the PR's comment says so, and offers Regenerate only when a run server is set", () => {
+  const posted = { ...BRIEF, origin: "comment", pageSha: null };
+  const quiet = cardHtml({ ...posted, canGenerate: true }, CARD);
+  assert.match(quiet, /<span class="badge"[^>]*>from the PR's comment<\/span>/);
+  assert.ok(summaryOf(quiet).includes(GENERATE("Regenerate", "link quiet")));
+  for (const canGenerate of [false, undefined]) {
+    const html = cardHtml({ ...posted, canGenerate }, CARD);
+    assert.match(html, /<span class="badge"[^>]*>from the PR's comment<\/span><a class="files-link"/);
+    assert.doesNotMatch(html, /Regenerate|data-action="generate"/);
+  }
+  const stale = cardHtml({ ...posted, pageSha: PAGE_SHA, canGenerate: false }, CARD);
+  assert.match(stale, /<span class="badge"[^>]*>for a1b2c3d, PR is at 9f8e7d6<\/span><a class="files-link"/);
+  assert.doesNotMatch(stale, /Regenerate/);
+  assert.match(cardHtml({ ...BRIEF, origin: "server" }, CARD), /local, not posted/);
 });
 
 test("clicking Regenerate in the header runs the action and does not toggle the card", () => {

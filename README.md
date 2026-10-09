@@ -17,7 +17,9 @@ A brief runs three ways:
 
 A comment run uses the workflow on the default branch, so the workflow must be merged there before `/brief` works. The Action skips a pull request from a fork whatever the trigger, ending the job successfully before it installs anything.
 The workflow queues runs for one pull request instead of cancelling them, so a push during a `/brief` run waits for the brief to post and then refreshes it; a cancelled start would leave the pull request with no brief for that push to refresh. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
-to the diff lines. Pin
+to the diff lines. The comment ends with a collapsed "Brief data" block, the run's `review.json`, diagram and
+body page gzipped and base64-encoded, which the browser extension reads so that a reviewer needs no server; a comment over
+GitHub's size limit loses that block first. Pin
 `bkonold/pr-brief` to a full commit SHA, and store a fine-grained personal access token with the "Copilot Requests"
 permission as the secret `COPILOT_PAT`.
 
@@ -120,10 +122,13 @@ python3 serve.py                                   # serve runs/ on 127.0.0.1:87
 
 ## Browser extension
 
-Load `extension/` unpacked at `chrome://extensions`, start `serve.py` and paste the token it keeps in
-`~/.config/pr-brief/token` into the extension's options. On a PR's Files changed page (GitHub or Forgejo) it draws the
-brief and steps through the walkthrough, and offers to generate one when the PR has none. See
-[extension/README.md](extension/README.md); its tests run with `node --test extension/test/*.test.js`.
+A teammate installs the extension and does nothing else: it reads the brief from the pull request's own comment (the
+"Brief data" block the Action posts), with no server and no token. On a PR's conversation page it draws the brief above
+the description, and on the Files changed page (GitHub or Forgejo) it steps through the walkthrough. The author can also
+load `extension/` unpacked at `chrome://extensions`, start `serve.py` and set its URL and the token it keeps in
+`~/.config/pr-brief/token` in the extension's options, which adds generating a brief from the page and showing runs that
+were never posted. See [extension/README.md](extension/README.md); its tests run with
+`node --test extension/test/*.test.js`.
 
 ### Install from a release
 
@@ -135,7 +140,8 @@ brief and steps through the walkthrough, and offers to generate one when the PR 
   `about:addons`, under the extension's Permissions tab. If the brief does not appear on GitHub, check that
   `github.com` is allowed there. A release has an `.xpi` only when the maintainer's Mozilla signing keys were set.
 
-Either way, start `serve.py` and paste its token into the extension's options, as above.
+Either way that is all a reviewer needs. To generate briefs from your own machine, also start `serve.py` and set its
+URL and token in the extension's options, as above.
 
 ### Cutting a release
 

@@ -1,8 +1,29 @@
 # PR Brief extension
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
-(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 4) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the brief's `review.json` (schema 4, written by `render.py`) from the PR's own comment, or from an optional local server, and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
 where it describes the page, and the Forgejo selectors are in their own table at the end.
+
+## Where the brief comes from
+
+A reviewer needs the extension and nothing else: no server and no token.
+
+1. **The PR's comment.** The GitHub Action (`post.py`) ends its comment with a collapsed "Brief data" block, a code fence
+   holding the base64 of the gzip of `review.json` plus the run's `diagram.svg` and `body.html` (as `diagram_svg` and
+   `body_html`). `comment_source.js` finds the earliest such block in the page's rendered comments, inflates it
+   (`DecompressionStream`) and hands `source.js` the review, the body page and the diagram. On the PR's conversation page
+   it reads the page's own document; on the files page it fetches the conversation page with the user's own session
+   (`credentials: "include"`), once for the review and the brief together. The review must be schema 4 with `nodes` and a
+   `walkthrough` and must name this repository and PR; otherwise the comment counts as no brief.
+2. **The local run server, when one is set.** Only if the comment gives nothing does `source.js` ask `background.js`,
+   which answers from the server named in the options page. With the field empty (the default) the background script
+   answers `unset` at once and makes no request, a PR with no brief comment shows nothing, and no "Generate brief", server
+   note or Regenerate button is drawn.
+
+Known gap: a comment behind GitHub's "Load more" pagination on a very long conversation is not in the page's HTML, so it is
+not found. A comment over GitHub's size limit has no "Brief data" block (`post.py` drops it first), so it is not found
+either. The block is read from whichever commenter posted it: the extension does not check the author, and takes the
+earliest block in the page.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
@@ -84,7 +105,7 @@ on stop 1, with the default variant. The one thing kept is whether the diagram p
 
 ## When the page server is down
 
-If fetching `review.json` fails outright (connection refused, a network error), the list's place above GitHub's tree shows a
+This applies only when a server URL is set and the PR's comment has no brief. If fetching `review.json` fails outright (connection refused, a network error), the list's place above GitHub's tree shows a
 note with the base URL, the command to start the server (`pd serve`) and a Retry button; GitHub's tree stays visible. Retry
 fetches again and mounts the full list on success. A 404 shows the "Generate brief" line below, and an older run shows the "Older runs" line, unless the run server says it will not run that repository.
 
@@ -162,7 +183,7 @@ that expands it.
 
 ## Generating a brief on demand
 
-`serve.py` (see the [top-level README](../README.md#commands)) can start a run for the PR on the page. The extension never talks to it from a
+`serve.py` (see the [top-level README](../README.md#commands)) can start a run for the PR on the page, for the author who has set a server URL in the options. With none set nothing here is offered. The extension never talks to it from a
 page script: `background.js` makes the calls (`startRun`, `runStatus`, `cancelRun` to `/api/run`, `/api/status`,
 `/api/cancel`) and adds the server token, which the options page keeps in `chrome.storage.local` ("Server token":
 paste the contents of `~/.config/pr-brief/token`). The server also requires an `Origin` of `chrome-extension://`,
@@ -171,7 +192,8 @@ which only the background script sends.
 `run_control.js` owns one run's progress for a PR page: it starts the run, asks `/api/status` every 3 seconds, ticks
 a one-second clock between polls and reports to the page. The card and the files view's line both draw from it.
 
-- **Conversation page, no run:** the card is a bar with "PR brief", "local, not posted" and a "Generate brief" button.
+- **Conversation page, no run:** the card is a bar with "PR brief", "local, not posted" and a "Generate brief" button
+  (nothing at all when no server URL is set).
 - **Running:** "Writing brief · m:ss", a pill per stage (Fetch PR, Gather context, Write, Render; done ones green, the
   current one in the accent colour) and a Cancel link. Leaving the page does not stop the run; the next visit asks
   the server and resumes from where it is. When the run is done the brief is loaded and drawn, closed.
@@ -180,13 +202,15 @@ a one-second clock between polls and reports to the page. The card and the files
   read-only API, or for GitHub the server's `GET /api/head`, asked through `background.js`), the badge reads "for
   <short>, PR is at <short>" and a "Regenerate" button sits beside "Review in files view".
 - **Current or unknown head:** a quiet "Regenerate" link in the card header does the same. Whenever generating is
-  allowed, regeneration is offered; with it not allowed, neither the button nor the link is shown.
+  allowed, regeneration is offered; with it not allowed, neither the button nor the link is shown. A brief read from the
+  PR's comment has them only when a server URL is set, and once a run it started is done the card shows that run, read from
+  the server, rather than the older comment.
 - **Failure:** the error line and a Retry button. A failed call says why: "Start the server with `pd serve` to generate
   briefs" (nothing listening), "Server token missing or wrong — set it in the extension options" (403) or "2 briefs
   already running" (429).
 - **Files view, no run:** where the list would be, one line, "No brief for this PR yet" and a "Generate brief" button, which
   runs the same flow and mounts the full list when the run is done.
-- Both are offered only where the server may run that repository: `/api/status` is asked with the host, owner and repo
+- Both are offered only where a server URL is set and the server may run that repository: `/api/status` is asked with the host, owner and repo
   and says `allowed`. When it cannot be asked (server down, wrong token) they are shown anyway, so the reason can be.
 
 ## Older runs
@@ -199,9 +223,10 @@ else of the old run is shown.
 ## The PR brief card
 
 On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR brief"
-card above the PR's description when the PR has a run (`prFromUrl` returns `view: "conversation"`; the files page is
-`view: "files"` and behaves as before). The card is local: its badge says "local, not posted", nothing is written to
-the page's data, and its header links to the files view. Without a run it is the "Generate brief" bar described above.
+card above the PR's description when the PR has a brief (`prFromUrl` returns `view: "conversation"`; the files page is
+`view: "files"` and behaves as before). Its badge says "from the PR's comment" for a brief read from the comment and "local,
+not posted" for one the local server holds, nothing is written to the page's data, and its header links to the files
+view. Without a brief it is the "Generate brief" bar described above, and only where a server URL is set.
 
 - It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
   are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.
@@ -221,22 +246,25 @@ the page's data, and its header links to the files view. Without a run it is the
   review-order table; the files view lists the stops.
 - Links into the PR's files view are rewritten to this host's files view, fragment kept. When the files page loads with a
   fragment that is a stop's anchor, `content.js` goes to that stop; any other fragment is left to the page.
-- `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run for the server's `default_variant` (`GET /api/config`),
-  the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the
-  "Generate brief" bar, except where the server says it will not run the PR's repository: then nothing is mounted.
+- `source.js` answers `loadBrief` from the PR's comment (`body_html`, `diagram_svg` and the review's `head_sha`) and, when
+  the comment has none, from `background.js`, which fetches `body.html` and `diagram.svg` of the run for the server's
+  `default_variant` (`GET /api/config`), the way it fetches `review.json`. With no brief, or the page server down, the card is
+  the "Generate brief" bar, except where no server is set or the server says it will not run the PR's repository: then
+  nothing is mounted.
 - The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
   back above the description; `onNavigate` mounts it again after client-side navigation, and one card exists at a time.
 
 ## Load it
 
-1. From the `pr-brief` root, serve the runs and the API: `python3 serve.py` (an overlay's wrapper: `pd serve`).
-2. Open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick this `extension/` folder.
-3. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
-   `http://localhost:3300/<owner>/<repo>/pulls/<n>/files`.
+1. Open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick this `extension/` folder.
+2. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
+   `http://localhost:3300/<owner>/<repo>/pulls/<n>/files`. A PR whose brief comment the Action has posted shows its brief.
+3. Optional, to generate briefs from your own machine: serve the runs and the API with `python3 serve.py` (an overlay's
+   wrapper: `pd serve`), and in the extension's options set the server URL and token.
 
-The list appears only when `runs/<key>/<variant>/review.json` exists for the PR (404, a server that
-is down or a different repo leave the page untouched). `<key>` is the PR number on GitHub and `fj-<number>` on
-Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant comes from the server (`default_variant` in `local.toml`, see Which variant is shown); the extension's options page holds the server URL and token. The
+The list appears only when the PR has a brief comment or, with a server set, `runs/<key>/<variant>/review.json` exists for the PR (no comment, a
+404, a server that is down or a different repo leave the page untouched). `<key>` is the PR number on GitHub and `fj-<number>` on
+Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant comes from the server (`default_variant` in `local.toml`, see Which variant is shown); the extension's options page holds the optional server URL and token. The
 manifest allows `http://127.0.0.1:8765` for the runs and `http://localhost:3300` for Forgejo, so another origin
 also needs a `host_permissions` entry (and a `matches` entry for a Forgejo elsewhere). Loading a version that adds a host
 makes Chrome ask for the new permission when the extension is reloaded.
@@ -248,7 +276,7 @@ Run the pure tests with `node --test test/*.test.js`.
 
 | File | Role |
 | --- | --- |
-| `background.js` | Fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers |
+| `background.js` | When a server URL is set: fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers. With none set it answers `unset` and requests nothing |
 | `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
 | `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
 | `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, change watching. `createPage(spec)` builds an adapter from a host's spec |
@@ -260,7 +288,8 @@ Run the pure tests with `node --test test/*.test.js`.
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
-| `source.js` | Content-script side of the fetch |
+| `comment_source.js` | Reads the brief from the PR's "Brief data" comment block (inflate, split, fetch the conversation page). Loaded before `source.js` |
+| `source.js` | Content-script side of loading: the PR's comment first, then the background script |
 | `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
 | `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |
 
@@ -269,7 +298,7 @@ The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in 
 ### The page adapter
 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
-`prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
+`prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `conversationUrl(pr)`, `isConversationPage(pr?)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
 `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
 `restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
@@ -289,7 +318,8 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Tree rows | `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory; a file row is matched to its diff by the `a[href*="#diff-"]` it holds (the diff's id). A directory row is hidden only when it has file rows in the page and all of them are hidden |
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed, and its callout row is scrolled to the stop place. |
 | Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
-| Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, trusted only for the PR the page was first opened on |
+| Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, on the files page and (observed 2026-10-09) on the conversation page; trusted only for the PR the page was first opened on. For any other page the PR's conversation page is fetched and read the same way (`readHeadSha(doc)`), and only then a set run server is asked |
+| Brief data (conversation page) | `.markdown-body details` (a comment's body is `div.comment-body.markdown-body.js-comment-body`; the block renders as `details > summary` + `pre.notranslate > code`, observed 2026-10-09 through GitHub's markdown API) whose `summary` text is exactly `Brief data`, and the text of the `pre` inside it; the earliest in document order wins. The files page fetches `/{owner}/{repo}/pull/{n}` and reads the parsed document the same way |
 
 If the list is missing, or the list says it couldn't find the diff blocks, GitHub changed these;
 update `github_page.js` only.
@@ -311,7 +341,8 @@ All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
 | Tree rows | `.item-file` is a file row, matched to its diff by the `a[href*="#diff-"]` it is or holds. Directory rows are left showing |
 | Diagram host | pane `#diff-file-tree`, content `#diff-content-container`, both children of the flex row `#diff-container`; the panel goes right after the pane |
 | Description host (conversation page) | `.ui.timeline > .timeline-item.comment.first`: the PR's opening comment, which the card is inserted before |
-| Head SHA | `/src/commit/<sha>/` in the `href` of the first `#diff-container .diff-file-box a[href*="/src/commit/"]` ("View file"), trusted only for the PR the page was first opened on |
+| Head SHA | `/src/commit/<sha>/` in the `href` of the first `#diff-container .diff-file-box a[href*="/src/commit/"]` ("View file"), trusted only for the PR the page was first opened on. The conversation page (observed 2026-10-09) links only the commits of force-push events, so it is no source: `GET /api/v1/repos/{owner}/{repo}/pulls/{n}` from the page's own origin and session gives `head.sha`, with no run server involved |
+| Brief data (conversation page) | `.render-content.markup details` (a comment's body is `div.render-content.markup`, observed 2026-10-09) whose `summary` text is exactly `Brief data`, and the text of the `pre` inside it; the earliest in document order wins. Forgejo's own `details.collapsible` ("View command line instructions") is outside `.markup` and ignored |
 | Colours | the Primer custom properties the CSS uses are pointed at Forgejo's `--color-*` variables by a `<style id="prf-forgejo-theme">` added to the page |
 
 Not covered: a file collapsed with "Viewed", and a diff Forgejo holds back behind a load button on a very large

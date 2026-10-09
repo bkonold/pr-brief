@@ -7,11 +7,12 @@
 //   name, treeLabel, hosts          display name, the label of the host's own tree, the location.host values it serves
 //   origin, changesPage, pullPage   a base for relative URLs, and the patterns of the files page and of any page of a
 //                                   PR, each capturing owner, repo and number
-//   conversationPage, filesPath(pr) the pattern of the conversation page (same captures), and the path of a PR's
-//                                   files view
+//   conversationPage                the pattern of the conversation page (same captures)
+//   conversationPath(pr),           the paths of a PR's conversation page and of its files view
+//   filesPath(pr)
 //   hostId                          "github" or "forgejo": the host name the run server knows it by
 //   runKey(pr)                      the runs/<key> folder of a parsed PR
-//   readHeadSha()                   the head commit sha the page shows, or null
+//   readHeadSha(doc)                the head commit sha that `doc` (default: the page's document) shows, or null
 //   fetchHeadSha(pr)                optional, async: the PR's head sha read from the host when the page does not show
 //                                   it (null on failure)
 //   blockSelector, pathOfBlock(b)   the element holding one file's diff, and the path it shows
@@ -163,6 +164,18 @@
 
     function pullFromUrl(location) {
       return parsePull(spec.pullPage, location);
+    }
+
+    // The URL of the PR's conversation page, where the Action's comment is.
+    function conversationUrl(pr) {
+      return new URL(spec.conversationPath(pr), spec.origin).href;
+    }
+
+    // Whether the page is the conversation page, of `pr` when one is given.
+    function isConversationPage(pr) {
+      const here = globalThis.location ? prFromUrl(globalThis.location) : null;
+      if (here?.view !== "conversation") return false;
+      return !pr || (here.owner.toLowerCase() === pr.owner.toLowerCase() && here.repo.toLowerCase() === pr.repo.toLowerCase() && here.pr === Number(pr.pr));
     }
 
     // The page's data belongs to the document that was loaded, so it describes only the PR that page was
@@ -628,6 +641,8 @@
       prFromUrl,
       filesUrl,
       pullFromUrl,
+      conversationUrl,
+      isConversationPage,
       hostId: spec.hostId,
       runKey: spec.runKey,
       headSha,

@@ -15,12 +15,12 @@
 <body>
   <h1>PR Brief</h1>
   <form id="form">
-    <label for="baseUrl">Server base URL</label>
-    <input id="baseUrl" type="url" required>
-    <small>The extension may only reach http://127.0.0.1:8765; another origin needs a matching entry in manifest.json host_permissions.</small>
+    <label for="baseUrl">Local run server (optional)</label>
+    <input id="baseUrl" type="url" placeholder="http://127.0.0.1:8765">
+    <small>Leave this empty to read each brief from the pull request's comment, which needs no server and no token. A server lets you generate briefs from your own machine. The extension may only reach http://127.0.0.1:8765; another origin needs a matching entry in manifest.json host_permissions.</small>
     <label for="token">Server token</label>
     <input id="token" type="password" autocomplete="off" spellcheck="false">
-    <small>The contents of ~/.config/pr-brief/token, which <code>pd serve</code> creates on first start. It is kept in this browser only and sent only to the server above, to start briefs.</small>
+    <small>Only for the server above: the contents of ~/.config/pr-brief/token, which <code>pd serve</code> creates on first start. It is kept in this browser only and sent only to that server, to start briefs.</small>
     <div><button type="submit">Save</button> <span id="status" role="status"></span></div>
   </form>
   <script type="module" src="options.js"></script>

@@ -11,9 +11,46 @@
     }
   }
 
-  // `key` is the PR's folder under runs/, which is not the PR number for every host.
+  // The PR's brief read from its comment, or null: { review, bodyHtml, diagramSvg } for a review of the current schema
+  // that names this PR. It comes from the page's own document on the PR's conversation page, else from that page
+  // fetched with the user's session. The fetch is shared by the calls that overlap (a files page asks for the review
+  // and the brief), and forgotten once it settles, so the next load reads the page again.
+  const pending = new Map();
+
+  function commentBrief(owner, repo, pr) {
+    const id = `${owner}/${repo}#${pr}`.toLowerCase();
+    if (!pending.has(id)) pending.set(id, readComment({ owner, repo, pr }).finally(() => pending.delete(id)));
+    return pending.get(id);
+  }
+
+  async function readComment(request) {
+    const page = ns.page;
+    const reader = ns.commentSource;
+    if (!page || !reader) return null;
+    try {
+      const doc = page.isConversationPage(request) ? document : await reader.fetchConversation(page.conversationUrl(request));
+      const brief = doc ? await reader.readBrief(doc) : null;
+      return brief && namesPr(brief.review, request.owner, request.repo, request.pr) && isCurrentRun(brief.review) ? brief : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // The same checks as background.js makes of a run the server holds.
+  function namesPr(review, owner, repo, pr) {
+    return String(review?.repo).toLowerCase() === `${owner}/${repo}`.toLowerCase() && Number(review.pr) === Number(pr);
+  }
+
+  function isCurrentRun(review) {
+    return review.schema === 4 && review.nodes !== null && typeof review.nodes === "object" && Array.isArray(review.walkthrough);
+  }
+
+  // The PR's review: its comment's, else the run server's when one is set. `key` is the PR's folder under runs/, which
+  // is not the PR number for every host.
   async function loadReview(owner, repo, pr, key = String(pr)) {
     if (!alive()) return null;
+    const posted = await commentBrief(owner, repo, pr);
+    if (posted) return { ...posted.review, diagramSvg: posted.diagramSvg };
     try {
       return (await chrome.runtime.sendMessage({ type: "loadReview", owner, repo, pr, key })) ?? null;
     } catch {
@@ -21,10 +58,15 @@
     }
   }
 
-  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg, headSha }, or null when the PR has no run or
-  // the page server is down.
-  async function loadBrief(owner, repo, pr, key = String(pr)) {
+  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg, headSha, origin }, or null when the PR has
+  // none. `origin` is "comment" or "server". With `{ server: true }` the comment is skipped, which is how a run the
+  // local server has just written is read.
+  async function loadBrief(owner, repo, pr, key = String(pr), { server = false } = {}) {
     if (!alive()) return null;
+    const posted = server ? null : await commentBrief(owner, repo, pr);
+    if (posted?.bodyHtml != null) {
+      return { variant: posted.review.variant ?? null, bodyHtml: posted.bodyHtml, diagramSvg: posted.diagramSvg, headSha: posted.review.head_sha ?? null, origin: "comment" };
+    }
     try {
       const brief = await chrome.runtime.sendMessage({ type: "loadBrief", owner, repo, pr, key });
       return brief && !brief.error ? brief : null;

@@ -438,26 +438,64 @@ test("the head sha is read from the page on any view of the PR it was loaded for
   }
 });
 
-test("GitHub's conversation page, which embeds no head sha, asks the run server for it", async () => {
+test("GitHub's head sha not shown by the page is read from the PR's conversation page, then asked of the run server", async () => {
   const SHA = "c".repeat(40);
+  const FROM_SERVER = "d".repeat(40);
   const asked = [];
-  const saved = globalThis.prFocus.source;
-  const savedLocation = globalThis.location;
+  const fetched = [];
+  const embedded = (text) => ({ querySelector: () => (text === null ? null : { textContent: text }) });
+  let conversation = embedded(`{"pullRequest":{"headSha":"${SHA}"}}`);
+  const saved = { source: globalThis.prFocus.source, commentSource: globalThis.prFocus.commentSource, location: globalThis.location };
   const pr = { owner: "acme", repo: "widgets", pr: 7 };
   try {
-    globalThis.location = { pathname: "/acme/widgets/pull/7" };
-    globalThis.prFocus.source = { headSha: async (run) => (asked.push(run), SHA) };
+    globalThis.location = { pathname: "/acme/widgets/pull/7/commits" };
+    globalThis.prFocus.commentSource = { fetchConversation: async (url) => (fetched.push(url), conversation) };
+    globalThis.prFocus.source = { headSha: async (run) => (asked.push(run), FROM_SERVER) };
     assert.equal(githubPage.headSha(), null);
     assert.equal(await githubPage.currentHeadSha(pr), SHA);
+    assert.deepEqual([fetched, asked], [["https://github.com/acme/widgets/pull/7"], []]);
+
+    conversation = embedded(null);
+    assert.equal(await githubPage.currentHeadSha(pr), FROM_SERVER);
     assert.deepEqual(asked, [{ host: "github", owner: "acme", repo: "widgets", pr: 7, key: "7" }]);
+
+    conversation = null;
     globalThis.prFocus.source = { headSha: async () => null };
     assert.equal(await githubPage.currentHeadSha(pr), null);
     delete globalThis.prFocus.source;
     assert.equal(await githubPage.currentHeadSha(pr), null);
+
+    fetched.length = 0;
+    globalThis.location = { pathname: "/acme/widgets/pull/7" };
+    assert.equal(await githubPage.currentHeadSha(pr), null);
+    assert.deepEqual(fetched, []);
   } finally {
-    globalThis.prFocus.source = saved;
-    globalThis.location = savedLocation;
-    if (savedLocation === undefined) delete globalThis.location;
+    globalThis.prFocus.source = saved.source;
+    globalThis.prFocus.commentSource = saved.commentSource;
+    globalThis.location = saved.location;
+    if (saved.location === undefined) delete globalThis.location;
+  }
+});
+
+test("each adapter gives the PR's conversation page and knows when the page is it", () => {
+  const saved = globalThis.location;
+  try {
+    assert.equal(githubPage.conversationUrl({ owner: "acme", repo: "widgets", pr: 7 }), "https://github.com/acme/widgets/pull/7");
+    assert.equal(forgejoPage.conversationUrl({ owner: "acme", repo: "widgets", pr: 7 }), "http://localhost:3300/acme/widgets/pulls/7");
+    globalThis.location = { pathname: "/acme/widgets/pull/7" };
+    assert.equal(githubPage.isConversationPage(), true);
+    assert.equal(githubPage.isConversationPage({ owner: "Acme", repo: "widgets", pr: 7 }), true);
+    assert.equal(githubPage.isConversationPage({ owner: "acme", repo: "widgets", pr: 8 }), false);
+    assert.equal(githubPage.isConversationPage({ owner: "acme", repo: "other", pr: 7 }), false);
+    globalThis.location = { pathname: "/acme/widgets/pull/7/files" };
+    assert.equal(githubPage.isConversationPage(), false);
+    globalThis.location = { pathname: "/acme/widgets/pulls/7" };
+    assert.equal(forgejoPage.isConversationPage({ owner: "acme", repo: "widgets", pr: 7 }), true);
+    delete globalThis.location;
+    assert.equal(forgejoPage.isConversationPage(), false);
+  } finally {
+    globalThis.location = saved;
+    if (saved === undefined) delete globalThis.location;
   }
 });
 

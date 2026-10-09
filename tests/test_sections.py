@@ -156,7 +156,7 @@ class Sections(unittest.TestCase):
     def test_no_changes_keeps_the_old_sentences(self) -> None:
         brief, _ = render_body(contract=document({}, {}) | {"path": SPEC}, text="")
         text = brief.body
-        self.assertIn("### **Contract**\nNo API changes\n", text)
+        self.assertIn("### **API**\nNo API changes\n", text)
         self.assertIn("### **Data**\nNo database changes\n", text)
 
     def test_a_side_that_could_not_be_checked_is_named(self) -> None:
@@ -164,7 +164,7 @@ class Sections(unittest.TestCase):
         with mock.patch.object(render, "MIGRATION_GLOBS", []):
             brief, _ = build_body_for(unchecked)
             text = brief.body
-        self.assertIn("### **Contract**\nAPI changes not checked\n", text)
+        self.assertIn("### **API**\nAPI changes not checked\n", text)
         self.assertIn("### **Data**\nDatabase changes not checked\n", text)
 
     def test_the_page_styles_the_three_chip_levels(self) -> None:

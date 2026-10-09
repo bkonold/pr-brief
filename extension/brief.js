@@ -1,5 +1,6 @@
 // The PR brief card: the run's description and diagram, in a collapsed <details> that the content
-// script places above the PR's description on the conversation page. Before there is a run it is a bar with a
+// script places above the PR's description on the conversation page. A brief read from the PR's comment says so in its
+// badge. Before there is a run it is a bar with a
 // "Generate brief" button, while one is being written a bar with the stage pills and a Cancel link, and when the run
 // is for an older head commit than the page's the badge says so and a Regenerate button appears; otherwise a quiet
 // Regenerate link sits in the header. It lives in a
@@ -150,7 +151,10 @@
   //   { kind: "none", canGenerate }                         no run yet
   //   { kind: "running", stage, elapsed }                   a run is going
   //   { kind: "error", message }                            the call or the run failed
-  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate }   a run, closed
+  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate, origin }   a run, closed; `origin` is
+  //                                                         "comment" for a brief read from the PR's comment, else "server".
+  //                                                         A comment's brief offers Regenerate only when `canGenerate`
+  //                                                         is true, which is when a run server is set
   // `key` and `filesUrl` name the run and the PR's files view on this host. Every button is a
   // data-action: generate, cancel.
   function cardHtml(view, { key, filesUrl }) {
@@ -173,9 +177,11 @@
       ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${caption ? `<p class="caption">${caption}</p>` : ""}</figure></details>`
       : "";
     const stale = isStale(view.runSha, view.pageSha);
-    const label = stale ? `for ${short(view.runSha)}, PR is at ${short(view.pageSha)}` : "local, not posted";
+    const fresh = view.origin === "comment" ? "from the PR's comment" : "local, not posted";
+    const label = stale ? `for ${short(view.runSha)}, PR is at ${short(view.pageSha)}` : fresh;
+    const mayRegenerate = view.origin === "comment" ? view.canGenerate === true : view.canGenerate !== false;
     const regenerate =
-      view.canGenerate === false
+      !mayRegenerate
         ? ""
         : stale
           ? '<button class="btn" type="button" data-action="generate">Regenerate</button>'
@@ -210,9 +216,9 @@
   }
 
   // The card for a run that exists, drawn closed.
-  function buildBrief({ key, variant, bodyHtml, diagramSvg, filesUrl, runSha, pageSha, onAction }) {
+  function buildBrief({ key, variant, bodyHtml, diagramSvg, filesUrl, runSha, pageSha, origin, onAction }) {
     const host = buildCard({ key, filesUrl, onAction });
-    host.show({ kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha });
+    host.show({ kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, origin });
     return host;
   }
 

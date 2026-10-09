@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PR Brief",
   "version": "0.1.0",
-  "description": "Walks a GitHub or Forgejo pull request's files page through the stops of a local brief, and shows the brief above the description. Talks only to the local pr-brief server; posts nothing.",
+  "description": "Walks a GitHub or Forgejo pull request's files page through the stops of its brief, and shows the brief above the description. Reads the brief from the pull request's comment, or from an optional local pr-brief server; posts nothing.",
   "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1:8765/*", "http://localhost:3300/*"],
   "background": {
@@ -12,7 +12,7 @@
   "content_scripts": [
     {
       "matches": ["https://github.com/*", "http://localhost:3300/*"],
-      "js": ["page_common.js", "github_page.js", "forgejo_page.js", "page.js", "source.js", "run_control.js", "focus.js", "tree.js", "diagram.js", "brief_text.js", "brief.js", "content.js"],
+      "js": ["page_common.js", "github_page.js", "forgejo_page.js", "page.js", "comment_source.js", "source.js", "run_control.js", "focus.js", "tree.js", "diagram.js", "brief_text.js", "brief.js", "content.js"],
       "css": ["focus.css", "tree.css", "diagram.css"],
       "run_at": "document_idle"
     }
