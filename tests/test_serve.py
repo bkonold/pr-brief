@@ -39,6 +39,9 @@ FAKE_RUNNER = textwrap.dedent(f"""
         run_status.write_status(home, key, state="done", finished=time.time())
     elif mode == "silent":
         pass
+    elif mode == "lingering":
+        run_status.write_status(home, key, state="done", finished=time.time())
+        time.sleep(60)
     elif mode == "broken":
         print("first line")
         print("claude exited with status 1: invented failure")
@@ -90,7 +93,7 @@ class ServeTest(unittest.TestCase):
         (self.home / "hello.txt").write_text("static file")
         self.fake = self.home / "fake_runner.py"
         self.fake.write_text(FAKE_RUNNER)
-        allowed = serve.parse_serve_repos({"github": ["acme/quick", "Acme/Slow", "acme/broken", "acme/silent"], "forgejo": ["me/slow"]})
+        allowed = serve.parse_serve_repos({"github": ["acme/quick", "Acme/Slow", "acme/broken", "acme/silent", "acme/lingering"], "forgejo": ["me/slow"]})
         self.runner = serve.Runner(self.home, allowed, self.argv_for, max_running=2)
         self.server = serve.make_server(self.home, self.runner, TOKEN, 0)
         threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
@@ -239,6 +242,13 @@ class ServeTest(unittest.TestCase):
         self.wait_for(lambda: self.state("8") == "done", "the run to finish")
         self.assertEqual(self.client.call("POST", "/api/cancel", {"key": "8"})[1], {"key": "8", "state": "done"})
         self.assertEqual(self.client.call("POST", "/api/cancel", {"key": "77"})[1], {"key": "77", "state": "idle"})
+
+    def test_cancel_of_a_run_that_has_reported_done_but_not_yet_exited_changes_nothing(self) -> None:
+        self.client.run("github", "acme/lingering", 12)
+        self.wait_for(lambda: self.state("12") == "done", "the run to report done")
+        self.assertTrue(self.runner.jobs["12"].running())
+        self.assertEqual(self.client.call("POST", "/api/cancel", {"key": "12"})[1], {"key": "12", "state": "done"})
+        self.assertTrue(self.runner.jobs["12"].running())
 
     def test_a_run_that_dies_without_a_status_is_marked_failed_with_its_last_line(self) -> None:
         self.client.run("github", "acme/broken", 10)
