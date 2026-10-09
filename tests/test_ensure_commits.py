@@ -46,10 +46,10 @@ class EnsureCommitsTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def check(self, sha: str, host: str) -> bool:
+    def check(self, sha: str, host: str, **environ: str) -> bool:
         code = CHECK.format(tool=str(TOOL), sha=sha, host=host)
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                             env={**os.environ, "PR_BRIEF_HOME": str(self.home)})
+                             env={**os.environ, "PR_BRIEF_HOME": str(self.home), **environ})
         self.assertEqual(out.returncode, 0, out.stderr)
         return out.stdout.strip() == "True"
 
@@ -58,6 +58,15 @@ class EnsureCommitsTest(unittest.TestCase):
 
     def test_github_asks_only_github_so_the_checkout_is_not_used(self) -> None:
         self.assertFalse(self.check(self.sha, "github"))
+
+    def test_github_fetches_from_the_repository_an_actions_job_runs_in_when_the_config_names_no_url(self) -> None:
+        server = Path(self.tmp.name) / "server"
+        (server / "octo").mkdir(parents=True)
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.checkout), str(server / "octo" / "widgets.git")], check=True)
+        (self.home / "local.toml").write_text(f'source_checkout = "{self.checkout}"\n')
+        actions = {"GITHUB_SERVER_URL": server.as_uri(), "GITHUB_REPOSITORY": "octo/widgets"}
+        self.assertFalse(self.check(self.sha, "github"))
+        self.assertTrue(self.check(self.sha, "github", **actions))
 
     def test_an_unknown_commit_stays_missing(self) -> None:
         self.assertFalse(self.check("1" * 40, "forgejo"))

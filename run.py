@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Run PR-Agent's /describe prompt for one PR and one variant through `claude -p` or the GitHub Copilot CLI.
 
-usage: run.py <pr> --variant NAME [--with-body] [--runner claude|copilot] [--model NAME]
-              [--host github|forgejo] [--repo owner/name] [--prompt-only]
+usage: run.py <pr> [--variant NAME] [--with-body] [--runner claude|copilot] [--model NAME]
+              [--host github|forgejo] [--repo owner/name] [--config FILE] [--prompt-only]
+
+--config names a TOML to read in place of local.toml, with the same keys and, if it has them, the `[reach]` and
+`[archetypes]` tables (see config.py). --variant defaults to the config's `default_variant`, else the tool's current
+variant.
 
 --runner defaults to claude. A copilot run uses the CLI's own stored login and is written beside the Claude run, to
 runs/<key>/<variant>_copilot/, with the same variant settings; --model defaults to the runner's entry in
@@ -28,12 +32,17 @@ from typing import Any
 
 from jinja2 import Environment
 
-from compare import write_variants_json
-from config import HOME, ROOT, load_local, variant_file
-from context_pack import Pack, build, ensure_commits
-from hosts import get_host, host_names, run_key
-from runners import CLAUDE, RUNNERS, clean_answer, invocation, resolve_model, run_dir_name
-from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status
+import config
+
+# Before the modules that read the settings when they are imported.
+config.use_config_flag(sys.argv)
+
+from compare import write_variants_json  # noqa: E402
+from config import DEFAULT_VARIANT, HOME, ROOT, load_local, variant_file  # noqa: E402
+from context_pack import Pack, build, ensure_commits  # noqa: E402
+from hosts import get_host, host_names, run_key  # noqa: E402
+from runners import CLAUDE, COPILOT, RUNNERS, clean_answer, command_line, invocation, resolve_model, run_dir_name  # noqa: E402
+from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status  # noqa: E402
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
 
@@ -126,11 +135,13 @@ class Progress:
 def execute(progress: Progress) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("pr")
-    p.add_argument("--variant", required=True)
+    local: dict[str, Any] = load_local()
+    p.add_argument("--variant", default=local.get("default_variant", DEFAULT_VARIANT),
+                   help="the variant to run (default: the config's `default_variant`, else the tool's current variant)")
+    p.add_argument("--config", help="a TOML to read in place of local.toml (see config.py)")
     p.add_argument("--with-body", action="store_true", help="show the model the PR's existing description")
     p.add_argument("--runner", choices=RUNNERS, default=CLAUDE, help="the program that runs the model (default: claude)")
     p.add_argument("--model", help="the runner's model id (default: local.toml's [model] entry for the runner, else claude-opus-5-5 for claude and claude-opus-5.5 for copilot)")
-    local: dict[str, Any] = load_local()
     p.add_argument("--host", choices=host_names(), default=local.get("host", "github"),
                    help="where the PR lives (default: local.toml's `host`, else github)")
     p.add_argument("--repo", help="the host's repository as owner/name (default: local.toml's `repo`, for the host local.toml names)")
@@ -152,7 +163,7 @@ def execute(progress: Progress) -> int:
     variant: dict[str, Any] = tomllib.loads(variant_path.read_text())
 
     if not a.repo:
-        p.error(f"--repo owner/name is required: local.toml sets no `repo` for the {a.host} host")
+        p.error(f"--repo owner/name is required: the config sets no `repo` for the {a.host} host")
     owner, _, name = a.repo.partition("/")
     if not owner or not name:
         p.error("--repo must be owner/name")
@@ -191,6 +202,8 @@ def execute(progress: Progress) -> int:
     progress.stage("write")
     started: datetime = now()
     command = invocation(a.runner, system, user, a.model, os.environ)
+    if a.runner == COPILOT:
+        print(f"running: {command_line(command)} ({len(command.input)} characters on stdin)", file=sys.stderr, flush=True)
     try:
         out = subprocess.run(command.argv, input=command.input, env=command.env, capture_output=True, text=True)
     except FileNotFoundError:

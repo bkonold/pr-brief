@@ -25,7 +25,8 @@ repo = "example-org/example-repo"
 # chrome = "/usr/bin/chromium"
 
 # Sections "callers" and "contract" search a bare mirror of the repository kept in .cache/.
-# source_checkout is a local clone the mirror is first cloned from; without it no mirror is created.
+# source_checkout is a local clone the mirror is first cloned from; without it no mirror is created. In a GitHub
+# Actions job it defaults to the workflow's checkout (GITHUB_WORKSPACE).
 source_checkout = "/path/to/your/clone/of/example-repo"
 # github_url is where commits missing from the mirror are fetched, using the `gh` credential helper;
 # without it nothing is fetched and a PR whose commits the mirror lacks loses these two sections.

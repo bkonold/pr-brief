@@ -4,6 +4,7 @@ Each runner turns the system and user prompts into one `Invocation`: the command
 environment to run it in. Nothing here starts a process or reads a token.
 """
 import re
+import shlex
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -33,6 +34,12 @@ class Invocation:
     argv: list[str]
     input: str
     env: dict[str, str] | None
+
+
+def command_line(call: Invocation) -> str:
+    """The command a run starts, as a shell would read it. The arguments never hold a token or the prompt, which
+    arrives on stdin."""
+    return shlex.join(call.argv)
 
 
 def resolve_model(runner: str, flag: str | None, local: Mapping[str, Any]) -> str:

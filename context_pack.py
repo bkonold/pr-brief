@@ -12,23 +12,25 @@ missing is skipped and the reason goes in the pack's `dropped` stats.
 import fcntl
 import fnmatch
 import json
+import os
 import posixpath
 import re
 import subprocess
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from config import HOME, config_file, load_local
+from config import HOME, config_section, load_local
 
 LOCAL: dict[str, Any] = load_local()
 CACHE = HOME / ".cache"
 MIRROR = CACHE / LOCAL.get("mirror_name", "mirror.git")
 LOCK = CACHE / "mirror.lock"
-SOURCE_CHECKOUT: str | None = LOCAL.get("source_checkout")
-GITHUB_URL: str | None = LOCAL.get("github_url")
-REACH_CONFIG: Path | None = config_file("reach")
+SOURCE_CHECKOUT: str | None = LOCAL.get("source_checkout") or os.environ.get("GITHUB_WORKSPACE")
+GITHUB_URL: str | None = LOCAL.get("github_url") or (
+    f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{os.environ['GITHUB_REPOSITORY']}.git"
+    if os.environ.get("GITHUB_REPOSITORY") else None)
+REACH_CONFIG: dict[str, Any] | None = config_section("reach")
 
 SECTIONS: tuple[str, ...] = ("callers", "reach", "contract", "migrations")
 TITLES: dict[str, str] = {
@@ -117,7 +119,7 @@ def has_commit(sha: str) -> bool:
 def ensure_commits(shas: list[str], host: str = "github") -> None:
     """Make every sha available in the mirror, cloning it first when absent. Serialized across
     processes by a file lock. Without `source_checkout` no mirror is cloned. For a GitHub PR a missing sha
-    is fetched from `github_url` (nothing is fetched without it); for a Forgejo PR it is fetched from
+    is fetched from `github_url`, or from the repository a GitHub Actions job runs in (nothing is fetched without either); for a Forgejo PR it is fetched from
     `source_checkout`, where the commits of a Forgejo branch normally already are, and never from GitHub.
     A sha that cannot be fetched stays missing; `build` drops the sections that need it."""
     if not (MIRROR.exists() or SOURCE_CHECKOUT):
@@ -977,18 +979,18 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
 
     base_present: bool = has_commit(base)
     head_present: bool = has_commit(head)
-    no_mirror: str = "local.toml sets no source_checkout and .cache has no mirror to search"
+    no_mirror: str = "the config sets no source_checkout and .cache has no mirror to search"
     if "callers" in wanted and not base_present:
         dropped["callers"] = no_mirror if not MIRROR.exists() else f"base commit {base[:10]} is not in the mirror"
     if "contract" in wanted:
         if not OPENAPI_PATH:
-            dropped["contract"] = "local.toml sets no openapi_path"
+            dropped["contract"] = "the config sets no openapi_path"
         elif not (base_present and head_present):
             dropped["contract"] = no_mirror if not MIRROR.exists() else f"base or head commit is not in the mirror ({base[:10]}, {head[:10]})"
     if "reach" in wanted and REACH_CONFIG is None:
-        dropped["reach"] = "no reach.toml (copy reach.example.toml and edit it)"
+        dropped["reach"] = "no [reach] table in the config and no reach.toml (copy reach.example.toml and edit it)"
     if "migrations" in wanted and not MIGRATION_DIRS:
-        dropped["migrations"] = "local.toml sets no migration_dirs"
+        dropped["migrations"] = "the config sets no migration_dirs"
 
     caller_files: dict[str, list[str]] = {}
     footers: dict[str, list[str]] = {}
@@ -1027,7 +1029,7 @@ def build(pr: dict[str, Any], diff: str, sections: list[str], options: dict[str,
             footers.setdefault("callers", []).append(f"New in this PR (no outside callers possible): {listed}{more}")
 
     if "reach" in wanted and "reach" not in dropped:
-        apps: list[dict[str, Any]] = tomllib.loads(REACH_CONFIG.read_text())["app"]
+        apps: list[dict[str, Any]] = REACH_CONFIG["app"]
         changed_by_app: dict[str, int] = {a["name"]: 0 for a in apps}
         callers_by_app: dict[str, int] = {a["name"]: 0 for a in apps}
         for p in changed_code:

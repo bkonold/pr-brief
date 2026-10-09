@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Render a run's answer.yaml as the PR body, and as a standalone HTML page.
 
-usage: render.py <run dir>      e.g. runs/42/diagram_walkthrough_v25
+usage: render.py <run dir> [--config FILE]      e.g. runs/42/diagram_walkthrough_v25
+
+--config names a TOML to read in place of local.toml (see config.py); run.py passes its own on.
 
 Reads answer.yaml, run.json and pr.json from the run dir.
 Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.
 The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
 diagram's boxes, the walkthrough stops and the contract and data lines go to review.json.
 """
+import argparse
 import html
 import json
 import os
@@ -22,13 +25,18 @@ from typing import Any, Mapping
 
 import yaml
 
-from config import ROOT, load_local
-import layout
-from diff_lines import file_diff_lines
-from contract_lines import CONTRACT_LEVELS, Line, contract_lines
-from data_lines import DATA_LEVELS, data_lines
-from hosts import get_host
-from hosts.github import GitHub
+import config
+
+# Before MIGRATION_GLOBS and the other settings below are read.
+config.use_config_flag(sys.argv)
+
+from config import ROOT, load_local  # noqa: E402
+import layout  # noqa: E402
+from diff_lines import file_diff_lines  # noqa: E402
+from contract_lines import CONTRACT_LEVELS, Line, contract_lines  # noqa: E402
+from data_lines import DATA_LEVELS, data_lines  # noqa: E402
+from hosts import get_host  # noqa: E402
+from hosts.github import GitHub  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: E402
@@ -737,7 +745,10 @@ def parse_answer(raw: str) -> dict[str, Any]:
 
 def main() -> int:
     global LINK_HOST
-    run_dir: Path = Path(sys.argv[1]).resolve()
+    parser = argparse.ArgumentParser(description="Render a run's answer.yaml as its brief.")
+    parser.add_argument("run_dir")
+    parser.add_argument("--config", help="a TOML to read in place of local.toml (see config.py)")
+    run_dir: Path = Path(parser.parse_args().run_dir).resolve()
     run: dict[str, Any] = json.loads((run_dir / "run.json").read_text())
     LINK_HOST = get_host(run.get("host", "github"), load_local())
     pr: dict[str, Any] = json.loads((run_dir / "pr.json").read_text())

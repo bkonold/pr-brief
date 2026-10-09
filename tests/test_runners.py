@@ -27,6 +27,13 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(call.argv, ["claude", "-p", "--system-prompt", SYSTEM, "--tools", "", "--model", "opus"])
         self.assertEqual((call.input, call.env), (USER, None))
 
+    def test_the_copilot_command_line_is_shell_quoted_and_holds_neither_a_token_nor_a_prompt(self) -> None:
+        line = runners.command_line(runners.invocation("copilot", SYSTEM, USER, "claude-opus-5.5", TOKENS))
+        self.assertTrue(line.startswith("copilot -p '"))
+        self.assertIn("--model claude-opus-5.5 -s --available-tools=", line)
+        for secret in ("ghp_classic", "ghp_other", "keep", SYSTEM, USER):
+            self.assertNotIn(secret, line)
+
     def test_copilot_sends_the_model_and_silent_flags_with_no_tools_and_no_prompt_text_in_the_arguments(self) -> None:
         call = runners.invocation("copilot", SYSTEM, USER, "claude-opus-5.5", TOKENS)
         self.assertEqual(call.argv[:2], ["copilot", "-p"])
