@@ -34,12 +34,6 @@
     return { host: page.hostId, owner: pr.owner, repo: pr.repo, pr: pr.pr, key: page.runKey(pr) };
   }
 
-  // Whether a Generate button may be offered: false only when the server says it will not start runs for this
-  // repository. A server that cannot be asked (down, wrong token) still gets the button, so the failure can be shown.
-  function mayGenerate(status) {
-    return status.ok ? status.allowed !== false : true;
-  }
-
   // The card is drawn for the PR's run when it has one, else as a bar offering to generate it. A run in progress
   // on the server, left by an earlier visit, is followed from where it is.
   async function mountBrief(pr) {
@@ -56,7 +50,7 @@
       page.currentHeadSha(pr),
     ]);
     if (!live() || token !== briefToken) return;
-    const canGenerate = mayGenerate(status);
+    const canGenerate = runControl.mayGenerate(status);
     if (!run && !canGenerate) return;
 
     let current = run;
@@ -354,7 +348,7 @@
     const target = runTarget(pr);
     const status = await source.runStatus(target);
     if (!live() || token !== loadToken) return;
-    if (!mayGenerate(status)) {
+    if (!runControl.mayGenerate(status)) {
       current = null;
       return;
     }

@@ -22,12 +22,20 @@
   const MESSAGES = {
     server: "Start the server with `pd serve` to generate briefs",
     token: "Server token missing or wrong — set it in the extension options",
+    unset: "Set the local run server in the extension options to generate briefs",
   };
 
   // What a failed call tells the reader.
   function problemMessage(result) {
     if (result.problem === "busy") return result.message || "2 briefs already running";
     return MESSAGES[result.problem] ?? result.message ?? "The server could not start the brief";
+  }
+
+  // Whether a Generate button may be offered for a status answer: false when no run server is set, and when the server
+  // says it will not start runs for the repository. A server that cannot be asked (down, wrong token) still gets the
+  // button, so the failure can be shown.
+  function mayGenerate(status) {
+    return status.ok ? status.allowed !== false : status.problem !== "unset";
   }
 
   // 83 seconds is "1:23".
@@ -131,7 +139,7 @@
     return { generate, adopt, cancel, stop };
   }
 
-  ns.runControl = { create, stagePills, formatElapsed, problemMessage, STAGES };
+  ns.runControl = { create, stagePills, formatElapsed, problemMessage, mayGenerate, STAGES };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.runControl;

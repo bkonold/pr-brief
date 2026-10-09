@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { create, stagePills, formatElapsed, problemMessage } = require("../run_control.js");
+const { create, stagePills, formatElapsed, problemMessage, mayGenerate } = require("../run_control.js");
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -77,6 +77,7 @@ test("each problem has its own message", () => {
   assert.equal(problemMessage({ problem: "busy", message: "2 briefs already running" }), "2 briefs already running");
   assert.equal(problemMessage({ problem: "busy" }), "2 briefs already running");
   assert.equal(problemMessage({ problem: "error", message: "boom" }), "boom");
+  assert.equal(problemMessage({ problem: "unset" }), "Set the local run server in the extension options to generate briefs");
 });
 
 test("generate shows the first stage at once, ticks every second, polls every three and ends on done", async () => {
@@ -189,4 +190,13 @@ test("describeResponse sorts what the server said", async () => {
   assert.deepEqual(describeResponse({ status: 429, ok: false }, undefined, { message: "2 briefs already running" }), { problem: "busy", message: "2 briefs already running" });
   assert.deepEqual(describeResponse({ status: 500, ok: false }, undefined, null), { problem: "error", message: "The server answered 500" });
   assert.deepEqual(describeResponse({ status: 200, ok: true }, undefined, { key: "7", state: "running" }), { ok: true, key: "7", state: "running" });
+});
+
+test("a Generate button is offered unless no server is set or the server will not run the repository", () => {
+  assert.equal(mayGenerate({ ok: true, state: "idle", allowed: true }), true);
+  assert.equal(mayGenerate({ ok: true, state: "idle" }), true);
+  assert.equal(mayGenerate({ ok: true, state: "idle", allowed: false }), false);
+  assert.equal(mayGenerate({ problem: "server" }), true);
+  assert.equal(mayGenerate({ problem: "token" }), true);
+  assert.equal(mayGenerate({ ok: false, problem: "unset" }), false);
 });

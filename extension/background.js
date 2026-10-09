@@ -4,9 +4,10 @@ import { TOKEN_HEADER, describeResponse } from "./serve_api.js";
 
 const SAFE_NAME = /^[\w.-]+$/;
 
+// The run server's base URL, "" when none is set. Without one the extension makes no request to a server.
 async function settings() {
   const stored = await chrome.storage.sync.get(DEFAULTS);
-  return { baseUrl: (stored.baseUrl || DEFAULTS.baseUrl).replace(/\/+$/, "") };
+  return { baseUrl: String(stored.baseUrl || DEFAULTS.baseUrl).trim().replace(/\/+$/, "") };
 }
 
 // The server token lives in chrome.storage.local, which no other device or page script can read. Only this script
@@ -47,10 +48,11 @@ async function loadConfig() {
 }
 
 // The run a PR page shows: its review.json and the server's default variant it was read from. Null when the PR has
-// no run; { error: "old" } when its run was written by an older version; { error: "server" } when the page server
+// no run or no server URL is set; { error: "old" } when its run was written by an older version; { error: "server" } when the page server
 // can't be reached. The page server sends no CORS headers, so the fetch happens here rather than in the content script.
 async function findRun({ owner, repo, pr, key: requestedKey }) {
   const { baseUrl } = await settings();
+  if (!baseUrl) return null;
   const key = SAFE_NAME.test(requestedKey ?? "") ? requestedKey : String(pr);
   const config = await loadConfig();
   const variant = config.default_variant;
@@ -90,12 +92,14 @@ async function loadBrief(request) {
     loadRunFile(baseUrl, variant, key, "body.html"),
     loadDiagram(baseUrl, variant, key, review.diagram),
   ]);
-  return bodyHtml === null ? null : { variant, bodyHtml, diagramSvg, headSha: review.head_sha ?? null };
+  return bodyHtml === null ? null : { variant, bodyHtml, diagramSvg, headSha: review.head_sha ?? null, origin: "server" };
 }
 
-// One call to serve.py's /api/ with the token; see describeResponse for the shapes that come back.
+// One call to serve.py's /api/ with the token; see describeResponse for the shapes that come back, and
+// { ok: false, problem: "unset" } when no server URL is set, in which case nothing is requested.
 async function callServer(path, { method = "GET", body } = {}) {
   const { baseUrl } = await settings();
+  if (!baseUrl) return { ok: false, problem: "unset" };
   const headers = { [TOKEN_HEADER]: await serverToken() };
   if (body) headers["Content-Type"] = "application/json";
   let response;

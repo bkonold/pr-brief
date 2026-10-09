@@ -1,4 +1,5 @@
 export const DEFAULTS = {
-  baseUrl: "http://127.0.0.1:8765",
+  // Empty: no run server, and the brief is read from the pull request's comment.
+  baseUrl: "",
 };
 export const TOKEN_KEY = "serverToken";
