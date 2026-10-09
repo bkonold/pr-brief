@@ -49,18 +49,16 @@ class Drawing(unittest.TestCase):
     def draw(self, lines, kind="contract", levels=CONTRACT_LEVELS, files=FILES) -> str:
         return section(kind, kind.capitalize(), levels, list(lines), URL, files)
 
-    def test_a_section_is_its_name_the_chips_the_files_link_and_a_closed_list_of_files(self) -> None:
+    def test_a_section_is_a_heading_line_a_chip_line_and_a_closed_list_of_files(self) -> None:
         text = self.draw([line("a", BREAKING), line("b", ADDITIVE), line("c", ADDITIVE)])
-        head, details = text.split("\n\n", 1)
-        self.assertEqual(head, '**Contract** <span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span>'
-                               f' · [View files]({URL}?pr-brief=contract)')
-        self.assertEqual(details, "<details>\n<summary>2 files</summary>\n\n"
-                                  "[openapi.json](https://example.test/a) · [Widget.java](https://example.test/b)\n\n</details>")
-        self.assertNotIn("open", details.split("\n")[0])
+        self.assertEqual(text, f"**Contract** · [View files]({URL}?pr-brief=contract)<br>\n"
+                               '<span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span>\n\n'
+                               "<details>\n<summary>2 files</summary>\n\n"
+                               "- [openapi.json](https://example.test/a)\n- [Widget.java](https://example.test/b)\n\n</details>")
 
     def test_there_is_no_table_and_no_count_of_changes(self) -> None:
         text = self.draw([line("a", BREAKING), line("b", ADDITIVE)])
-        for gone in ("|", "<table", "table-wrap", "change", "muted", "↗"):
+        for gone in ("|", "<table", "table-wrap", "change", "muted", "↗", " · <span"):
             self.assertNotIn(gone, text)
 
     def test_the_chips_are_each_level_once_worst_first(self) -> None:
@@ -75,17 +73,17 @@ class Drawing(unittest.TestCase):
 
     def test_a_data_section_has_the_data_chips_and_the_data_parameter(self) -> None:
         text = self.draw([line("x", DESTRUCTIVE), line("y", ADDITIVE)], kind="data", levels=DATA_LEVELS)
-        self.assertTrue(text.startswith("**Data** "))
+        self.assertTrue(text.startswith(f"**Data** · [View files]({URL}?pr-brief=data)<br>\n"))
         self.assertEqual(pills(text), ["destructive", "additive"])
         self.assertIn(f"[View files]({URL}?pr-brief=data)", text)
 
     def test_two_files_with_the_same_name_are_listed_by_path(self) -> None:
         text = self.draw(self.lines(1), files=[("a/Item.java", "https://example.test/1"), ("b/Item.java", "https://example.test/2")])
-        self.assertIn("[a/Item.java](https://example.test/1) · [b/Item.java](https://example.test/2)", text)
+        self.assertIn("- [a/Item.java](https://example.test/1)\n- [b/Item.java](https://example.test/2)", text)
 
     def test_with_no_file_there_is_no_link_and_no_list(self) -> None:
         text = self.draw(self.lines(1), files=[])
-        self.assertEqual(text, '**Contract** <span class="pill p2">additive</span>')
+        self.assertEqual(text, '**Contract**<br>\n<span class="pill p2">additive</span>')
 
     def lines(self, count: int, impact: str = ADDITIVE) -> list[Line]:
         return [line(f"t{n}", impact) for n in range(count)]

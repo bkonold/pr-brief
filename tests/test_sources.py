@@ -370,18 +370,18 @@ class FileSets(unittest.TestCase):
         listed = contract[contract.index("<details>"):]
         self.assertIn("<summary>5 files</summary>", listed)
         for name in ("openapi.json", "Customer.java", "CustomerController.java", "CustomerStatus.java"):
-            self.assertIn(f"[{name}](", listed)
+            self.assertIn(f"- [{name}](", listed)
         data = text[text.index("**Data** "):]
-        self.assertIn("[CustomerBE.java](", data)
-        self.assertIn("[V9__customers.sql](", data)
+        self.assertIn("- [CustomerBE.java](", data)
+        self.assertIn("- [V9__customers.sql](", data)
 
     def test_a_section_with_no_files_has_no_list_and_no_link(self) -> None:
         text = self.brief(paths=[MIGRATION]).body
-        contract = text[text.index("**Contract** "):text.index("**Data** ")]
+        contract = text[text.index("**Contract**"):text.index("**Data**")]
         self.assertNotIn("View files", contract)
         self.assertNotIn("<details>", contract)
         self.assertIn("pr-brief=data", text)
-        self.assertIn("[V9__customers.sql](", text)
+        self.assertIn("- [V9__customers.sql](", text)
 
 
 if __name__ == "__main__":

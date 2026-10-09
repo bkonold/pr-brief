@@ -1,7 +1,8 @@
 """How the contract and data lines of a brief are summarised.
 
-`section` draws one section (Contract or Data) of the brief: its name, a chip for each impact level present, a link to
-the PR's files page that opens with the section's files selected, and under it a closed `<details>` listing those files.
+`section` draws one section (Contract or Data) of the brief: its name and a link to the
+PR's files page that opens with the section's files selected, a chip for each impact level present, and a closed
+`<details>` listing those files.
 The lines themselves live in review.json; the body carries no per-line table. The markup is HTML and markdown, so it
 survives both GitHub and the extension's brief pane; GitHub drops the `class` attributes, which leaves the top level bold
 and the others plain.
@@ -36,20 +37,20 @@ def glance(lines: list[Line], levels: tuple[str, ...]) -> str:
 
 
 def files_list(files: list[tuple[str, str]]) -> str:
-    """A link to each file, `(path, url)`, labelled with its name, or its whole path when two files share a name."""
+    """A markdown list with a link to each file, `(path, url)`, labelled with its name, or its whole path when two files
+    share a name."""
     names: list[str] = [PurePosixPath(path).name for path, _ in files]
-    links: list[str] = [f"[{path if names.count(name) > 1 else name}]({url})" for (path, url), name in zip(files, names)]
-    return " · ".join(links)
+    return "\n".join(f"- [{path if names.count(name) > 1 else name}]({url})" for (path, url), name in zip(files, names))
 
 
 def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line], files_url: str,
             files: list[tuple[str, str]]) -> str:
-    """The section's markdown (`kind` is `contract` or `data`): `heading` in bold, the chip of each level present, worst
-    first, and a "View files" link to `files_url` with the section's `pr-brief` parameter; under them a closed
-    `<details>` whose summary counts the files and which lists them as links (`files` holds `(path, url)`). A section with
-    no file has neither the link nor the list."""
-    head: str = f"**{html.escape(heading)}** {glance(lines, levels)}"
+    """The section's markdown (`kind` is `contract` or `data`), on three parts: `heading` in bold and a "View files" link
+    to `files_url` with the section's `pr-brief` parameter, then after a `<br>` the chip of each level present, worst first;
+    then a closed `<details>` whose summary counts the files and which lists them one to a line (`files` holds
+    `(path, url)`). A section with no file has the heading and the chips only."""
+    title: str = f"**{html.escape(heading)}**"
     if not files:
-        return head
-    return (f"{head} · [View files]({files_url}?{FILE_SET_PARAM}={kind})\n\n"
+        return f"{title}<br>\n{glance(lines, levels)}"
+    return (f"{title} · [View files]({files_url}?{FILE_SET_PARAM}={kind})<br>\n{glance(lines, levels)}\n\n"
             f"<details>\n<summary>{plural(len(files), 'file')}</summary>\n\n{files_list(files)}\n\n</details>")

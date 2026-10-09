@@ -212,9 +212,9 @@ the page's data, and its header links to the files view. Without a run it is the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
   description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
-- The brief's "Contract" and "Data" sections are each a bold name, one chip for each impact level present (no counts), a
-  "View files" link and a closed `<details>` whose summary counts the files (`3 files`) and which lists them as links to
-  their diffs. There is no table: the lines stay in `review.json`. The chips come from the run's
+- The brief's "Contract" and "Data" sections are each a bold name and a "View files" link on one line, one chip for
+  each impact level present (no counts) on the next, and a closed `<details>` whose summary counts the files
+  (`3 files`) and which lists them one to a line as links to their diffs. There is no table: the lines stay in `review.json`. The chips come from the run's
   `<span class="pill p0|p1|p2">` markup: the top level is a filled chip, the second a bold outlined one and the rest
   outlined, drawn by the card's own style. The brief has no review-order table; the files view lists the stops.
 - Links into the PR's files view are rewritten to this host's files view, fragment and `pr-brief` parameter kept. When the files page loads with a

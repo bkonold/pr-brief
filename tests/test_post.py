@@ -92,9 +92,9 @@ class BodyTest(RunFolderTest):
         self.assertEqual(post.payload(review([stop(1)])), post.payload(review([stop(1)])))
 
     def test_a_contract_section_in_the_brief_is_kept_whole(self) -> None:
-        section = ('**Contract** <span class="pill p0"><strong>breaking</strong></span> · '
-                   '[View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)\n\n'
-                   '<details>\n<summary>1 file</summary>\n\n[openapi.json](https://github.com/acme/widgets/pull/7/files#diff-ab)\n\n</details>\n')
+        section = ('**Contract** · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)<br>\n'
+                   '<span class="pill p0"><strong>breaking</strong></span>\n\n'
+                   '<details>\n<summary>1 file</summary>\n\n- [openapi.json](https://github.com/acme/widgets/pull/7/files#diff-ab)\n\n</details>\n')
         body = BODY.replace("### **Contract**\nNo API changes\n", section)
         comment = post.build_comment(self.run_dir([stop(1)], body))
         self.assertIn(section, comment)

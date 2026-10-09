@@ -82,8 +82,9 @@ class Sections(unittest.TestCase):
         brief, _ = render_body()
         text, lineset = brief.body, brief
         contract = self.section_of(text, "Contract")
-        head = contract.splitlines()[0]
-        self.assertEqual(re.sub(r"<[^>]+>", "", head), "**Contract** breaking may break · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=contract)")
+        first, chips = contract.splitlines()[:2]
+        self.assertEqual(first, "**Contract** · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=contract)<br>")
+        self.assertEqual(re.sub(r"<[^>]+>", "", chips), "breaking may break")
         self.assertEqual(re.findall(r"<summary>(.*?)</summary>", contract), ["1 file"])
         self.assertEqual(len(lineset.contract), 3)
         for gone in ("|", "chunk", "Not in any", "group-row", "table-wrap"):
@@ -92,11 +93,12 @@ class Sections(unittest.TestCase):
     def test_the_data_section_links_the_data_files(self) -> None:
         brief, _ = render_body()
         data = self.section_of(brief.body, "Data")
-        self.assertEqual(re.sub(r"<[^>]+>", "", data.splitlines()[0]),
-                         "**Data** destructive additive · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=data)")
+        first, chips = data.splitlines()[:2]
+        self.assertEqual(first, "**Data** · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=data)<br>")
+        self.assertEqual(re.sub(r"<[^>]+>", "", chips), "destructive additive")
         self.assertEqual(data.count("<details"), 1)
         self.assertEqual(re.findall(r"<summary>(.*?)</summary>", data), ["1 file"])
-        self.assertIn("[V9__items.sql](", data)
+        self.assertIn("- [V9__items.sql](", data)
 
     def test_a_forgejo_run_links_its_own_files_page(self) -> None:
         with mock.patch.object(render, "LINK_HOST", Forgejo("http://forge.invalid", None)):

@@ -37,12 +37,13 @@ re-run it instead.
   A stop's `node` must be a box of the diagram that covers files; when it is missing or is not, the stop takes the first
   box, in diagram order, whose files include the stop's file, with a note, and when no box holds the file `node` is null
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
-- **Contract and Data** are two sections after the description, built without a model call. Each is its name in bold,
-  one chip for each level present, worst first (`breaking` `may break` `additive`; no counts), and a `View files` link to
-  the PR's files page with `?pr-brief=contract` (or `data`): `/pull/N/files` on GitHub, `/pulls/N/files` on Forgejo. Under
-  it is a closed `<details>` whose summary counts the section's files (`3 files`) and which lists them as links to their
-  diffs (see Sources and file sets below). The body has no per-line table; every line is in `review.json`. A section with
-  no files has no link and no list. With no lines a section is a heading and "No API changes" or "No database changes",
+- **Contract and Data** are two sections after the description, built without a model call. Each is three parts. The
+  first line is the section's name in bold and a `View files` link to the PR's files page with `?pr-brief=contract` (or
+  `data`): `/pull/N/files` on GitHub, `/pulls/N/files` on Forgejo. A `<br>` ends it, so the chips are on a line of their
+  own: one for each level present, worst first (`breaking` `may break` `additive`; no counts). Then a closed `<details>`
+  whose summary counts the section's files (`3 files`) and which lists them as a markdown list, a link to each file's
+  diff on its own line (see Sources and file sets below). The body has no per-line table; every line is in `review.json`. A section with
+  no files is its name and chips, with no link and no list. With no lines a section is a heading and "No API changes" or "No database changes",
   or that its side was not checked (no `openapi_path` or mirror, no `migration_globs`). The Contract side needs
   `contract.json`; the Data side needs `migration_globs` in `local.toml`.
 

@@ -531,12 +531,14 @@ test("clicking a button in the card reports its action, and show redraws the car
 const V22_MARKDOWN = [
   "# T",
   "",
-  '**Contract** <span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span> · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)',
+  "**Contract** · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)<br>",
+  '<span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span>',
   "",
   "<details>",
   "<summary>2 files</summary>",
   "",
-  "[openapi.json](https://github.com/acme/widgets/pull/7/files#diff-abc) · [Widget.java](https://github.com/acme/widgets/pull/7/files#diff-def)",
+  "- [openapi.json](https://github.com/acme/widgets/pull/7/files#diff-abc)",
+  "- [Widget.java](https://github.com/acme/widgets/pull/7/files#diff-def)",
   "",
   "</details>",
   "",
@@ -552,9 +554,10 @@ const V22_MARKDOWN = [
   "",
 ].join("\n");
 
-test("a section is its name, its chips and a files link, then a closed details of the files, with no table", () => {
+test("a section is its name and files link, a line break, its chips, then a closed details listing the files one to a line", () => {
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
-  assert.match(html, /<strong>Contract<\/strong> <span class="pill p0"><strong>breaking<\/strong><\/span> <span class="pill p2">additive<\/span> · <a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files\?pr-brief=contract">View files<\/a>/);
+  assert.match(html, /<strong>Contract<\/strong> · <a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files\?pr-brief=contract">View files<\/a><br>\s*<span class="pill p0"><strong>breaking<\/strong><\/span> <span class="pill p2">additive<\/span>/);
+  assert.match(html, /<ul>\s*<li><a href="[^"]*#diff-abc">openapi\.json<\/a>\s*<\/li>\s*<li><a href="[^"]*#diff-def">Widget\.java<\/a>/);
   assert.match(html, /<details>\s*<summary>2 files<\/summary>/);
   assert.doesNotMatch(html, /<details open/);
   assert.match(html, /<a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abc">openapi\.json<\/a>/);
