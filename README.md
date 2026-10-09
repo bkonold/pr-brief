@@ -7,8 +7,10 @@ through `claude -p` or the GitHub Copilot CLI and renders the answer into `body.
 
 ## Use as a GitHub Action
 
-For each pull request the Action writes a brief with the Copilot CLI and adds one comment, or updates the one an earlier
-run left: the brief, the diagram as a `mermaid` block, and a walkthrough linking to the diff lines. Pin
+A brief appears on a pull request when someone starts it from the Actions tab (the `workflow_dispatch` run below). From
+then on every push rewrites it in place: the Action finds its own comment and updates it, and a push to a pull request
+with no brief does nothing. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
+to the diff lines. Pin
 `bkonold/pr-brief` to a full commit SHA, and store a fine-grained personal access token with the "Copilot Requests"
 permission as the secret `COPILOT_PAT`.
 
@@ -16,7 +18,7 @@ permission as the secret `COPILOT_PAT`.
 # .github/workflows/pr-brief.yml
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review]
+    types: [synchronize, ready_for_review]
   workflow_dispatch:
     inputs:
       pr: {description: Pull request number, required: true}
@@ -41,6 +43,7 @@ jobs:
           copilot-token: ${{ secrets.COPILOT_PAT }}
           pr: ${{ inputs.pr }}
           post: ${{ github.event_name == 'pull_request' || inputs.post }}
+          only-if-present: ${{ github.event_name == 'pull_request' }}
 ```
 
 The settings file takes the keys of `local.example.toml` and a `[reach]` table (which app each path ships in):
@@ -62,6 +65,7 @@ globs = ["web/app/**"]
 | `github-token` | `${{ github.token }}` | Reads the PR and writes the comment. |
 | `post` | `true` | `false` writes the comment to the job summary and posts nothing. |
 | `pr` | empty | The PR number when the event has none (`workflow_dispatch`). |
+| `only-if-present` | `false` | `true` refreshes a brief the Action already commented and otherwise ends the job successfully, before installing anything. |
 
 The run folder, with the prompt and repository context, is uploaded as the artifact `pr-brief-<pr>`, so whoever can read
 the workflow runs can read it. The checkout needs `fetch-depth: 0`: the callers and contract sections read its history.

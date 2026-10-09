@@ -2,6 +2,7 @@
 """Post a run's brief as one comment on its pull request, or update the comment that an earlier run left.
 
 usage: post.py <run dir> [--repo owner/name] [--pr N] [--dry-run]
+       post.py --find-only --repo owner/name --pr N
 
 <run dir> is a run folder (it has review.json and body.md), or the PR's `runs/<n>` folder, whose newest run is used.
 --repo and --pr default to the run's own. --dry-run prints the comment and posts nothing; without it the program calls
@@ -12,6 +13,9 @@ stops link to their lines in the diff, and, last, a hidden `<!-- pr-brief:v1 ...
 and base64) for the browser extension. The comment that gets updated is the earliest one by the token's user that holds
 that marker. A comment over GitHub's size limit loses the hidden payload first, then walkthrough stops, then the tail of
 the brief; it is always posted.
+
+--find-only posts nothing and needs no run: it looks for that comment and exits 0 when there is one (printing its id),
+3 when there is none. Any other failure, such as a refused token, exits with the error.
 """
 import argparse
 import base64
@@ -27,6 +31,7 @@ MARKER = "<!-- pr-brief:v1"
 COMMENT_LIMIT = 65536
 # `gh api user` is refused for the token a workflow gets, whose comments are authored by this account.
 ACTIONS_LOGIN = "github-actions[bot]"
+NOT_FOUND_EXIT = 3
 PAYLOAD_DROPPED = "<sub>The data the browser extension reads was left out: the comment was over GitHub's size limit.</sub>"
 TRIMMED = "<sub>The brief is cut short: it was over GitHub's size limit.</sub>"
 
@@ -154,13 +159,25 @@ def upsert(repo: str, pr: int | str, body: str, gh: Gh = run_gh) -> str:
     return "updated"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, gh: Gh = run_gh) -> int:
     p = argparse.ArgumentParser(description="Post a run's brief as a comment on its pull request.")
-    p.add_argument("run_dir", type=Path)
+    p.add_argument("run_dir", type=Path, nargs="?")
     p.add_argument("--repo", help="owner/name (default: the run's)")
     p.add_argument("--pr", help="the PR number (default: the run's)")
     p.add_argument("--dry-run", action="store_true", help="print the comment and post nothing")
-    a = p.parse_args()
+    p.add_argument("--find-only", action="store_true",
+                   help=f"look for the PR's brief comment: exit 0 and print its id when there is one, {NOT_FOUND_EXIT} when there is none")
+    a = p.parse_args(argv)
+    if a.find_only:
+        if not (a.repo and a.pr):
+            p.error("--find-only needs --repo and --pr")
+        found: int | None = existing_comment(a.repo, a.pr, gh)
+        if found is None:
+            return NOT_FOUND_EXIT
+        print(found)
+        return 0
+    if a.run_dir is None:
+        p.error("a run folder is required")
     run_dir: Path = find_run(a.run_dir)
     review: dict[str, Any] = json.loads((run_dir / "review.json").read_text())
     repo: str = a.repo or review["repo"]
@@ -170,7 +187,7 @@ def main() -> int:
         print(body)
         print(f"{len(body)} characters of {COMMENT_LIMIT}", file=sys.stderr)
         return 0
-    print(f"{upsert(repo, pr, body)} the brief comment on {repo}#{pr} ({len(body)} characters)")
+    print(f"{upsert(repo, pr, body, gh)} the brief comment on {repo}#{pr} ({len(body)} characters)")
     return 0
 
 

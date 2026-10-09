@@ -20,28 +20,13 @@ inputs:
   pr:
     description: The pull request number. A pull_request event supplies its own; a workflow_dispatch run names one here.
     default: ""
+  only-if-present:
+    description: '"true" refreshes a brief this action already commented on the pull request and does nothing, successfully, when there is none. It is for runs on every push, so that a brief someone started stays current.'
+    default: "false"
 
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-      with:
-        python-version: "3.13"
-
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: "24"
-
-    - name: Install pr-brief
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        python -m venv "$RUNNER_TEMP/pr-brief-venv"
-        "$RUNNER_TEMP/pr-brief-venv/bin/pip" install --quiet jinja2==3.1.6 pyyaml==6.0.3
-        npm ci --prefix "$ACTION_PATH"
-        npm install --global @github/copilot@1.0.93
-
     - name: Resolve the pull request and the settings
       id: target
       shell: bash
@@ -50,6 +35,7 @@ runs:
         PR_FROM_INPUT: ${{ inputs.pr }}
         CONFIG: ${{ inputs.config }}
         POST: ${{ inputs.post }}
+        ONLY_IF_PRESENT: ${{ inputs.only-if-present }}
       run: |
         pr="${PR_FROM_EVENT:-$PR_FROM_INPUT}"
         if [ -z "$pr" ]; then
@@ -64,6 +50,10 @@ runs:
           echo "::error::The 'post' input must be true or false, not '$POST'."
           exit 1
         fi
+        if [ "$ONLY_IF_PRESENT" != "true" ] && [ "$ONLY_IF_PRESENT" != "false" ]; then
+          echo "::error::The 'only-if-present' input must be true or false, not '$ONLY_IF_PRESENT'."
+          exit 1
+        fi
         config=""
         if [ -f "$GITHUB_WORKSPACE/$CONFIG" ]; then
           config="$GITHUB_WORKSPACE/$CONFIG"
@@ -74,9 +64,54 @@ runs:
         echo "config=$config" >> "$GITHUB_OUTPUT"
         echo "PR_BRIEF_HOME=$RUNNER_TEMP/pr-brief" >> "$GITHUB_ENV"
 
+    # post.py needs only the standard library, so this runs before anything is installed. Exit 3 is "no brief comment";
+    # any other failure stops the job rather than passing for "no brief".
+    - name: Look for an existing brief
+      id: existing
+      if: inputs.only-if-present == 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PR: ${{ steps.target.outputs.pr }}
+        REPOSITORY: ${{ github.repository }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        if python3 "$ACTION_PATH/post.py" --find-only --repo "$REPOSITORY" --pr "$PR" > /dev/null; then
+          echo "::notice::Refreshing the brief on this pull request."
+        else
+          status=$?
+          if [ "$status" -ne 3 ]; then
+            exit "$status"
+          fi
+          echo "::notice::No brief on this PR yet; start one from the Actions tab"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      if: steps.existing.outputs.skip != 'true'
+      with:
+        python-version: "3.13"
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      if: steps.existing.outputs.skip != 'true'
+      with:
+        node-version: "24"
+
+    - name: Install pr-brief
+      if: steps.existing.outputs.skip != 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python -m venv "$RUNNER_TEMP/pr-brief-venv"
+        "$RUNNER_TEMP/pr-brief-venv/bin/pip" install --quiet jinja2==3.1.6 pyyaml==6.0.3
+        npm ci --prefix "$ACTION_PATH"
+        npm install --global @github/copilot@1.0.93
+
     # render.py starts Chrome without --no-sandbox. When the runner's Chrome cannot sandbox, a wrapper adds the flag; it
     # only ever opens the diagram page that render.py writes.
     - name: Check that Chrome can draw the diagram
+      if: steps.existing.outputs.skip != 'true'
       shell: bash
       run: |
         chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
@@ -93,6 +128,7 @@ runs:
         fi
 
     - name: Write the brief
+      if: steps.existing.outputs.skip != 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -111,7 +147,7 @@ runs:
         "$RUNNER_TEMP/pr-brief-venv/bin/python" "$ACTION_PATH/run.py" "$PR" "${args[@]}"
 
     - name: Post the brief as a comment
-      if: inputs.post == 'true'
+      if: inputs.post == 'true' && steps.existing.outputs.skip != 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -122,7 +158,7 @@ runs:
         "$RUNNER_TEMP/pr-brief-venv/bin/python" "$ACTION_PATH/post.py" "$PR_BRIEF_HOME/runs/$PR" --repo "$REPOSITORY" --pr "$PR"
 
     - name: Write the brief to the job summary
-      if: inputs.post != 'true'
+      if: inputs.post != 'true' && steps.existing.outputs.skip != 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -132,7 +168,7 @@ runs:
         "$RUNNER_TEMP/pr-brief-venv/bin/python" "$ACTION_PATH/post.py" "$PR_BRIEF_HOME/runs/$PR" --repo "$REPOSITORY" --pr "$PR" --dry-run >> "$GITHUB_STEP_SUMMARY"
 
     - name: Keep the run folder
-      if: always() && steps.target.outputs.pr != ''
+      if: always() && steps.target.outputs.pr != '' && steps.existing.outputs.skip != 'true'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: pr-brief-${{ steps.target.outputs.pr }}
