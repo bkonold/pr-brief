@@ -7,9 +7,16 @@ through `claude -p` or the GitHub Copilot CLI and renders the answer into `body.
 
 ## Use as a GitHub Action
 
-A brief appears on a pull request when someone starts it from the Actions tab (the `workflow_dispatch` run below). From
-then on every push rewrites it in place: the Action finds its own comment and updates it, and a push to a pull request
-with no brief does nothing. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
+A brief runs three ways:
+
+- A `/brief` comment on a pull request starts one. Only an owner, member or collaborator can, and the Action reacts to the
+  comment with a rocket when it starts and a +1 when the brief is posted.
+- The Actions tab is the fallback: run the workflow by hand with the pull request number.
+- From then on every push rewrites the brief in place: the Action finds its own comment and updates it, and a push to a
+  pull request with no brief does nothing.
+
+A comment run uses the workflow on the default branch, so the workflow must be merged there before `/brief` works. Unlike a `pull_request` run, a `/brief` run also accepts a pull request from a fork, whose head it checks out with the
+secrets in scope, so only grant the trigger to people you trust to review that code. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
 to the diff lines. Pin
 `bkonold/pr-brief` to a full commit SHA, and store a fine-grained personal access token with the "Copilot Requests"
 permission as the secret `COPILOT_PAT`.
@@ -19,30 +26,45 @@ permission as the secret `COPILOT_PAT`.
 on:
   pull_request:
     types: [synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       pr: {description: Pull request number, required: true}
       post: {description: Comment on the PR, type: boolean, default: false}
 concurrency:
-  group: pr-brief-${{ github.event.pull_request.number || inputs.pr }}
+  group: pr-brief-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
   cancel-in-progress: true
 permissions: {contents: read, pull-requests: write}
 jobs:
   brief:
-    if: >-  # pull_request runs skip drafts, Dependabot and forks, which get no secrets
-      github.event_name == 'workflow_dispatch' || (github.event.pull_request.draft == false &&
-      github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (
+        github.event_name == 'pull_request'
+        && github.event.pull_request.draft == false
+        && github.actor != 'dependabot[bot]'
+        && github.event.pull_request.head.repo.full_name == github.repository
+      )
+      || (
+        github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && trim(github.event.comment.body) == '/brief'
+        && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      )
     runs-on: ubuntu-latest
+    env:
+      PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr) || '' }}
+          ref: ${{ github.event_name != 'pull_request' && format('refs/pull/{0}/head', env.PR) || '' }}
       - uses: bkonold/pr-brief@<full commit sha>
         with:
           copilot-token: ${{ secrets.COPILOT_PAT }}
-          pr: ${{ inputs.pr }}
-          post: ${{ github.event_name == 'pull_request' || inputs.post }}
+          pr: ${{ env.PR }}
+          post: ${{ github.event_name != 'workflow_dispatch' || inputs.post }}
           only-if-present: ${{ github.event_name == 'pull_request' }}
 ```
 
@@ -64,7 +86,7 @@ globs = ["web/app/**"]
 | `model` | `claude-opus-5.5` | The Copilot model id. |
 | `github-token` | `${{ github.token }}` | Reads the PR and writes the comment. |
 | `post` | `true` | `false` writes the comment to the job summary and posts nothing. |
-| `pr` | empty | The PR number when the event has none (`workflow_dispatch`). |
+| `pr` | empty | The PR number when the event has none (`workflow_dispatch`, `issue_comment`). |
 | `only-if-present` | `false` | `true` refreshes a brief the Action already commented and otherwise ends the job successfully, before installing anything. |
 
 The run folder, with the prompt and repository context, is uploaded as the artifact `pr-brief-<pr>`, so whoever can read

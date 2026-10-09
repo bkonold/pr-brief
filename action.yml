@@ -18,7 +18,7 @@ inputs:
     description: '"true" comments on the pull request. "false" posts nothing: the comment goes to the job summary instead, for a trial run.'
     default: "true"
   pr:
-    description: The pull request number. A pull_request event supplies its own; a workflow_dispatch run names one here.
+    description: The pull request number. A pull_request event supplies its own; a workflow_dispatch or issue_comment run names one here.
     default: ""
   only-if-present:
     description: '"true" refreshes a brief this action already commented on the pull request and does nothing, successfully, when there is none. It is for runs on every push, so that a brief someone started stays current.'
@@ -63,6 +63,16 @@ runs:
         echo "pr=$pr" >> "$GITHUB_OUTPUT"
         echo "config=$config" >> "$GITHUB_OUTPUT"
         echo "PR_BRIEF_HOME=$RUNNER_TEMP/pr-brief" >> "$GITHUB_ENV"
+
+    - name: React to the comment with a rocket
+      if: github.event_name == 'issue_comment'
+      continue-on-error: true
+      shell: bash
+      env:
+        REPOSITORY: ${{ github.repository }}
+        COMMENT_ID: ${{ github.event.comment.id }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: gh api "repos/$REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=rocket > /dev/null
 
     # post.py needs only the standard library, so this runs before anything is installed. Exit 3 is "no brief comment";
     # any other failure stops the job rather than passing for "no brief".
@@ -156,6 +166,16 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
         "$RUNNER_TEMP/pr-brief-venv/bin/python" "$ACTION_PATH/post.py" "$PR_BRIEF_HOME/runs/$PR" --repo "$REPOSITORY" --pr "$PR"
+
+    - name: React to the comment with a thumbs up
+      if: github.event_name == 'issue_comment' && inputs.post == 'true' && steps.existing.outputs.skip != 'true'
+      continue-on-error: true
+      shell: bash
+      env:
+        REPOSITORY: ${{ github.repository }}
+        COMMENT_ID: ${{ github.event.comment.id }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: gh api "repos/$REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content='+1' > /dev/null
 
     - name: Write the brief to the job summary
       if: inputs.post != 'true' && steps.existing.outputs.skip != 'true'
