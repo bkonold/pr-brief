@@ -671,13 +671,12 @@ def touched_schemas(entries: list[str]) -> set[str]:
 
 
 def operation_tags(base: dict[str, Any], head: dict[str, Any], breaks: dict[str, list[str]], added: dict[str, list[Any]],
-                   changed: dict[str, list[Any]], deprecated: dict[str, list[Any]],
+                   changed: dict[str, list[Any]],
                    used: dict[str, set[str]]) -> dict[str, str]:
     """`METHOD /path` -> the operation's first tag, for every operation the contract changes touch (the head's tag, else the
     base's for an operation that was removed). Untagged operations are left out."""
     labels: set[str] = {f"{o['method']} {o['path']}"
-                        for group in (added["operations"], changed["operations"], added["parameters"], changed["parameters"],
-                                      deprecated["operations"]) for o in group}
+                        for group in (added["operations"], changed["operations"], added["parameters"], changed["parameters"]) for o in group}
     labels.update(operation for operations in used.values() for operation in operations)
     labels.update(f"{m.group(1)} {m.group(2)}" for entry in breaks["removals"] if (m := re.match(r"removed operation ([A-Z]+) (\S+)$", entry)))
     labels.update(f"{m.group(1)} {m.group(2)}" for entry in breaks["newly_required"]
@@ -724,14 +723,13 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
     with operations, properties and parameters (`added` also lists new schemas; a changed property whose type differs also
     carries `from` and `to`, the old and new type as `type_label` words), and `schema_operations`, the operations
     that reach each schema named in either (or in `breaks`), `schema_sides`, the sides (`request`, `response`) through which
-    each of those operations reaches it, `operation_tags`, `deprecated` (operations and properties newly deprecated),
+    each of those operations reaches it, `operation_tags`,
     `enums_added`, `removed_operations` (with their operationIds, for matching moves) and `added_required`, the
     `Schema.property` entries of `breaks["newly_required"]` whose property the base schema did not declare at all."""
     old_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(base)
     new_operations: dict[tuple[str, str], dict[str, Any]] = operation_map(head)
     added: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": [], "schemas": []}
     changed: dict[str, list[Any]] = {"operations": [], "properties": [], "parameters": []}
-    deprecated: dict[str, list[Any]] = {"operations": [], "properties": []}
     enums_added: list[dict[str, Any]] = []
     added_required: list[str] = []
 
@@ -742,8 +740,6 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
             added["operations"].append({"method": method, "path": path, "operation_id": operation_id})
             continue
         what: list[str] = differing_keys(old, operation, OPERATION_KEYS_NOT_COMPARED)
-        if operation.get("deprecated") and not old.get("deprecated"):
-            deprecated["operations"].append({"method": method, "path": path})
         if what:
             changed["operations"].append({"method": method, "path": path, "operation_id": operation_id, "what": what})
         old_parameters: dict[tuple[str, str], dict[str, Any]] = resolved_parameters(base, path, method.lower())
@@ -773,8 +769,6 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
             elif old_props[prop] != definition:
                 enums_added.extend({"schema": name, "property": prop, "value": value}
                                    for value in enum_values(definition) if value not in enum_values(old_props[prop]))
-                if isinstance(definition, dict) and definition.get("deprecated") and not old_props[prop].get("deprecated"):
-                    deprecated["properties"].append({"schema": name, "name": prop})
                 entry_types: dict[str, str] = {}
                 old_type, new_type = type_label(old_props[prop]), type_label(definition)
                 if old_type and new_type and old_type != new_type:
@@ -802,12 +796,12 @@ def contract_changes(base: dict[str, Any], head: dict[str, Any], breaks: dict[st
     removed_operations: list[dict[str, Any]] = [{"method": method, "path": path, "operation_id": operation.get("operationId")}
                                                 for (method, path), operation in old_operations.items()
                                                 if (method, path) not in new_operations]
-    return {"added": added, "changed": changed, "deprecated": deprecated, "enums_added": enums_added,
+    return {"added": added, "changed": changed, "enums_added": enums_added,
             "removed_operations": removed_operations, "added_required": added_required,
             "schema_operations": {name: sorted(operations) for name, operations in sorted(used.items())},
             "schema_sides": {name: {operation: sorted(found) for operation, found in sorted(by_operation.items())}
                              for name, by_operation in sorted(sides.items())},
-            "operation_tags": operation_tags(base, head, breaks, added, changed, deprecated, used)}
+            "operation_tags": operation_tags(base, head, breaks, added, changed, used)}
 
 
 def contract_lines(base: dict[str, Any], head: dict[str, Any], removals_only: bool = False,

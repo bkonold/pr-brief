@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from diff_lines import file_diff_lines  # noqa: E402
-from contract_lines import ADDITIVE, BREAKING, MAY_BREAK, DEPRECATED, Line, contract_lines  # noqa: E402
+from contract_lines import ADDITIVE, BREAKING, MAY_BREAK, Line, contract_lines  # noqa: E402
 from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
 from test_contract_impact import body, operation, props, ref  # noqa: E402
 
@@ -229,11 +229,6 @@ class Families(unittest.TestCase):
         head = document({}, {})
         self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "removed `/api/widgets` GET POST")])
 
-    def test_deprecated_operations_have_their_own_level(self) -> None:
-        base = document({"/old": {"get": operation("a")}}, {})
-        head = document({"/old": {"get": operation("a", deprecated=True)}}, {})
-        self.assertEqual(texts(lines_for(base, head)), [(DEPRECATED, "`GET /old` deprecated")])
-
 
 class ParameterSweeps(unittest.TestCase):
     def paged(self, count: int, names: tuple[str, ...]) -> tuple[dict, dict]:
@@ -364,8 +359,7 @@ class Parts(unittest.TestCase):
         self.assertEqual(self.parts(base, document({}, {})), [("", "removed", "`GET /old`")])
         self.assertEqual(self.parts(document({}, {}), document({"/new": {"post": operation("a", "c")}}, {})),
                          [("", "new", "`POST /new`")])
-        self.assertEqual(self.parts(base, document({"/old": {"get": operation("a", deprecated=True)}}, {})),
-                         [("", "deprecated", "`GET /old`")])
+        self.assertEqual(self.parts(base, document({"/old": {"get": operation("a", deprecated=True)}}, {})), [])
 
     def test_parameters_are_request_side_params(self) -> None:
         base = document({"/r": {"get": operation("g")}}, {})

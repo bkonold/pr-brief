@@ -79,7 +79,6 @@ re-run it instead.
   | breaking | endpoint removed or moved; parameter or request property added as required, or an existing one made required; request enum value removed; request type changed |
   | may break | response property, schema or enum value removed; response type changed; a constraint changed; a property no longer required (on a response); a request body or security change on an operation |
   | additive | endpoint, schema, parameter or property added (a required property is additive on a response); enum value added; responses changed |
-  | deprecated | an operation or property marked `deprecated` |
 
   Repeated changes collapse into one line, with no cap on the number of lines:
 
@@ -87,7 +86,7 @@ re-run it instead.
   | --- | --- |
   | One property added, removed or changed on 3 or more schemas | `visibility` added on 9 schemas, with its side and the first names |
   | Three or more moves that change only a path prefix | `/old/*` → `/new/*`, 12 endpoints |
-  | Operations removed, added or deprecated under one base path | `new /api/base GET POST PATCH`, with the number of new schemas |
+  | Operations removed or added under one base path | `new /api/base GET POST PATCH`, with the number of new schemas |
   | A pagination parameter (`page`, `size`, `sort`, ...) added to 3 or more endpoints | `pagination added to 12 endpoints` |
   | The same type change (old type → new type) on 3 or more properties, on the same sides | `` `number` → `string` `` on 23 properties in 9 schemas, with its side, then the first three property names and `+N` |
   | Another parameter change on 3 or more endpoints | one line with the endpoint count |
@@ -111,7 +110,7 @@ re-run it instead.
 
   | Line | Source |
   | --- | --- |
-  | property added, removed, changed or deprecated | the line declaring it as a record component or field, in the changed model file named `<Schema>.java` (or, for a nested record, the only changed model file that declares it) |
+  | property added, removed or changed | the line declaring it as a record component or field, in the changed model file named `<Schema>.java` (or, for a nested record, the only changed model file that declares it) |
   | schema added or removed | that file's `record <Schema>` or `class <Schema>` line |
   | enum value added or removed | the line of the constant, in the schema's file, else a file named for the property that holds the enum (`Status` for `status`), else the only model file that declares it |
   | operation added, removed, changed or moved, or a parameter change | the controller method whose name is the operationId, or the `@...Mapping` annotation above it when the diff shows that |

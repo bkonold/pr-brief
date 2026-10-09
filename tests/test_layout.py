@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from contract_lines import ADDITIVE, BREAKING, MAY_BREAK, CONTRACT_LEVELS, DEPRECATED, Line, Member  # noqa: E402
+from contract_lines import ADDITIVE, BREAKING, MAY_BREAK, CONTRACT_LEVELS, Line, Member  # noqa: E402
 from data_lines import DATA_LEVELS, DESTRUCTIVE, REWRITES  # noqa: E402
 from layout import glance, middle, pill, section  # noqa: E402
 
@@ -27,8 +27,8 @@ def cells(row: str) -> list[str]:
 
 class Drawing(unittest.TestCase):
     def test_the_glance_line_has_a_chip_per_level_present_worst_first_with_no_counts(self) -> None:
-        lines = [line("a", BREAKING), line("b", BREAKING), line("c", MAY_BREAK), line("d", ADDITIVE), line("e", ADDITIVE), line("f", DEPRECATED)]
-        self.assertEqual(pills(glance(lines, CONTRACT_LEVELS)), ["breaking", "may break", "additive", "deprecated"])
+        lines = [line("a", BREAKING), line("b", BREAKING), line("c", MAY_BREAK), line("d", ADDITIVE), line("e", ADDITIVE)]
+        self.assertEqual(pills(glance(lines, CONTRACT_LEVELS)), ["breaking", "may break", "additive"])
         self.assertEqual(pills(glance([line("a", ADDITIVE)], CONTRACT_LEVELS)), ["additive"])
         self.assertNotRegex(re.sub(r"<[^>]+>", "", glance(lines, CONTRACT_LEVELS)), r"\d")
 

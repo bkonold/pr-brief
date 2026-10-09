@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from diff_lines import file_diff_lines  # noqa: E402
 from contract_lines import (  # noqa: E402
-    ADDITIVE, BREAKING, MAY_BREAK, CONTRACT_LEVELS, DEPRECATED, REQUEST, RESPONSE, collect_changes, contract_impact,
+    ADDITIVE, BREAKING, MAY_BREAK, CONTRACT_LEVELS, REQUEST, RESPONSE, collect_changes, contract_impact,
     side_phrase,
 )
 from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
@@ -46,8 +46,8 @@ def props(*names: str, required: tuple[str, ...] = ()) -> dict:
 
 
 class ImpactTable(unittest.TestCase):
-    def test_the_levels_run_from_breaking_to_deprecated(self) -> None:
-        self.assertEqual(CONTRACT_LEVELS, (BREAKING, MAY_BREAK, ADDITIVE, DEPRECATED))
+    def test_the_levels_run_from_breaking_to_additive(self) -> None:
+        self.assertEqual(CONTRACT_LEVELS, (BREAKING, MAY_BREAK, ADDITIVE))
 
     def test_a_removed_endpoint_and_a_new_required_request_property_make_callers_change(self) -> None:
         self.assertEqual(contract_impact("operation_removed", frozenset({RESPONSE})), BREAKING)
@@ -66,10 +66,9 @@ class ImpactTable(unittest.TestCase):
         self.assertEqual(contract_impact("schema_removed", frozenset({RESPONSE})), MAY_BREAK)
         self.assertEqual(contract_impact("property_type_changed", frozenset({RESPONSE})), MAY_BREAK)
 
-    def test_additions_are_additive_and_deprecation_is_its_own_level(self) -> None:
+    def test_additions_are_additive(self) -> None:
         for kind in ("operation_added", "parameter_added", "property_added", "enum_added"):
             self.assertEqual(contract_impact(kind, frozenset({REQUEST})), ADDITIVE, kind)
-        self.assertEqual(contract_impact("deprecated", frozenset({REQUEST})), DEPRECATED)
 
     def test_a_schema_on_both_sides_takes_the_worse_impact_and_unknown_sides_count_as_both(self) -> None:
         both = frozenset({REQUEST, RESPONSE})
@@ -79,7 +78,7 @@ class ImpactTable(unittest.TestCase):
 
     def test_the_docstring_table_names_every_kind(self) -> None:
         table = contract_impact.__doc__
-        for kind in ("operation_removed", "property_added_required", "enum_added", "deprecated", "parameter_added_required"):
+        for kind in ("operation_removed", "property_added_required", "enum_added", "parameter_added_required"):
             self.assertIn(f"| {kind}", table)
 
     def test_the_side_phrase(self) -> None:
@@ -109,17 +108,16 @@ class RecordedSides(unittest.TestCase):
         head = document(paths, {"Outer": outer, "Inner": props("a", "b")})
         self.assertEqual(contract_of(base, head)["schema_sides"], {"Inner": {"POST /items": ["request"]}})
 
-    def test_the_contract_lists_tags_deprecations_enum_values_and_removed_operations(self) -> None:
+    def test_the_contract_lists_tags_enum_values_and_removed_operations(self) -> None:
         base = document({"/old": {"get": operation("old", "old-controller")}, "/keep": {"get": operation("keep", "keep-controller")}},
                         {"Kind": {"type": "string", "enum": ["A"]}, "Item": {"properties": {"x": {"type": "string"}}}})
-        head = document({"/keep": {"get": operation("keep", "keep-controller", deprecated=True)}},
+        head = document({"/keep": {"get": operation("keep", "keep-controller")}},
                         {"Kind": {"type": "string", "enum": ["A", "B"]},
-                         "Item": {"properties": {"x": {"type": "string", "deprecated": True}}}})
+                         "Item": {"properties": {"x": {"type": "string"}}}})
         contract = contract_of(base, head)
         self.assertEqual(contract["removed_operations"], [{"method": "GET", "path": "/old", "operation_id": "old"}])
-        self.assertEqual(contract["operation_tags"], {"GET /keep": "keep-controller", "GET /old": "old-controller"})
-        self.assertEqual(contract["deprecated"], {"operations": [{"method": "GET", "path": "/keep"}],
-                                                  "properties": [{"schema": "Item", "name": "x"}]})
+        self.assertEqual(contract["operation_tags"], {"GET /old": "old-controller"})
+        self.assertNotIn("deprecated", contract)
         self.assertEqual(contract["enums_added"], [{"schema": "Kind", "property": None, "value": "B"}])
 
     def test_a_changed_parameter_records_which_schema_keys_differ(self) -> None:
@@ -164,12 +162,12 @@ class CollectedChanges(unittest.TestCase):
         found = {(c.kind, c.subject): c.impact for c in changes_for(base, head)}
         self.assertEqual(found, {("parameter_added_required", "kind"): BREAKING})
 
-    def test_enum_values_added_and_removed_and_deprecation(self) -> None:
+    def test_enum_values_added_and_removed(self) -> None:
         base = document({}, {"Kind": {"type": "string", "enum": ["A", "B"]}, "Item": {"properties": {"x": {"type": "string"}}}})
         head = document({}, {"Kind": {"type": "string", "enum": ["B", "C"]},
-                             "Item": {"properties": {"x": {"type": "string", "deprecated": True}}}})
+                             "Item": {"properties": {"x": {"type": "string"}}}})
         found = {(c.kind, c.detail or c.subject): c.impact for c in changes_for(base, head)}
-        self.assertEqual(found, {("enum_added", "C"): ADDITIVE, ("enum_removed", "A"): BREAKING, ("deprecated", "x"): DEPRECATED})
+        self.assertEqual(found, {("enum_added", "C"): ADDITIVE, ("enum_removed", "A"): BREAKING})
 
     def test_a_schema_no_operation_reaches_counts_as_both_sides(self) -> None:
         base = document({}, {"Orphan": props("a")})

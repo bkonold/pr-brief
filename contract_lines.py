@@ -22,8 +22,7 @@ from diff_lines import (
 BREAKING = "breaking"
 MAY_BREAK = "may break"
 ADDITIVE = "additive"
-DEPRECATED = "deprecated"
-CONTRACT_LEVELS: tuple[str, ...] = (BREAKING, MAY_BREAK, ADDITIVE, DEPRECATED)
+CONTRACT_LEVELS: tuple[str, ...] = (BREAKING, MAY_BREAK, ADDITIVE)
 
 REQUEST = "request"
 RESPONSE = "response"
@@ -76,8 +75,8 @@ class Change:
 
 
 def contract_impact(kind: str, sides: frozenset[str] | set[str] = frozenset()) -> str:
-    """The impact level of one contract change, worst first: `breaking`, `may break`, `additive`,
-    `deprecated`. `sides` is where the change reaches, `request` (a body or a parameter), `response`, or both; a schema
+    """The impact level of one contract change, worst first: `breaking`, `may break`, `additive`.
+    `sides` is where the change reaches, `request` (a body or a parameter), `response`, or both; a schema
     used on both sides counts as both, and the worst of them wins. Empty `sides` (a schema no operation reaches) counts
     as both.
 
@@ -105,7 +104,6 @@ def contract_impact(kind: str, sides: frozenset[str] | set[str] = frozenset()) -
     | property_constraint_changed | may break | may break |
     | enum_added | additive | additive |
     | enum_removed | breaking | may break |
-    | deprecated | deprecated | deprecated |
     """
     table: dict[str, tuple[str, str]] = {
         "operation_removed": (BREAKING, BREAKING), "operation_moved": (BREAKING, BREAKING),
@@ -119,7 +117,7 @@ def contract_impact(kind: str, sides: frozenset[str] | set[str] = frozenset()) -
         "property_removed": (MAY_BREAK, MAY_BREAK), "schema_removed": (MAY_BREAK, MAY_BREAK),
         "schema_added": (ADDITIVE, ADDITIVE), "property_type_changed": (BREAKING, MAY_BREAK),
         "property_constraint_changed": (MAY_BREAK, MAY_BREAK), "enum_added": (ADDITIVE, ADDITIVE),
-        "enum_removed": (BREAKING, MAY_BREAK), "deprecated": (DEPRECATED, DEPRECATED),
+        "enum_removed": (BREAKING, MAY_BREAK),
     }
     request_level, response_level = table[kind]
     reached: set[str] = set(sides) or {REQUEST, RESPONSE}
@@ -232,14 +230,13 @@ def find_moves(removed: list[tuple[str, str, str | None]],
 
 def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[list[Change], dict[str, Any]]:
     """One `Change` per atomic difference in `contract` (a run's contract.json), and the extras the patterns need: the
-    moved operations and the operations that are removed, added or deprecated, with their tags and locations."""
+    moved operations and the operations that are removed or added, with their tags and locations."""
     locator: Locator = Locator(lines)
     tags: dict[str, str] = contract.get("operation_tags", {})
     schema_sides: dict[str, dict[str, list[str]]] = contract.get("schema_sides", {})
     schema_operations: dict[str, list[str]] = contract.get("schema_operations", {})
     added: dict[str, list[Any]] = contract.get("added", {})
     changed: dict[str, list[Any]] = contract.get("changed", {})
-    deprecated: dict[str, list[Any]] = contract.get("deprecated", {})
     changes: list[Change] = []
 
     def sides_of(schema: str) -> frozenset[str]:
@@ -273,7 +270,7 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
     moved_new: set[tuple[str, str, str | None]] = {new for _, new in moves}
     new_labels: set[str] = {f"{m} {p}" for m, p, _ in new_operations}
 
-    extras: dict[str, Any] = {"moves": [], "removed": [], "added": [], "deprecated": []}
+    extras: dict[str, Any] = {"moves": [], "removed": [], "added": []}
     for old, new in moves:
         loc = locator.operation(new[0], new[1], new[2], "+")
         extras["moves"].append({"method": old[0], "from": old[1], "to": new[1], "loc": loc, "operation_id": new[2],
@@ -288,10 +285,6 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
             continue
         extras["added"].append({"method": method, "path": path, "tag": tags.get(f"{method} {path}"), "operation_id": operation_id,
                                 "loc": locator.operation(method, path, operation_id, "+")})
-    for item in deprecated.get("operations", []):
-        label = f"{item['method']} {item['path']}"
-        extras["deprecated"].append({"method": item["method"], "path": item["path"], "tag": tags.get(label),
-                                     "operation_id": item.get("operation_id"), "loc": locator.operation(item["method"], item["path"], None, "+- ", first_change=True)})
 
     for item in changed.get("operations", []):
         label = f"{item['method']} {item['path']}"
@@ -414,10 +407,6 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
         subject: str = f"{schema}.{item['property']}" if item.get("property") else schema
         add("enum_added", sides_of(schema), subject, schema, schema_member(schema),
             locator.enum_entry(schema, item["value"], removed=False), str(item["value"]))
-    for item in deprecated.get("properties", []):
-        schema = item["schema"]
-        add("deprecated", sides_of(schema), item["name"], schema, schema_member(schema),
-            locator.schema_field(schema, item["name"], "+- "))
     for schema in added.get("schemas", []):
         add("schema_added", sides_of(schema), schema, schema, schema_member(schema), locator.schema(schema, "+"))
     return changes, extras
@@ -499,7 +488,7 @@ def methods_text(operations: list[dict[str, Any]]) -> str:
 
 
 def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], spec_path: str) -> list[Line]:
-    """The lines for removed, added, deprecated and moved operations: a family of two or more under one base path is one
+    """The lines for removed, added and moved operations: a family of two or more under one base path is one
     line, as is a sweep of three or more moves that only change a path prefix."""
     lines: list[Line] = []
     schema_operations: dict[str, list[str]] = contract.get("schema_operations", {})
@@ -531,8 +520,7 @@ def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], sp
                                              "operation_moved")],
                                   change="moved", on=f"{code(move['from'])} → {code(move['to'])}"))
 
-    for key, verb, kind in (("removed", "removed", "operation_removed"), ("added", "new", "operation_added"),
-                            ("deprecated", "deprecated", "deprecated")):
+    for key, verb, kind in (("removed", "removed", "operation_removed"), ("added", "new", "operation_added")):
         impact = contract_impact(kind)
         for base, members in operation_families(extras[key]):
             first: dict[str, Any] = members[0]
@@ -557,7 +545,7 @@ PROPERTY_PHRASE: dict[str, str] = {
     "property_added": "added", "property_added_required": "added (required)", "property_required": "now required",
     "property_no_longer_required": "no longer required", "property_removed": "removed",
     "property_type_changed": "type changed", "property_constraint_changed": "constraint changed",
-    "deprecated": "deprecated", "schema_removed": "removed",
+    "schema_removed": "removed",
 }
 PARAMETER_CHANGE: dict[str, str] = {
     "parameter_added": "{plus} param", "parameter_added_required": "{plus} required param",
@@ -578,7 +566,7 @@ def property_change(kind: str, name: str, types: tuple[str, str] | None = None) 
         "property_required": f"{code(name)} now required", "property_no_longer_required": f"{code(name)} no longer required",
         "property_removed": code("− " + name), "property_constraint_changed": f"{code(name)} constraint changed",
         "property_type_changed": f"{code(name)} {types[0]} → {types[1]}" if types else f"{code(name)} type changed",
-        "deprecated": f"{code(name)} deprecated", "schema_removed": "removed",
+        "schema_removed": "removed",
     }[kind]
 
 
