@@ -1,5 +1,5 @@
 """Tests for runners.py (how a prompt is sent to claude or copilot, where the run is written and how a copilot answer is
-cleaned) and for compare.py's copilot column. No model is called. All data here is invented.
+cleaned) and for run.py's copilot runs. No model is called. All data here is invented.
 Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import json
 import subprocess
@@ -11,7 +11,6 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import compare  # noqa: E402
 import run  # noqa: E402
 import runners  # noqa: E402
 
@@ -114,54 +113,6 @@ class CleanAnswerTest(unittest.TestCase):
         self.assertEqual(runners.clean_answer("copilot", text), (text, None))
 
 
-class CompareColumnTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.home = Path(self.temp.name)
-        self.runs = self.home / "runs"
-        (self.home / "compare.toml").write_text('variants = ["one", "two"]\n')
-        for name, extra in (("one", {}), ("one_copilot", {"runner": "copilot", "model": "claude-opus-5.5"}), ("two", {})):
-            run_dir = self.runs / "fj-7" / name
-            run_dir.mkdir(parents=True)
-            (run_dir / "body.md").write_text("# t\n")
-            (run_dir / "pr.json").write_text(json.dumps({"title": "A PR"}))
-            variant = name.removesuffix("_copilot")
-            (run_dir / "run.json").write_text(json.dumps({"variant": variant, "started": "2026-10-08T10:00:00+00:00", "with_body": False, **extra}))
-        for name, value in (("HOME", self.home), ("RUNS", self.runs)):
-            patch = mock.patch.object(compare, name, value)
-            patch.start()
-            self.addCleanup(patch.stop)
-
-    def page(self, *argv: str) -> str:
-        with mock.patch.object(sys, "argv", ["compare.py", "fj-7", *argv]):
-            self.assertEqual(compare.main(), 0)
-        return (self.runs / "fj-7" / "index.html").read_text()
-
-    def test_the_copilot_run_is_its_own_column_right_after_its_variant_with_the_runner_and_model_named(self) -> None:
-        html = self.page()
-        positions = [html.index(f"<strong>{n}</strong>") for n in ("one", "one_copilot", "two")]
-        self.assertEqual(positions, sorted(positions))
-        self.assertIn('src="one_copilot/body.html"', html)
-        self.assertIn("copilot claude-opus-5.5", html)
-        self.assertEqual(html.count("copilot claude-opus-5.5"), 1)
-        self.assertIn("repeat(3,", html)
-
-    def test_a_claude_only_pr_shows_no_runner(self) -> None:
-        import shutil
-        shutil.rmtree(self.runs / "fj-7" / "one_copilot")
-        html = self.page()
-        self.assertIn("repeat(2,", html)
-        self.assertNotIn("claude-opus", html)
-
-    def test_the_variants_list_for_the_extension_does_not_gain_the_copilot_run(self) -> None:
-        (self.runs / "fj-7" / "one" / "review.json").write_text("{}")
-        (self.runs / "fj-7" / "one_copilot" / "review.json").write_text("{}")
-        self.page()
-        listed = [entry["variant"] for entry in json.loads((self.runs / "fj-7" / "variants.json").read_text())]
-        self.assertEqual(listed, ["one"])
-
-
 class FakeHost:
     def pr(self, owner: str, name: str, number: str) -> dict:
         return {"title": "A PR", "body": "", "headRefName": "feature", "headRefOid": "a" * 40, "baseRefOid": "b" * 40,
@@ -194,7 +145,6 @@ class RunTest(unittest.TestCase):
             mock.patch.object(run, "variant_file", lambda name: variant),
             mock.patch.object(run, "get_host", lambda *args: FakeHost()),
             mock.patch.object(run, "load_local", lambda: {}),
-            mock.patch.object(run, "write_variants_json", lambda *args: None),
             mock.patch.object(run.subprocess, "run", fake_run),
             mock.patch.dict(run.os.environ, {"GH_TOKEN": "ghp_classic", "GITHUB_TOKEN": "ghp_other"}),
         ]

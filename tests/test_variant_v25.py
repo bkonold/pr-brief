@@ -7,7 +7,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import compare  # noqa: E402
 from config import variant_file  # noqa: E402
 from run import build_prompts  # noqa: E402
 
@@ -46,10 +45,6 @@ class VariantV25(unittest.TestCase):
         self.assertEqual(self.v25["context"], ["callers", "reach", "contract", "migrations"])
         self.assertNotIn("wiki_match", self.v25["context_options"])
         self.assertNotIn("wiki", (self.text + self.v25["extra_instructions"]).lower())
-
-    def test_the_comparison_labels_it_and_the_variant_before_it(self) -> None:
-        self.assertEqual(compare.VARIANT_LABELS["diagram_walkthrough_v25"], "25: diagram and walkthrough")
-        self.assertEqual(compare.VARIANT_LABELS["diagram_walkthrough_v24"], "24: diagram and walkthrough")
 
 
 if __name__ == "__main__":

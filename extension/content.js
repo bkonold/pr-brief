@@ -438,7 +438,7 @@
     current = { key };
 
     const token = loadToken;
-    const review = await source.loadReview(pr.owner, pr.repo, pr.pr, undefined, page.runKey(pr));
+    const review = await source.loadReview(pr.owner, pr.repo, pr.pr, page.runKey(pr));
     if (!live()) return;
     if (token === loadToken && review?.error === "server") {
       current = { key, pr, offline: review.baseUrl, startedAt: Date.now() };

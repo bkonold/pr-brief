@@ -78,7 +78,7 @@ You need the `claude` CLI signed in (or the Copilot CLI with `copilot login`), t
 Chrome or Chromium on `PATH` (or named by `PR_BRIEF_CHROME` or the `chrome` key). Copy `local.example.toml` to
 `local.toml` and `reach.example.toml` to `reach.toml`; both are git-ignored and every key is optional, and a section
 that needs a missing key is skipped, with the reason in `run.json`. Set `PR_BRIEF_HOME` to keep `local.toml`,
-`reach.toml`, `compare.toml`, `runs/` and the mirror in another folder, with your own variants in its `variants/`.
+`reach.toml`, `runs/` and the mirror in another folder, with your own variants in its `variants/`.
 
 ## Commands
 
@@ -89,7 +89,6 @@ that needs a missing key is skipped, with the reason in `run.json`. Set `PR_BRIE
 #   --host forgejo    read the PR from the Forgejo named in local.toml (forgejo_url, forgejo_token_file); --repo is its owner/name
 .venv/bin/python render.py runs/42/<variant>       # re-render a run from its saved answer
 .venv/bin/python post.py runs/42 --dry-run         # print the PR comment; without --dry-run, post it with GH_TOKEN
-.venv/bin/python compare.py 42                     # runs/42/index.html and runs/index.html (--variants a,b | --all)
 python3 serve.py                                   # serve runs/ on 127.0.0.1:8765 for the extension
 ```
 

@@ -14,12 +14,7 @@ cannot change them.
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.
 
-`compare.toml` lists the variants that make up the default compare pages. `compare.py` also writes
-`runs/<pr>/variants.json` (and so does `run.py` after a successful run, adding that run's variant when `compare.toml`
-does not list it, so the extension finds a PR run from the server) (`[{variant, label, description}]`) for the
-extension's choice of variant, using the labels in `VARIANT_LABELS`.
-
-Variants are frozen once they have been compared. To change one, add a new file; `run.json` records the sha256 of the
+A variant should not be edited once runs have been made with it. To change one, add a new file; `run.json` records the sha256 of the
 variant file that produced each run. A run made by an earlier variant is not shown by the extension, which offers to
 re-run it instead.
 

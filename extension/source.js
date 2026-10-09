@@ -11,12 +11,11 @@
     }
   }
 
-  // `variant` is a variant to show; without it the background script's choice (see choose_variant.js). `key` is the
-  // PR's folder under runs/, which is not the PR number for every host.
-  async function loadReview(owner, repo, pr, variant, key = String(pr)) {
+  // `key` is the PR's folder under runs/, which is not the PR number for every host.
+  async function loadReview(owner, repo, pr, key = String(pr)) {
     if (!alive()) return null;
     try {
-      return (await chrome.runtime.sendMessage({ type: "loadReview", owner, repo, pr, variant, key })) ?? null;
+      return (await chrome.runtime.sendMessage({ type: "loadReview", owner, repo, pr, key })) ?? null;
     } catch {
       return null;
     }

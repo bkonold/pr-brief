@@ -9,7 +9,7 @@ extension finds runs/<key>/<variant>/..., and adds an API under /api/ that start
     POST /api/run     {host, owner, repo, n}  ->  {key, state}   start a run (or report the one in progress)
     GET  /api/status  ?key=fj-7[&host=&owner=&repo=]  ->  {state, stage, elapsed, error?, allowed?}
     POST /api/cancel  {key}                   ->  {state}        kill the run's process group
-    GET  /api/config                          ->  {default_variant, variants}   the variant a brief shows, and the active ones
+    GET  /api/config                          ->  {default_variant}   the variant a brief shows
     GET  /api/head    ?host=&owner=&repo=&n=  ->  {sha}            the PR's current head commit, or null when the host cannot say
 
 `/api/head` only reads: it asks the host for the pull request's head commit (`gh` for GitHub, the REST API for
@@ -22,9 +22,7 @@ with chrome-extension://, or it gets 403. The token is created on first start in
 (mode 0600) and never logged. Static files need neither.
 
 local.toml sets `default_variant` (the variant a run uses) and `serve_repos`, the repositories a run may be
-started for, as a table of host to owner/name list; see local.example.toml. `variants` in /api/config is the active
-list: compare.toml's `variants`, read at startup, or [default_variant] when compare.toml is missing or has none.
-Standard library only.
+started for, as a table of host to owner/name list; see local.example.toml. Standard library only.
 """
 import argparse
 import hmac
@@ -37,7 +35,6 @@ import subprocess
 import sys
 import threading
 import time
-import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -104,19 +101,6 @@ def parse_serve_repos(raw: Any) -> dict[str, frozenset[str]]:
             raise SystemExit(f"local.toml: serve_repos.{host} must be a list of owner/name strings")
         allowed[host] = frozenset(r.lower() for r in repos)
     return allowed
-
-
-def load_active_variants(home: Path, default_variant: str) -> list[str]:
-    """The active variants: `variants` of `home`/compare.toml, or [default_variant] without that file or key."""
-    path: Path = home / "compare.toml"
-    if not path.exists():
-        return [default_variant]
-    listed: Any = tomllib.loads(path.read_text()).get("variants")
-    if listed is None:
-        return [default_variant]
-    if not isinstance(listed, list) or not all(isinstance(name, str) for name in listed):
-        raise SystemExit("compare.toml: variants must be a list of variant names")
-    return list(listed)
 
 
 def default_argv_for(variant: str) -> ArgvFor:
@@ -404,11 +388,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 def make_server(home: Path, runner: Runner, token: str, port: int = PORT, config: dict[str, Any] | None = None,
                 heads: Heads | None = None) -> ThreadingHTTPServer:
-    """`config` is what GET /api/config answers: {default_variant, variants}. `heads` answers GET /api/head; by
+    """`config` is what GET /api/config answers: {default_variant}. `heads` answers GET /api/head; by
     default it reads the real hosts for the runner's allow-list."""
     heads = heads or Heads(runner.allowed, default_head_lookup({}))
     handler = type("BoundHandler", (Handler,), {"runner": runner, "heads": heads, "token": token.encode(),
-                                                "config": config or {"default_variant": None, "variants": []}})
+                                                "config": config or {"default_variant": None}})
     server = ThreadingHTTPServer((ADDRESS, port), partial(handler, directory=str(home)))
     server.daemon_threads = True
     return server
@@ -431,10 +415,9 @@ def main() -> int:
     runner = Runner(HOME, allowed, default_argv_for(variant))
     for key in runner.recover():
         print(f"run {key} was left running by a server that died; marked failed", file=sys.stderr)
-    active: list[str] = load_active_variants(HOME, variant)
     heads = Heads(allowed, default_head_lookup(local))
-    server = make_server(HOME, runner, token, args.port, {"default_variant": variant, "variants": active}, heads)
-    print(f"serving {HOME} on http://{ADDRESS}:{args.port} (token in {TOKEN_FILE}; variant {variant}; active {', '.join(active)})", flush=True)
+    server = make_server(HOME, runner, token, args.port, {"default_variant": variant}, heads)
+    print(f"serving {HOME} on http://{ADDRESS}:{args.port} (token in {TOKEN_FILE}; variant {variant})", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

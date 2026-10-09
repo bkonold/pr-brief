@@ -37,7 +37,6 @@ import config
 # Before the modules that read the settings when they are imported.
 config.use_config_flag(sys.argv)
 
-from compare import write_variants_json  # noqa: E402
 from config import DEFAULT_VARIANT, HOME, ROOT, load_local, variant_file  # noqa: E402
 from context_pack import Pack, build, ensure_commits  # noqa: E402
 from hosts import get_host, host_names, run_key  # noqa: E402
@@ -243,10 +242,7 @@ def execute(progress: Progress) -> int:
     if rendered.returncode != 0 and progress.error is None:
         error_file: Path = run_dir / "error.txt"
         progress.error = last_line(error_file.read_text()) if error_file.exists() else f"render exited with status {rendered.returncode}"
-    code: int = out.returncode or rendered.returncode
-    if code == 0:
-        write_variants_json(run_dir.parent, a.variant)
-    return code
+    return out.returncode or rendered.returncode
 
 
 def main() -> int:
