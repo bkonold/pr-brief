@@ -6,10 +6,10 @@ where it describes the page, and the Forgejo selectors are in their own table at
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
-- A toggle, "By review" / "GitHub tree". "GitHub tree" brings GitHub's own tree back; the toggle stays so you can
-  switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
+- A toggle, "Walkthrough" / "Files". "Files" brings the host's own file tree back (GitHub's, or Forgejo's); the toggle
+  stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
-- Under the toggle in "By review" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
+- Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
   diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout.
 
 ## The walkthrough
@@ -46,7 +46,7 @@ variant) is not shown: see "Older runs".
   move and the column keeps its height; a walkthrough of one stop hides both. On a diff too narrow for
   both columns the right column wraps below the text and stays right-aligned. A button goes to that stop, as a click on
   its row does, without the pulse. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
-  once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "By review" mode.
+  once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "Walkthrough" mode.
 - A stop with no line has its callout as the first child of that file's diff entry (the GitHub diff entry, the Forgejo
   file box), so it sits directly above the file header and spans the entry's full width with the same card. The jump
   places the callout like a line stop's, so the header shows under it, and marks and pulses the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
@@ -60,7 +60,7 @@ variant) is not shown: see "Older runs".
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-Nothing about the review's state is remembered: every load and every navigation into the files page starts in "By review"
+Nothing about the review's state is remembered: every load and every navigation into the files page starts in "Walkthrough"
 on stop 1, with the default variant. The one thing kept is whether the diagram panel is collapsed (see below).
 
 ## When the page server is down
@@ -104,7 +104,7 @@ that expands it.
   ring in the accent colour at 30% opacity, 6px outside the box. Every edge with an end on the highlighted box, incoming
   or outgoing and dashed return edges included, is drawn 2px in the accent colour with an accent arrowhead. The halo is
   not part of the box's bounds, so centring and following measure the box itself. A selection with no box leaves the
-  diagram as it was; "GitHub tree" mode or no selection restores it.
+  diagram as it was; "Files" mode or no selection restores it.
 - Clicking a box goes to its first stop (see "Boxes and files").
 - The diagram draws at 1:1, so text on screen is the size it was rendered at (16px), and it rests there. Only the
   walkthrough zooms it (below). It is a pan-and-zoom canvas: any scroll wheel or trackpad scroll over the canvas zooms around the pointer (25% to
@@ -131,7 +131,7 @@ that expands it.
   focused box back where a click on it would, at the new width (with its walkthrough zoom, when it came from the
   list or Next/Previous), and a diagram still at rest stays at rest. When the page replaces the panel (GitHub re-renders the files page
   after it loads), the new panel goes back to the box the old one was following. Zoom and position are not saved.
-- Loading the files page in "By review" mode selects stop 1 as a click on it would: its box is highlighted, the canvas
+- Loading the files page in "Walkthrough" mode selects stop 1 as a click on it would: its box is highlighted, the canvas
   pans to it, its callout shows and the diff scrolls to it. A stop the URL links to is opened instead. When the URL
   already names a diff line or review comment (`#diff-…`, `#r…`, `#discussion_r…`) that is not a stop's, stop 1 is
   highlighted and panned to but the diff does not scroll, so the line the URL names stays in view.

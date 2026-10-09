@@ -139,7 +139,7 @@
     );
   }
 
-  // Without a selected box, whether in "GitHub tree" mode or with nothing chosen, every node is shown.
+  // Without a selected box, whether in "Files" mode or with nothing chosen, every node is shown.
   function renderDiagram(session) {
     if (!session.review.diagramSvg) {
       diagram.remove();

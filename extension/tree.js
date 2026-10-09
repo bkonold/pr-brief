@@ -111,7 +111,7 @@
 
   function modeToggle(state, handlers) {
     const toggle = make("div", "prf-modes");
-    for (const [mode, label, icon] of [["review", "By review", LIST_ORDERED_ICON], ["github", ns.page.treeLabel, DIRECTORY_ICON]]) {
+    for (const [mode, label, icon] of [["review", "Walkthrough", LIST_ORDERED_ICON], ["github", ns.page.treeLabel, DIRECTORY_ICON]]) {
       const choice = button("prf-mode", undefined, () => handlers.onMode(mode));
       choice.append(filledIcon(icon, 14, "prf-mode-icon"), make("span", undefined, label));
       choice.setAttribute("aria-pressed", String(state.mode === mode));

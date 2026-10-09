@@ -82,7 +82,7 @@
 
   const page = createPage({
     name: "GitHub",
-    treeLabel: "GitHub tree",
+    treeLabel: "Files",
     hosts: ["github.com"],
     origin: "https://github.com",
     changesPage: CHANGES_PAGE,

@@ -338,8 +338,8 @@ test("chooseAdapter picks the adapter that serves the host and none for any othe
 });
 
 test("each adapter names itself and its tree for the interface", () => {
-  assert.deepEqual([githubPage.name, githubPage.treeLabel], ["GitHub", "GitHub tree"]);
-  assert.deepEqual([forgejoPage.name, forgejoPage.treeLabel], ["Forgejo", "Forgejo tree"]);
+  assert.deepEqual([githubPage.name, githubPage.treeLabel], ["GitHub", "Files"]);
+  assert.deepEqual([forgejoPage.name, forgejoPage.treeLabel], ["Forgejo", "Files"]);
   for (const page of [githubPage, forgejoPage]) {
     for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
       assert.equal(typeof page[member], "function", `${page.name}.${member}`);

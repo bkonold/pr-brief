@@ -120,7 +120,7 @@
 
   const page = createPage({
     name: "Forgejo",
-    treeLabel: "Forgejo tree",
+    treeLabel: "Files",
     hosts: ["localhost:3300"],
     origin: "http://localhost:3300",
     changesPage: CHANGES_PAGE,
