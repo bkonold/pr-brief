@@ -275,7 +275,8 @@ class Runner:
             raise ApiError(HTTPStatus.BAD_REQUEST, "bad_request", "key must be a PR number or fj-<number>")
         with self.lock:
             job: Job | None = self.jobs.get(key)
-            if job and job.running():
+            status: dict[str, Any] | None = run_status.read_status(self.home, key)
+            if job and job.running() and status and status.get("state") == run_status.RUNNING:
                 self._kill_group(job.process, signal.SIGTERM)
                 run_status.write_status(self.home, key, state=run_status.CANCELED, finished=time.time())
                 killer: threading.Timer = threading.Timer(KILL_GRACE_SECONDS, self._kill_group, args=(job.process, signal.SIGKILL))
