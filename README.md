@@ -16,7 +16,8 @@ A brief runs three ways:
   pull request with no brief does nothing.
 
 A comment run uses the workflow on the default branch, so the workflow must be merged there before `/brief` works. Unlike a `pull_request` run, a `/brief` run also accepts a pull request from a fork, whose head it checks out with the
-secrets in scope, so only grant the trigger to people you trust to review that code. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
+secrets in scope, so only grant the trigger to people you trust to review that code.
+The workflow queues runs for one pull request instead of cancelling them, so a push during a `/brief` run waits for the brief to post and then refreshes it; a cancelled start would leave the pull request with no brief for that push to refresh. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
 to the diff lines. Pin
 `bkonold/pr-brief` to a full commit SHA, and store a fine-grained personal access token with the "Copilot Requests"
 permission as the secret `COPILOT_PAT`.
@@ -34,7 +35,7 @@ on:
       post: {description: Comment on the PR, type: boolean, default: false}
 concurrency:
   group: pr-brief-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 permissions: {contents: read, pull-requests: write}
 jobs:
   brief:
