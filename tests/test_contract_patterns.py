@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from diff_lines import file_diff_lines  # noqa: E402
-from contract_lines import ADDITIVE, CALLERS, CONSUMERS, DEPRECATED, Line, contract_lines  # noqa: E402
+from contract_lines import ADDITIVE, BREAKING, MAY_BREAK, DEPRECATED, Line, contract_lines  # noqa: E402
 from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
 from test_contract_impact import body, operation, props, ref  # noqa: E402
 
@@ -64,7 +64,7 @@ class Sweeps(unittest.TestCase):
         base = document(paths, {f"S{i}": props("id", "old") for i in range(3)})
         head = document(paths, {f"S{i}": props("id") for i in range(3)})
         self.assertEqual(texts(lines_for(base, head)),
-                         [(CONSUMERS, "`old` removed on 3 schemas, response only · `S0`, `S1`, `S2`")])
+                         [(MAY_BREAK, "`old` removed on 3 schemas, response only · `S0`, `S1`, `S2`")])
 
     def test_a_sweep_links_to_its_first_schema(self) -> None:
         paths = response_paths(3)
@@ -87,13 +87,13 @@ class RequiredWording(unittest.TestCase):
         paths = {"/i": {"post": operation("m", request="In")}}
         base = document(paths, {"In": props("a")})
         head = document(paths, {"In": props("a", "owner", required=("owner",))})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "request: `owner` added (required) on `In`")])
+        self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "request: `owner` added (required) on `In`")])
 
     def test_an_existing_optional_property_made_required_is_now_required(self) -> None:
         paths = {"/i": {"post": operation("m", request="In")}}
         base = document(paths, {"In": props("a", "owner")})
         head = document(paths, {"In": props("a", "owner", required=("owner",))})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "request: `owner` now required on `In`")])
+        self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "request: `owner` now required on `In`")])
 
     def test_a_property_declared_in_an_inline_all_of_member_is_new_when_the_base_lacked_it(self) -> None:
         paths = response_paths(4)
@@ -118,7 +118,7 @@ class RequiredWording(unittest.TestCase):
     def test_a_required_parameter_added_reads_added_required(self) -> None:
         base = document({"/r": {"get": operation("g")}}, {})
         head = document({"/r": {"get": operation("g", parameters=[{"name": "kind", "in": "query", "required": True}])}}, {})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`kind` parameter added (required) to `GET /r`")])
+        self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "`kind` parameter added (required) to `GET /r`")])
 
 
 def typed(**kinds: str) -> dict:
@@ -135,15 +135,15 @@ class TypeSweeps(unittest.TestCase):
 
     def test_one_type_change_on_many_properties_is_one_line_with_the_first_three_names(self) -> None:
         self.assertEqual(texts(lines_for(*self.pair(9, 3))),
-                         [(CONSUMERS, "`number` → `string` on 27 properties in 9 schemas, response only · `p0`, `p1`, `p2`")])
+                         [(MAY_BREAK, "`number` → `string` on 27 properties in 9 schemas, response only · `p0`, `p1`, `p2`")])
 
     def test_the_names_are_distinct_and_the_rest_are_counted(self) -> None:
         self.assertEqual(texts(lines_for(*self.pair(3, 5))),
-                         [(CONSUMERS, "`number` → `string` on 15 properties in 3 schemas, response only · `p0`, `p1`, `p2` +2")])
+                         [(MAY_BREAK, "`number` → `string` on 15 properties in 3 schemas, response only · `p0`, `p1`, `p2` +2")])
 
     def test_two_properties_are_not_a_sweep(self) -> None:
         self.assertEqual(texts(lines_for(*self.pair(2, 1))),
-                         [(CONSUMERS, "response: `p0` type changed on `S0`"), (CONSUMERS, "response: `p0` type changed on `S1`")])
+                         [(MAY_BREAK, "response: `p0` type changed on `S0`"), (MAY_BREAK, "response: `p0` type changed on `S1`")])
 
     def test_different_type_pairs_are_different_lines(self) -> None:
         paths = response_paths(6)
@@ -158,7 +158,7 @@ class TypeSweeps(unittest.TestCase):
         base = document(paths, {"In": typed(a="number", b="number", c="number")})
         head = document(paths, {"In": typed(a="string", b="string", c="string")})
         self.assertEqual(texts(lines_for(base, head)),
-                         [(CALLERS, "`number` → `string` on 3 properties in 1 schema, request only · `a`, `b`, `c`")])
+                         [(BREAKING, "`number` → `string` on 3 properties in 1 schema, request only · `a`, `b`, `c`")])
 
     def test_a_change_with_no_recorded_types_is_not_swept(self) -> None:
         base, head = self.pair(4, 1)
@@ -167,7 +167,7 @@ class TypeSweeps(unittest.TestCase):
             del item["from"], item["to"]
         diff = make_diff(SPEC, json.dumps(base, indent=2), json.dumps(head, indent=2))
         found = contract_lines(contract, file_diff_lines(diff, SPEC), SPEC)
-        self.assertEqual(texts(found)[:1], [(CONSUMERS, "`p0` type changed on 4 schemas, response only · `S0`, `S1`, `S2` +1")])
+        self.assertEqual(texts(found)[:1], [(MAY_BREAK, "`p0` type changed on 4 schemas, response only · `S0`, `S1`, `S2` +1")])
 
     def test_type_labels(self) -> None:
         from context_pack import type_label
@@ -180,24 +180,24 @@ class Moves(unittest.TestCase):
     def test_a_removed_and_an_added_operation_with_a_similar_path_are_one_move(self) -> None:
         base = document({"/api/old-widgets/{id}": {"get": operation("a", "w-controller")}}, {})
         head = document({"/api/widgets/{id}": {"get": operation("b", "w-controller")}}, {})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`/api/old-widgets/{id}` → `/api/widgets/{id}`")])
+        self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "`/api/old-widgets/{id}` → `/api/widgets/{id}`")])
 
     def test_the_same_operation_id_is_a_move_whatever_the_path(self) -> None:
         base = document({"/a/list": {"get": operation("listThings")}}, {})
         head = document({"/b/everything": {"get": operation("listThings")}}, {})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`/a/list` → `/b/everything`")])
+        self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "`/a/list` → `/b/everything`")])
 
     def test_a_different_verb_or_a_longer_path_is_not_a_move(self) -> None:
         base = document({"/api/widgets/{id}": {"get": operation("a")}}, {})
         head = document({"/api/widgets/{id}/archive": {"get": operation("b")}}, {})
         self.assertEqual(texts(lines_for(base, head)),
-                         [(CALLERS, "`GET /api/widgets/{id}` removed"), (ADDITIVE, "new `GET /api/widgets/{id}/archive`")])
+                         [(BREAKING, "`GET /api/widgets/{id}` removed"), (ADDITIVE, "new `GET /api/widgets/{id}/archive`")])
 
     def test_moves_that_only_change_a_prefix_are_one_line(self) -> None:
         base = document({f"/api/v1/r{i}/{{id}}": {"get": operation(f"g{i}", "r-controller")} for i in range(4)}, {})
         head = document({f"/api/v2/r{i}/{{id}}": {"get": operation(f"g{i}", "r-controller")} for i in range(4)}, {})
         found = lines_for(base, head)
-        self.assertEqual(texts(found), [(CALLERS, "`/api/v1/*` → `/api/v2/*`, 4 endpoints")])
+        self.assertEqual(texts(found), [(BREAKING, "`/api/v1/*` → `/api/v2/*`, 4 endpoints")])
         self.assertEqual(len(found[0].members), 4)
 
 
@@ -227,7 +227,7 @@ class Families(unittest.TestCase):
     def test_removed_operations_under_one_base_path_are_one_line(self) -> None:
         base = document({"/api/widgets": {"get": operation("a", "w"), "post": operation("b", "w")}}, {})
         head = document({}, {})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "removed `/api/widgets` GET POST")])
+        self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "removed `/api/widgets` GET POST")])
 
     def test_deprecated_operations_have_their_own_level(self) -> None:
         base = document({"/old": {"get": operation("a")}}, {})
@@ -256,7 +256,7 @@ class ParameterSweeps(unittest.TestCase):
     def test_a_required_parameter_added_to_one_operation_makes_callers_change(self) -> None:
         base = document({"/r": {"get": operation("g")}}, {})
         head = document({"/r": {"get": operation("g", parameters=[{"name": "kind", "in": "query", "required": True}])}}, {})
-        self.assertEqual(texts(lines_for(base, head)), [(CALLERS, "`kind` parameter added (required) to `GET /r`")])
+        self.assertEqual(texts(lines_for(base, head)), [(BREAKING, "`kind` parameter added (required) to `GET /r`")])
 
     def test_a_parameter_made_required_and_a_changed_type(self) -> None:
         optional = {"name": "kind", "in": "query", "schema": {"type": "string"}}
@@ -288,7 +288,7 @@ class EnumsAndTheRest(unittest.TestCase):
         paths = {"/i": {"post": operation("m", request="Item")}}
         item = lambda values: {"Item": {"properties": {"kind": {"type": "string", "enum": values}}}}  # noqa: E731
         self.assertEqual(texts(lines_for(document(paths, item(["A", "B"])), document(paths, item(["A"])))),
-                         [(CALLERS, "`Item.kind` value `B` removed")])
+                         [(BREAKING, "`Item.kind` value `B` removed")])
 
     def test_lines_are_sorted_worst_first_and_nothing_is_capped(self) -> None:
         base = document({"/gone": {"get": operation("g")}, **{f"/p{i}": {"get": operation(f"p{i}", response=f"P{i}")} for i in range(30)}},
@@ -297,12 +297,12 @@ class EnumsAndTheRest(unittest.TestCase):
                         {f"P{i}": props("a", f"extra{i}") for i in range(30)})
         found = lines_for(base, head)
         self.assertEqual(len(found), 31)
-        self.assertEqual([line.impact for line in found], [CALLERS] + [ADDITIVE] * 30)
+        self.assertEqual([line.impact for line in found], [BREAKING] + [ADDITIVE] * 30)
 
     def test_a_change_to_a_request_body_of_an_operation_may_break_consumers(self) -> None:
         base = document({"/i": {"post": operation("m", request="A")}}, {"A": props("x"), "B": props("x")})
         head = document({"/i": {"post": operation("m", request="B")}}, {"A": props("x"), "B": props("x")})
-        self.assertEqual(texts(lines_for(base, head)), [(CONSUMERS, "`POST /i` request body changed")])
+        self.assertEqual(texts(lines_for(base, head)), [(MAY_BREAK, "`POST /i` request body changed")])
 
     def test_nothing_changed_is_no_lines(self) -> None:
         doc = document({"/i": {"get": operation("g")}}, {})

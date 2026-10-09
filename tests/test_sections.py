@@ -83,12 +83,12 @@ class Sections(unittest.TestCase):
         text, lineset = brief.body, brief
         contract = self.section_of(text, "Contract")
         summary = re.search(r"<summary>(.*?)</summary>", contract).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract callers must change consumers may break 3 changes")
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract breaking may break 3 changes")
         rows = [re.sub(r"<[^>]+>", "", row) for row in contract.splitlines() if row.startswith("| <span")]
         self.assertEqual([re.sub(r" \| \[↗\].*", "", row) for row in rows],
-                         ["| callers must change | request | + owner required | ItemRequest",
-                          "| callers must change |  | removed | GET /gone",
-                          "| consumers may break |  | − b | Widget"])
+                         ["| breaking | request | + owner required | ItemRequest",
+                          "| breaking |  | removed | GET /gone",
+                          "| may break |  | − b | Widget"])
         self.assertEqual(len(lineset.contract), 3)
         for gone in ("chunk", "Not in any", "group-row", "<strong><code>"):
             self.assertNotIn(gone, contract)
@@ -113,7 +113,7 @@ class Sections(unittest.TestCase):
         first = next(line for line in data["contract"] if line["on"] == "`ItemRequest`")
         self.assertEqual(set(first), {"impact", "text", "change", "on", "reaches", "path", "side", "line", "source"})
         self.assertEqual((first["change"], first["on"], first["reaches"]), ("`+ owner` required", "`ItemRequest`", "request"))
-        self.assertEqual((first["impact"], first["path"], first["side"]), ("callers must change", SPEC, "R"))
+        self.assertEqual((first["impact"], first["path"], first["side"]), ("breaking", SPEC, "R"))
         self.assertIsInstance(first["line"], int)
         self.assertEqual(len(data["contract"]), 3)
         self.assertEqual([l["impact"] for l in data["data"]], ["destructive", "additive"])

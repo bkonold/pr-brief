@@ -19,11 +19,11 @@ from diff_lines import (
     SpecDiff,
 )
 
-CALLERS = "callers must change"
-CONSUMERS = "consumers may break"
+BREAKING = "breaking"
+MAY_BREAK = "may break"
 ADDITIVE = "additive"
 DEPRECATED = "deprecated"
-CONTRACT_LEVELS: tuple[str, ...] = (CALLERS, CONSUMERS, ADDITIVE, DEPRECATED)
+CONTRACT_LEVELS: tuple[str, ...] = (BREAKING, MAY_BREAK, ADDITIVE, DEPRECATED)
 
 REQUEST = "request"
 RESPONSE = "response"
@@ -76,50 +76,50 @@ class Change:
 
 
 def contract_impact(kind: str, sides: frozenset[str] | set[str] = frozenset()) -> str:
-    """The impact level of one contract change, worst first: `callers must change`, `consumers may break`, `additive`,
+    """The impact level of one contract change, worst first: `breaking`, `may break`, `additive`,
     `deprecated`. `sides` is where the change reaches, `request` (a body or a parameter), `response`, or both; a schema
     used on both sides counts as both, and the worst of them wins. Empty `sides` (a schema no operation reaches) counts
     as both.
 
     | Kind | Request | Response |
     |---|---|---|
-    | operation_removed | callers must change | callers must change |
-    | operation_moved | callers must change | callers must change |
+    | operation_removed | breaking | breaking |
+    | operation_moved | breaking | breaking |
     | operation_added | additive | additive |
-    | operation_changed (request body, security) | consumers may break | consumers may break |
+    | operation_changed (request body, security) | may break | may break |
     | responses_changed | additive | additive |
     | parameter_added | additive | |
-    | parameter_added_required | callers must change | |
-    | parameter_required (existing, made required) | callers must change | |
+    | parameter_added_required | breaking | |
+    | parameter_required (existing, made required) | breaking | |
     | parameter_no_longer_required | additive | |
-    | parameter_type_changed | callers must change | |
-    | parameter_constraint_changed | consumers may break | |
+    | parameter_type_changed | breaking | |
+    | parameter_constraint_changed | may break | |
     | property_added | additive | additive |
-    | property_added_required | callers must change | additive |
-    | property_required (existing, made required) | callers must change | additive |
-    | property_no_longer_required | additive | consumers may break |
-    | property_removed | consumers may break | consumers may break |
-    | schema_removed | consumers may break | consumers may break |
+    | property_added_required | breaking | additive |
+    | property_required (existing, made required) | breaking | additive |
+    | property_no_longer_required | additive | may break |
+    | property_removed | may break | may break |
+    | schema_removed | may break | may break |
     | schema_added | additive | additive |
-    | property_type_changed | callers must change | consumers may break |
-    | property_constraint_changed | consumers may break | consumers may break |
+    | property_type_changed | breaking | may break |
+    | property_constraint_changed | may break | may break |
     | enum_added | additive | additive |
-    | enum_removed | callers must change | consumers may break |
+    | enum_removed | breaking | may break |
     | deprecated | deprecated | deprecated |
     """
     table: dict[str, tuple[str, str]] = {
-        "operation_removed": (CALLERS, CALLERS), "operation_moved": (CALLERS, CALLERS),
-        "operation_added": (ADDITIVE, ADDITIVE), "operation_changed": (CONSUMERS, CONSUMERS),
+        "operation_removed": (BREAKING, BREAKING), "operation_moved": (BREAKING, BREAKING),
+        "operation_added": (ADDITIVE, ADDITIVE), "operation_changed": (MAY_BREAK, MAY_BREAK),
         "responses_changed": (ADDITIVE, ADDITIVE),
-        "parameter_added": (ADDITIVE, ADDITIVE), "parameter_added_required": (CALLERS, CALLERS),
-        "parameter_required": (CALLERS, CALLERS), "parameter_no_longer_required": (ADDITIVE, ADDITIVE),
-        "parameter_type_changed": (CALLERS, CALLERS), "parameter_constraint_changed": (CONSUMERS, CONSUMERS),
-        "property_added": (ADDITIVE, ADDITIVE), "property_added_required": (CALLERS, ADDITIVE),
-        "property_required": (CALLERS, ADDITIVE), "property_no_longer_required": (ADDITIVE, CONSUMERS),
-        "property_removed": (CONSUMERS, CONSUMERS), "schema_removed": (CONSUMERS, CONSUMERS),
-        "schema_added": (ADDITIVE, ADDITIVE), "property_type_changed": (CALLERS, CONSUMERS),
-        "property_constraint_changed": (CONSUMERS, CONSUMERS), "enum_added": (ADDITIVE, ADDITIVE),
-        "enum_removed": (CALLERS, CONSUMERS), "deprecated": (DEPRECATED, DEPRECATED),
+        "parameter_added": (ADDITIVE, ADDITIVE), "parameter_added_required": (BREAKING, BREAKING),
+        "parameter_required": (BREAKING, BREAKING), "parameter_no_longer_required": (ADDITIVE, ADDITIVE),
+        "parameter_type_changed": (BREAKING, BREAKING), "parameter_constraint_changed": (MAY_BREAK, MAY_BREAK),
+        "property_added": (ADDITIVE, ADDITIVE), "property_added_required": (BREAKING, ADDITIVE),
+        "property_required": (BREAKING, ADDITIVE), "property_no_longer_required": (ADDITIVE, MAY_BREAK),
+        "property_removed": (MAY_BREAK, MAY_BREAK), "schema_removed": (MAY_BREAK, MAY_BREAK),
+        "schema_added": (ADDITIVE, ADDITIVE), "property_type_changed": (BREAKING, MAY_BREAK),
+        "property_constraint_changed": (MAY_BREAK, MAY_BREAK), "enum_added": (ADDITIVE, ADDITIVE),
+        "enum_removed": (BREAKING, MAY_BREAK), "deprecated": (DEPRECATED, DEPRECATED),
     }
     request_level, response_level = table[kind]
     reached: set[str] = set(sides) or {REQUEST, RESPONSE}

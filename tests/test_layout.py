@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from contract_lines import ADDITIVE, CALLERS, CONSUMERS, CONTRACT_LEVELS, DEPRECATED, Line, Member  # noqa: E402
+from contract_lines import ADDITIVE, BREAKING, MAY_BREAK, CONTRACT_LEVELS, DEPRECATED, Line, Member  # noqa: E402
 from data_lines import DATA_LEVELS, DESTRUCTIVE, REWRITES  # noqa: E402
 from layout import glance, middle, pill, section  # noqa: E402
 
@@ -27,8 +27,8 @@ def cells(row: str) -> list[str]:
 
 class Drawing(unittest.TestCase):
     def test_the_glance_line_has_a_chip_per_level_present_worst_first_with_no_counts(self) -> None:
-        lines = [line("a", CALLERS), line("b", CALLERS), line("c", CONSUMERS), line("d", ADDITIVE), line("e", ADDITIVE), line("f", DEPRECATED)]
-        self.assertEqual(pills(glance(lines, CONTRACT_LEVELS)), ["callers must change", "consumers may break", "additive", "deprecated"])
+        lines = [line("a", BREAKING), line("b", BREAKING), line("c", MAY_BREAK), line("d", ADDITIVE), line("e", ADDITIVE), line("f", DEPRECATED)]
+        self.assertEqual(pills(glance(lines, CONTRACT_LEVELS)), ["breaking", "may break", "additive", "deprecated"])
         self.assertEqual(pills(glance([line("a", ADDITIVE)], CONTRACT_LEVELS)), ["additive"])
         self.assertNotRegex(re.sub(r"<[^>]+>", "", glance(lines, CONTRACT_LEVELS)), r"\d")
 
@@ -41,8 +41,8 @@ class Drawing(unittest.TestCase):
         self.assertEqual(pills(glance(lines, DATA_LEVELS)), ["destructive", "rewrites rows", "other"])
 
     def test_the_top_level_is_bold_and_the_second_is_a_bold_outline(self) -> None:
-        self.assertEqual(pill(CALLERS, CONTRACT_LEVELS), '<span class="pill p0"><strong>callers must change</strong></span>')
-        self.assertEqual(pill(CONSUMERS, CONTRACT_LEVELS), '<span class="pill p1">consumers may break</span>')
+        self.assertEqual(pill(BREAKING, CONTRACT_LEVELS), '<span class="pill p0"><strong>breaking</strong></span>')
+        self.assertEqual(pill(MAY_BREAK, CONTRACT_LEVELS), '<span class="pill p1">may break</span>')
         self.assertEqual(pill(ADDITIVE, CONTRACT_LEVELS), '<span class="pill p2">additive</span>')
         self.assertEqual(pill(None, DATA_LEVELS), "")
 
@@ -56,13 +56,13 @@ class Drawing(unittest.TestCase):
         return [cells(row) for row in text.splitlines() if row.startswith("|")][2:]
 
     def test_a_section_is_one_closed_details_with_its_name_and_chips_in_the_summary(self) -> None:
-        text = self.draw([line("a", CALLERS), line("b", ADDITIVE), line("c", ADDITIVE)])
+        text = self.draw([line("a", BREAKING), line("b", ADDITIVE), line("c", ADDITIVE)])
         self.assertEqual(text.count("<details"), 1)
         self.assertTrue(text.startswith('<details class="section">\n<summary><strong>Contract</strong> <span class="pill p0">'))
         self.assertNotIn("open", text.split("\n")[0])
         summary = re.search(r"<summary>(.*?)</summary>", text).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract callers must change additive 3 changes")
-        self.assertEqual(pills(summary), ["callers must change", "additive"])
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract breaking additive 3 changes")
+        self.assertEqual(pills(summary), ["breaking", "additive"])
         self.assertTrue(summary.endswith(' <span class="muted">3 changes</span>'))
         self.assertTrue(text.endswith("</div>\n\n</details>"))
 
@@ -89,12 +89,12 @@ class Drawing(unittest.TestCase):
 
     def test_the_table_has_a_row_per_line_and_the_link_last(self) -> None:
         group = [line("later", ADDITIVE, loc=("R", 9), change="`+ a` optional", on="`A`", side="response"),
-                 line("first", CALLERS, loc=("L", 4), change="`+ b` required", on="`B`", side="both")]
+                 line("first", BREAKING, loc=("L", 4), change="`+ b` required", on="`B`", side="both")]
         text = self.draw(group)
         table = [row for row in text.splitlines() if row.startswith("|")]
         self.assertEqual(cells(table[0]), ["Impact", "Side", "Change", "On", "↗"])
         self.assertEqual(cells(table[1]), ["---", "---", "---", "---", "---"])
-        self.assertEqual(cells(table[2]), ['<span class="pill p0"><strong>callers must change</strong></span>', "both",
+        self.assertEqual(cells(table[2]), ['<span class="pill p0"><strong>breaking</strong></span>', "both",
                                            "<code>+ b</code> required", "<code>B</code>", "[↗](https://example.test/4)"])
         self.assertEqual(cells(table[3]), ['<span class="pill p2">additive</span>', "response", "<code>+ a</code> optional",
                                            "<code>A</code>", "[↗](https://example.test/9)"])
@@ -105,10 +105,10 @@ class Drawing(unittest.TestCase):
         def make(name, impact, side, on):
             return line(name, impact, change=name, on=on, side=side)
         rows = self.rows(self.draw([
-            make("a", ADDITIVE, "request", "`Zed`"), make("b", CONSUMERS, "response", "`Alpha`"),
-            make("c", ADDITIVE, "response", "`Alpha`"), make("d", CONSUMERS, "request", "`mid`"),
-            make("e", ADDITIVE, "request", "`alpha`"), make("f", CALLERS, "response", "`Zed`"),
-            make("g", CONSUMERS, "request", "`Beta`")]))
+            make("a", ADDITIVE, "request", "`Zed`"), make("b", MAY_BREAK, "response", "`Alpha`"),
+            make("c", ADDITIVE, "response", "`Alpha`"), make("d", MAY_BREAK, "request", "`mid`"),
+            make("e", ADDITIVE, "request", "`alpha`"), make("f", BREAKING, "response", "`Zed`"),
+            make("g", MAY_BREAK, "request", "`Beta`")]))
         self.assertEqual([r[2] for r in rows], ["f", "g", "d", "b", "e", "a", "c"])
 
     def test_data_rows_are_worst_first_then_table_then_file_order(self) -> None:
@@ -121,7 +121,7 @@ class Drawing(unittest.TestCase):
         self.assertEqual([r[1] for r in rows], ["b", "f", "e", "c", "a", "d"])
 
     def test_a_pattern_line_stays_one_row(self) -> None:
-        sweep = line("s", CONSUMERS, change="`number` → `string`, 3 properties: `p0`, `p1`, `p2`", on="9 schemas: `A`, `B`, `C` +6", side="response")
+        sweep = line("s", MAY_BREAK, change="`number` → `string`, 3 properties: `p0`, `p1`, `p2`", on="9 schemas: `A`, `B`, `C` +6", side="response")
         rows = self.rows(self.draw([sweep, *self.lines(1)]))
         self.assertEqual(len(rows), 2)
         self.assertIn("9 schemas", rows[0][3])

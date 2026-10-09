@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from diff_lines import file_diff_lines  # noqa: E402
 from contract_lines import (  # noqa: E402
-    ADDITIVE, CALLERS, CONSUMERS, CONTRACT_LEVELS, DEPRECATED, REQUEST, RESPONSE, collect_changes, contract_impact,
+    ADDITIVE, BREAKING, MAY_BREAK, CONTRACT_LEVELS, DEPRECATED, REQUEST, RESPONSE, collect_changes, contract_impact,
     side_phrase,
 )
 from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
@@ -46,25 +46,25 @@ def props(*names: str, required: tuple[str, ...] = ()) -> dict:
 
 
 class ImpactTable(unittest.TestCase):
-    def test_the_levels_run_from_callers_to_deprecated(self) -> None:
-        self.assertEqual(CONTRACT_LEVELS, (CALLERS, CONSUMERS, ADDITIVE, DEPRECATED))
+    def test_the_levels_run_from_breaking_to_deprecated(self) -> None:
+        self.assertEqual(CONTRACT_LEVELS, (BREAKING, MAY_BREAK, ADDITIVE, DEPRECATED))
 
     def test_a_removed_endpoint_and_a_new_required_request_property_make_callers_change(self) -> None:
-        self.assertEqual(contract_impact("operation_removed", frozenset({RESPONSE})), CALLERS)
-        self.assertEqual(contract_impact("property_added_required", frozenset({REQUEST})), CALLERS)
-        self.assertEqual(contract_impact("property_required", frozenset({REQUEST})), CALLERS)
-        self.assertEqual(contract_impact("parameter_added_required", frozenset({REQUEST})), CALLERS)
-        self.assertEqual(contract_impact("enum_removed", frozenset({REQUEST})), CALLERS)
-        self.assertEqual(contract_impact("property_type_changed", frozenset({REQUEST})), CALLERS)
+        self.assertEqual(contract_impact("operation_removed", frozenset({RESPONSE})), BREAKING)
+        self.assertEqual(contract_impact("property_added_required", frozenset({REQUEST})), BREAKING)
+        self.assertEqual(contract_impact("property_required", frozenset({REQUEST})), BREAKING)
+        self.assertEqual(contract_impact("parameter_added_required", frozenset({REQUEST})), BREAKING)
+        self.assertEqual(contract_impact("enum_removed", frozenset({REQUEST})), BREAKING)
+        self.assertEqual(contract_impact("property_type_changed", frozenset({REQUEST})), BREAKING)
 
     def test_a_required_property_on_a_response_is_additive(self) -> None:
         self.assertEqual(contract_impact("property_added_required", frozenset({RESPONSE})), ADDITIVE)
         self.assertEqual(contract_impact("property_required", frozenset({RESPONSE})), ADDITIVE)
 
     def test_response_removals_and_type_changes_may_break_consumers(self) -> None:
-        self.assertEqual(contract_impact("property_removed", frozenset({RESPONSE})), CONSUMERS)
-        self.assertEqual(contract_impact("schema_removed", frozenset({RESPONSE})), CONSUMERS)
-        self.assertEqual(contract_impact("property_type_changed", frozenset({RESPONSE})), CONSUMERS)
+        self.assertEqual(contract_impact("property_removed", frozenset({RESPONSE})), MAY_BREAK)
+        self.assertEqual(contract_impact("schema_removed", frozenset({RESPONSE})), MAY_BREAK)
+        self.assertEqual(contract_impact("property_type_changed", frozenset({RESPONSE})), MAY_BREAK)
 
     def test_additions_are_additive_and_deprecation_is_its_own_level(self) -> None:
         for kind in ("operation_added", "parameter_added", "property_added", "enum_added"):
@@ -73,9 +73,9 @@ class ImpactTable(unittest.TestCase):
 
     def test_a_schema_on_both_sides_takes_the_worse_impact_and_unknown_sides_count_as_both(self) -> None:
         both = frozenset({REQUEST, RESPONSE})
-        self.assertEqual(contract_impact("property_added_required", both), CALLERS)
-        self.assertEqual(contract_impact("property_added_required", frozenset()), CALLERS)
-        self.assertEqual(contract_impact("property_no_longer_required", both), CONSUMERS)
+        self.assertEqual(contract_impact("property_added_required", both), BREAKING)
+        self.assertEqual(contract_impact("property_added_required", frozenset()), BREAKING)
+        self.assertEqual(contract_impact("property_no_longer_required", both), MAY_BREAK)
 
     def test_the_docstring_table_names_every_kind(self) -> None:
         table = contract_impact.__doc__
@@ -135,7 +135,7 @@ class CollectedChanges(unittest.TestCase):
         base = document(paths, {"ItemRequest": props("a"), "Item": props("a")})
         head = document(paths, {"ItemRequest": props("a", "b", required=("b",)), "Item": props("a", "b", required=("b",))})
         found = {c.scope: (c.kind, c.impact) for c in changes_for(base, head)}
-        self.assertEqual(found, {"ItemRequest": ("property_added_required", CALLERS), "Item": ("property_added_required", ADDITIVE)})
+        self.assertEqual(found, {"ItemRequest": ("property_added_required", BREAKING), "Item": ("property_added_required", ADDITIVE)})
 
     def test_an_existing_property_made_required_on_a_response_is_additive(self) -> None:
         paths = {"/items": {"get": operation("list", response="Item")}}
@@ -148,7 +148,7 @@ class CollectedChanges(unittest.TestCase):
         base = document(paths, {"Item": props("a", "b")})
         head = document(paths, {"Item": props("a")})
         self.assertEqual([(c.kind, c.impact, c.sides) for c in changes_for(base, head)],
-                         [("property_removed", CONSUMERS, frozenset({RESPONSE}))])
+                         [("property_removed", MAY_BREAK, frozenset({RESPONSE}))])
 
     def test_a_property_type_change_depends_on_the_side(self) -> None:
         paths = {"/items": {"post": operation("makeItem", request="In", response="Out")}}
@@ -156,25 +156,25 @@ class CollectedChanges(unittest.TestCase):
         changed = {"type": "object", "properties": {"a": {"type": "integer"}}}
         head = document(paths, {"In": changed, "Out": changed})
         found = {c.scope: c.impact for c in changes_for(base, head)}
-        self.assertEqual(found, {"In": CALLERS, "Out": CONSUMERS})
+        self.assertEqual(found, {"In": BREAKING, "Out": MAY_BREAK})
 
     def test_a_removed_operation_and_a_new_required_parameter_make_callers_change(self) -> None:
         base = document({"/gone": {"get": operation("gone", "gone-controller")}, "/kept": {"get": operation("kept")}}, {})
         head = document({"/kept": {"get": operation("kept", parameters=[{"name": "kind", "in": "query", "required": True}])}}, {})
         found = {(c.kind, c.subject): c.impact for c in changes_for(base, head)}
-        self.assertEqual(found, {("parameter_added_required", "kind"): CALLERS})
+        self.assertEqual(found, {("parameter_added_required", "kind"): BREAKING})
 
     def test_enum_values_added_and_removed_and_deprecation(self) -> None:
         base = document({}, {"Kind": {"type": "string", "enum": ["A", "B"]}, "Item": {"properties": {"x": {"type": "string"}}}})
         head = document({}, {"Kind": {"type": "string", "enum": ["B", "C"]},
                              "Item": {"properties": {"x": {"type": "string", "deprecated": True}}}})
         found = {(c.kind, c.detail or c.subject): c.impact for c in changes_for(base, head)}
-        self.assertEqual(found, {("enum_added", "C"): ADDITIVE, ("enum_removed", "A"): CALLERS, ("deprecated", "x"): DEPRECATED})
+        self.assertEqual(found, {("enum_added", "C"): ADDITIVE, ("enum_removed", "A"): BREAKING, ("deprecated", "x"): DEPRECATED})
 
     def test_a_schema_no_operation_reaches_counts_as_both_sides(self) -> None:
         base = document({}, {"Orphan": props("a")})
         head = document({}, {"Orphan": props("a", "b", required=("b",))})
-        self.assertEqual([(c.impact, c.sides) for c in changes_for(base, head)], [(CALLERS, frozenset())])
+        self.assertEqual([(c.impact, c.sides) for c in changes_for(base, head)], [(BREAKING, frozenset())])
 
     def test_cosmetic_changes_make_no_change(self) -> None:
         paths = {"/items": {"get": operation("list", summary="old")}}

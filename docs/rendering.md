@@ -39,7 +39,7 @@ re-run it instead.
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
 - **Contract and Data** are two sections after the description, built
   without a model call. Each is one closed `<details>` (class `section`) whose summary holds the section's name in bold,
-  one chip for each level present, worst first (`callers must change` `additive`; no counts), and the number of table
+  one chip for each level present, worst first (`breaking` `additive`; no counts), and the number of table
   rows as muted text (`3 changes`, `1 change`), so they show while it is collapsed. Opened, it holds one GitHub markdown
   table with a row per line of the whole PR. Contract rows are sorted
   by worst level, then request before response before both (then no side), then On alphabetically; Data rows by worst
@@ -76,8 +76,8 @@ re-run it instead.
 
   | Level | Changes |
   | --- | --- |
-  | callers must change | endpoint removed or moved; parameter or request property added as required, or an existing one made required; request enum value removed; request type changed |
-  | consumers may break | response property, schema or enum value removed; response type changed; a constraint changed; a property no longer required (on a response); a request body or security change on an operation |
+  | breaking | endpoint removed or moved; parameter or request property added as required, or an existing one made required; request enum value removed; request type changed |
+  | may break | response property, schema or enum value removed; response type changed; a constraint changed; a property no longer required (on a response); a request body or security change on an operation |
   | additive | endpoint, schema, parameter or property added (a required property is additive on a response); enum value added; responses changed |
   | deprecated | an operation or property marked `deprecated` |
 

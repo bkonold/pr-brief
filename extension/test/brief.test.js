@@ -532,13 +532,13 @@ const V22_MARKDOWN = [
   "# T",
   "",
   '<details class="section">',
-  '<summary><strong>Contract</strong> <span class="pill p0"><strong>callers must change</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
+  '<summary><strong>Contract</strong> <span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
   "",
   '<div class="table-wrap">',
   "",
   "| Impact | Side | Change | On | ↗ |",
   "| --- | --- | --- | --- | --- |",
-  '| <span class="pill p0"><strong>callers must change</strong></span> | request | <code>+ kind</code> required param | <code>GET /rows</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR4) |',
+  '| <span class="pill p0"><strong>breaking</strong></span> | request | <code>+ kind</code> required param | <code>GET /rows</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR4) |',
   '| <span class="pill p2">additive</span> | response | <code>+ note</code> optional | 9 schemas: <code>A</code>, <code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters</code> +6 | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR9) |',
   '| <span class="pill p2">additive</span> |  | <code>+ a</code> nullable &#124; x | <code>widgets</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-defR3) |',
   "",
@@ -563,10 +563,10 @@ test("a v22 section is one closed details with its name and chips in the summary
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
   assert.equal((html.match(/<details class="section">/g) ?? []).length, 1);
   assert.doesNotMatch(html, /<details class="section" open/);
-  assert.match(html, /<summary><strong>Contract<\/strong> <span class="pill p0"><strong>callers must change<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
+  assert.match(html, /<summary><strong>Contract<\/strong> <span class="pill p0"><strong>breaking<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
   assert.equal((html.match(/<table>/g) ?? []).length, 1);
   assert.match(html, /<thead><tr><th>Impact<\/th><th>Side<\/th><th>Change<\/th><th>On<\/th><th>↗<\/th><\/tr><\/thead>/);
-  assert.match(html, /<td><span class="pill p0"><strong>callers must change<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
+  assert.match(html, /<td><span class="pill p0"><strong>breaking<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
   assert.match(html, /<td><a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abcR4">↗<\/a><\/td>/);
   assert.match(html, /<code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters<\/code>/);
   assert.match(html, /<code>\+ a<\/code> nullable &#124; x/);
