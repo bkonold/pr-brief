@@ -24,3 +24,4 @@ jobs:
       - run: python -m unittest discover -s tests
       - run: node --test extension/test/*.test.js
       - run: python prompt_doc.py --check
+      - run: python scripts/package_extension.py --check

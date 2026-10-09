@@ -126,6 +126,26 @@ Load `extension/` unpacked at `chrome://extensions`, start `serve.py` and paste 
 brief and steps through the walkthrough, and offers to generate one when the PR has none. See
 [extension/README.md](extension/README.md); its tests run with `node --test extension/test/*.test.js`.
 
+### Install from a release
+
+- **Chrome:** download `pr-brief-chrome-<version>.zip` from the [latest release](https://github.com/bkonold/pr-brief/releases/latest),
+  unzip it, open `chrome://extensions`, turn on Developer mode and choose Load unpacked on the folder. To update, repeat
+  that with the newer zip.
+- **Firefox:** open the `.xpi` from the same release (Firefox 128 or later). Firefox 127 and later list a Manifest V3
+  extension's host permissions in the install prompt and grant them on install, and any host permission can be revoked at
+  `about:addons`, under the extension's Permissions tab. If the brief does not appear on GitHub, check that
+  `github.com` is allowed there. A release has an `.xpi` only when the maintainer's Mozilla signing keys were set.
+
+Either way, start `serve.py` and paste its token into the extension's options, as above.
+
+### Cutting a release
+
+Set `version` to the same value in `extension/manifest.json` and `extension/manifest.firefox.json` (the test workflow
+checks that they agree), commit it, then push the tag `v<version>`. The Release workflow checks the tag against the
+manifest, creates the release with the Chrome zip, and, when the secrets exist, signs the Firefox build as an unlisted
+add-on and attaches the `.xpi`. For that, add the repository secrets `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`, the API key
+and secret from the [API keys page](https://addons.mozilla.org/developers/addon/api/key/) on addons.mozilla.org.
+
 ## Further reading
 
 - [docs/rendering.md](docs/rendering.md): the variant, how the renderer treats the answer, and the run folder.
