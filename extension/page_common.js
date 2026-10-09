@@ -580,8 +580,17 @@
       }
     }
 
-    // Narrows the host's own tree to the files at `paths`; null shows it whole. Calling again with the same paths only
-    // re-applies the filter.
+    // Hides the whole file box of each diff in the page whose id is not in the filter, and shows the others. A diff the page
+    // adds later is hidden by the next run, which every refresh makes.
+    function applyDiffFilter() {
+      const ids = treeFilter?.ids;
+      for (const block of document.querySelectorAll(spec.blockSelector)) {
+        entryOf(block).classList.toggle(FILE_HIDDEN, Boolean(ids) && !ids.has(block.id));
+      }
+    }
+
+    // Narrows the host's own tree and its diffs to the files at `paths`; null shows them whole. Calling again with the
+    // same paths only re-applies the filter.
     async function filterTree(paths) {
       const mine = ++filterToken;
       const key = paths ? paths.join("\n") : null;
@@ -593,6 +602,7 @@
         treeFilter = null;
       }
       applyTreeFilter();
+      applyDiffFilter();
     }
 
     // How many files the page lists as changed: the tree's rows, or the diffs loaded when the tree is not showing.

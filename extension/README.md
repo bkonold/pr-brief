@@ -18,15 +18,19 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 ## File sets
 
-In "Files" mode, "Contract" and "Data" narrow the host's own tree to the files that make up the PR's API contract change
-and its data change.
+In "Files" mode, "Contract" and "Data" narrow the host's own tree and diffs to the files that make up the PR's API contract
+change and its data change.
 
 - The tree hides the files that are not in the set, and a directory left with no visible file. The host re-renders its
   tree, so the hiding is applied again on every refresh, as the callouts are. A tree row is matched to a file by the
   `#diff-…` link it holds.
 - The chosen chip is kept while the tab is open: switching to "Walkthrough" shows the whole tree again (the walkthrough
   list is never filtered), and switching back to "Files" applies the chip again.
-- Every diff stays in the page, whichever chip is chosen.
+- Under "Contract" or "Data" only the set's diffs are shown: every other diff's whole file box, header included, gets
+  `display: none` through a class and is never removed, so scrolling and the host's j/k move through the set's files only,
+  and the browser's find-in-page does not see the hidden ones. A diff the host loads or re-renders later is hidden by the
+  next refresh, as the tree rows are. A diff is matched to the set by the same `diff-<hash of path>` id as a tree row.
+  Under "All", and in "Walkthrough" mode, every diff is shown again; the diffs stay in the page in every mode.
 - The brief's "View files" links open the files page with `?pr-brief=contract` or `?pr-brief=data`. When the run has
   that set, the page loads in "Files" mode with its chip chosen and the tree narrowed to it, with no stop selected and no
   jump. Any other value, a set the run does not have, or no parameter gives the usual "Walkthrough" start. The parameter
@@ -279,7 +283,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | What | Selector or rule |
 | --- | --- |
 | Diff block | `div[id^="diff-"]` with class containing `Diff-module__diffTargetable`; id is `diff-` + sha256 hex of the file path |
-| Entry | the block's ancestor `div[class*="PullRequestDiffsList-module__diffEntry"]` |
+| Entry | the block's ancestor `div[class*="PullRequestDiffsList-module__diffEntry"]`: the whole file box, header included, which a file set hides (`prf-file-hidden`) when the diff is not in the set. Observed 2026-10-09 on a 23-file PR: every block is in one of these, and the entries are siblings under one container |
 | Block path, first choice | `"diff-" + sha256(path)` looked up with `getElementById` |
 | Block path, fallbacks | a descendant `[data-file-path]`, else `table[data-diff-anchor]` with `aria-label` `Diff for: <path>` |
 | Diagram host | `[class*="prc-PageLayout-PaneWrapper"]` (the file pane) and `[class*="prc-PageLayout-ContentWrapper"]` (the diffs' column), both inside `#diff-comparison-viewer-container`. The panel is inserted right before the pane with the pane's computed `order` (before the column with the column's order when there is no pane), so DOM order places it first and no GitHub element is restyled. Top offset copied from the pane |
@@ -301,7 +305,7 @@ All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
 | What | Selector or rule |
 | --- | --- |
 | Page URL and run key | `/{owner}/{repo}/pulls/{n}/files`; the run folder is `fj-<n>` |
-| Diff block and entry | `#diff-container .diff-file-box[id^="diff-"]`; the box is both, and hiding it collapses the spacing. Its id is `diff-` + sha1 hex of the file path |
+| Diff block and entry | `#diff-container .diff-file-box[id^="diff-"]`; the box is both, and hiding it (a file set hides the diffs outside it) collapses the spacing. Its id is `diff-` + sha1 hex of the file path |
 | Block path | `data-new-filename`, else `data-old-filename` |
 | File header | `.diff-file-header`, sticky at 44px inside the box, under the sticky summary bar `.diff-detail-box` (top 0, 44px) that the scroll offset is measured against |
 | Line row | `.lines-num [rel="diff-<sha1 of path>R<line>"]` (`L` for a removed line); its closest `tr`. The cell is `td.lines-num-new` / `td.lines-num-old` with `data-line-num` |

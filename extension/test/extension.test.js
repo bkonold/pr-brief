@@ -1179,7 +1179,18 @@ function fakeTree(links) {
   return { files, dir, host };
 }
 
-test("filterTree hides the tree's file rows outside the set and a directory left empty, and shows them all for null", async () => {
+function withDiffs(blocks, run) {
+  return async () => {
+    globalThis.document = { querySelectorAll: () => blocks(), querySelector: () => null };
+    try {
+      await run();
+    } finally {
+      delete globalThis.document;
+    }
+  };
+}
+
+test("filterTree hides the tree's file rows outside the set and a directory left empty, and shows them all for null", withDiffs(() => [], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b", "https://host/pull/1/files#diff-c"]);
   const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
   await page.filterTree(["a", "c"]);
@@ -1191,9 +1202,9 @@ test("filterTree hides the tree's file rows outside the set and a directory left
   assert.equal(tree.dir.hidden, true);
   await page.filterTree(null);
   assert.deepEqual([...tree.files, tree.dir].map((row) => row.hidden), [false, false, false, false]);
-});
+}));
 
-test("filterTree is applied again to rows the host re-rendered, without asking for the ids again", async () => {
+test("filterTree is applied again to rows the host re-rendered, without asking for the ids again", withDiffs(() => [], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b"]);
   let asked = 0;
   const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
@@ -1202,12 +1213,61 @@ test("filterTree is applied again to rows the host re-rendered, without asking f
   await page.filterTree(["a"]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
   assert.equal(asked, 1);
-});
+}));
 
-test("a tree row with no diff link is left showing, and a page with no tree is left alone", async () => {
+test("a tree row with no diff link is left showing, and a page with no tree is left alone", withDiffs(() => [], async () => {
   const tree = fakeTree([null, "#diff-b"]);
   const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => `diff-${path}` });
   await page.filterTree(["a"]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
   await filePage({ treeHost: () => null, treeFileSelector: "file", diffId: async (path) => path }).filterTree(["a"]);
-});
+}));
+
+const sha = async (algorithm, path) =>
+  `diff-${[...new Uint8Array(await crypto.subtle.digest(algorithm, new TextEncoder().encode(path)))].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+
+function fakeClassList() {
+  const names = new Set();
+  return { names, toggle: (name, on) => (on ? names.add(name) : names.delete(name)), contains: (name) => names.has(name) };
+}
+
+// A diff as the page has it: GitHub's block sits inside an entry that holds the whole file box; Forgejo's block is the box.
+function fakeDiff(id, { wrapped }) {
+  const block = { id, classList: fakeClassList() };
+  const entry = wrapped ? { classList: fakeClassList() } : block;
+  if (wrapped) block.closest = () => entry;
+  return { block, entry, hidden: () => entry.classList.names.has("prf-file-hidden") };
+}
+
+for (const [name, adapter, algorithm, wrapped] of [["GitHub", githubPage, "SHA-256", true], ["Forgejo", forgejoPage, "SHA-1", false]]) {
+  const diffs = async (paths) => Promise.all(paths.map(async (path) => fakeDiff(await sha(algorithm, path), { wrapped })));
+
+  test(`${name}: a file set hides the whole file box of every other diff, and All and null show them all again`, async () => {
+    const list = await diffs(["a.java", "b.java", "c.json"]);
+    globalThis.document = { querySelectorAll: () => list.map((diff) => diff.block), querySelector: () => null, getElementById: () => ({}) };
+    try {
+      await adapter.filterTree(["a.java", "c.json"]);
+      assert.deepEqual(list.map((diff) => diff.hidden()), [false, true, false]);
+      await adapter.filterTree(["b.java"]);
+      assert.deepEqual(list.map((diff) => diff.hidden()), [true, false, true]);
+      await adapter.filterTree(null);
+      assert.deepEqual(list.map((diff) => diff.hidden()), [false, false, false]);
+    } finally {
+      delete globalThis.document;
+    }
+  });
+
+  test(`${name}: a diff the page adds later is hidden by the next application of the same filter`, async () => {
+    const list = await diffs(["a.java", "b.java"]);
+    globalThis.document = { querySelectorAll: () => list.map((diff) => diff.block), querySelector: () => null, getElementById: () => ({}) };
+    try {
+      await adapter.filterTree(["a.java"]);
+      list.push(...(await diffs(["late.java", "a.java"])));
+      assert.deepEqual(list.map((diff) => diff.hidden()), [false, true, false, false]);
+      await adapter.filterTree(["a.java"]);
+      assert.deepEqual(list.map((diff) => diff.hidden()), [false, true, true, false]);
+    } finally {
+      delete globalThis.document;
+    }
+  });
+}
