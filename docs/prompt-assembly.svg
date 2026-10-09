@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 440" width="840" height="440" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    svg { --bg: #ffffff; --fill: #eef2fb; --stroke: #2b4ea2; --text: #13203a; --muted: #5a6477; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg: #1e1f24; --fill: #262d3d; --stroke: #8fa8e6; --text: #e6eaf2; --muted: #a3acbd; }
+    }
+    .bg { fill: var(--bg); }
+    .node { fill: var(--fill); stroke: var(--stroke); stroke-width: 2; }
+    .edge { fill: none; stroke: var(--stroke); stroke-width: 2; }
+    .dash { stroke-dasharray: 6 5; }
+    .head { fill: var(--stroke); }
+    .t { fill: var(--text); font-size: 19px; font-weight: 600; text-anchor: middle; }
+    .s { fill: var(--text); font-size: 16px; text-anchor: middle; }
+    .l { fill: var(--muted); font-size: 16px; font-style: italic; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" class="head"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="840" height="440" rx="10"/>
+
+  <rect class="node" x="15" y="25" width="210" height="70" rx="6"/>
+  <text class="t" x="120" y="56">PR-Agent prompt</text>
+  <text class="s" x="120" y="79">vendored template</text>
+  <rect class="node" x="15" y="115" width="210" height="70" rx="6"/>
+  <text class="t" x="120" y="146">Variant file</text>
+  <text class="s" x="120" y="169">brief.toml</text>
+  <rect class="node" x="15" y="205" width="210" height="70" rx="6"/>
+  <text class="t" x="120" y="236">Repo context</text>
+  <text class="s" x="120" y="259">context_pack.py</text>
+  <rect class="node" x="15" y="335" width="210" height="70" rx="6"/>
+  <text class="t" x="120" y="366">Pull request</text>
+  <text class="s" x="120" y="389">title, commits, diff</text>
+  <rect class="node" x="320" y="105" width="200" height="90" rx="6"/>
+  <text class="t" x="420" y="146">System prompt</text>
+  <text class="s" x="420" y="169">rules, answer shape</text>
+  <rect class="node" x="320" y="330" width="200" height="80" rx="6"/>
+  <text class="t" x="420" y="366">User prompt</text>
+  <text class="s" x="420" y="389">the pull request</text>
+  <rect class="node" x="600" y="170" width="200" height="80" rx="6"/>
+  <text class="t" x="700" y="206">Model</text>
+  <text class="s" x="700" y="229">reads both prompts</text>
+  <rect class="node" x="600" y="330" width="200" height="80" rx="6"/>
+  <text class="t" x="700" y="366">render.py</text>
+  <text class="s" x="700" y="389">draws the brief</text>
+
+  <path class="edge" d="M225,60 H275 V150"/>
+  <path class="edge" d="M225,240 H275 V150"/>
+  <path class="edge" d="M225,150 H316" marker-end="url(#a)"/>
+  <path class="edge" d="M225,370 H316" marker-end="url(#a)"/>
+  <path class="edge" d="M520,150 H560 V198 H596" marker-end="url(#a)"/>
+  <path class="edge" d="M520,370 H560 V222 H596" marker-end="url(#a)"/>
+  <path class="edge" d="M700,250 V326" marker-end="url(#a)"/>
+  <text class="l" x="712" y="294">YAML answer</text>
+</svg>

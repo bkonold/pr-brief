@@ -5,7 +5,7 @@
 One TOML per variant in `variants/` (see `PR_BRIEF_HOME` in the [README](../README.md#run-it-locally) for adding your own). Keys: `description`, `context` (see
 [Context packs](context.md)), `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example) and `[context_options]`. The renderer has one set of settings and a variant
-cannot change them.
+cannot change them. [prompt.md](prompt.md) shows how the variant's rules and fields become the prompt.
 
 | Variant | What it is |
 | --- | --- |

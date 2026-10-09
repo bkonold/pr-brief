@@ -102,6 +102,7 @@ brief and steps through the walkthrough, and offers to generate one when the PR 
 ## Further reading
 
 - [docs/rendering.md](docs/rendering.md): the variant, how the renderer treats the answer, and the run folder.
+- [docs/prompt.md](docs/prompt.md): how the brief's prompt is assembled, with an example.
 - [docs/context.md](docs/context.md): the context packs and how callers are matched.
 
 ## Vendored code
