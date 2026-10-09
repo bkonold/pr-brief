@@ -3,15 +3,15 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-const REVIEW_BASE = { repo: "acme/widgets", pr: 7, head_sha: "a".repeat(40), variant: "diagram_walkthrough_v24", walkthrough: [] };
+const REVIEW_BASE = { repo: "acme/widgets", pr: 7, head_sha: "a".repeat(40), variant: "brief", walkthrough: [] };
 
 // Loads background.js against a fake chrome and a fake run server whose review.json is `review`, and asks it for the
 // PR's run the way a content script does.
 async function loadReview(review, { down = false, refused = false } = {}) {
   let listener;
   const responses = {
-    "/api/config": { default_variant: "diagram_walkthrough_v24" },
-    "/runs/7/diagram_walkthrough_v24/review.json": review,
+    "/api/config": { default_variant: "brief" },
+    "/runs/7/brief/review.json": review,
   };
   const saved = { chrome: globalThis.chrome, fetch: globalThis.fetch };
   globalThis.chrome = {
@@ -47,7 +47,7 @@ test("a run of an older schema, or one without boxes, asks to be re-run", async 
 
 test("the run shown is the server's default variant, and nothing else is looked for", async () => {
   const run = await loadReview({ ...REVIEW_BASE, schema: 4, nodes: {} });
-  assert.equal(run.variant, "diagram_walkthrough_v24");
+  assert.equal(run.variant, "brief");
 });
 
 test("a server that is down, or one that refuses the token, leaves no run to show", async () => {

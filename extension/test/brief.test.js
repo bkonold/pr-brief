@@ -598,7 +598,7 @@ const WALK_REVIEW = {
   schema: 4,
   repo: "acme/widgets",
   pr: 7,
-  variant: "v24",
+  variant: "brief",
   diagramSvg: "<svg></svg>",
   nodes: {
     a: { title: "Screen", files: ["src/ui.js"], stops: [1, 3] },

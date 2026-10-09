@@ -9,7 +9,7 @@ cannot change them.
 
 | Variant | What it is |
 | --- | --- |
-| `diagram_walkthrough_v25` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
+| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
 
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.

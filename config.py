@@ -22,7 +22,7 @@ from typing import Any, Sequence
 ROOT = Path(__file__).parent
 HOME = Path(os.environ["PR_BRIEF_HOME"]).expanduser() if os.environ.get("PR_BRIEF_HOME") else ROOT
 CONFIG_ENV = "PR_BRIEF_CONFIG"
-DEFAULT_VARIANT = "diagram_walkthrough_v25"
+DEFAULT_VARIANT = "brief"
 
 KEYS: frozenset[str] = frozenset({
     "repo", "source_checkout", "github_url", "mirror_name",

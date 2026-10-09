@@ -1,8 +1,7 @@
 # PR Brief extension
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
-(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 4,
-variant v25) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 4) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
 where it describes the page, and the Forgejo selectors are in their own table at the end.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
