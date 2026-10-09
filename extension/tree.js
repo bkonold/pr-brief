@@ -77,26 +77,14 @@
     return [{ id: "all", label: "All", count: all }, ...sized.map((id) => ({ id, label: FILE_SET_LABELS[id], count: sets[id].length }))];
   }
 
-  // The file set a chip selects: { id, paths, lines } with the review's contract or data lines of that set; null for "All"
-  // and for a set the review does not have.
+  // The file set a chip selects: { id, paths }; null for "All" and for a set the review does not have.
   function fileSetOf(review, id) {
     const paths = Object.hasOwn(FILE_SET_LABELS, id) ? review.file_sets?.[id] : null;
-    return paths?.length ? { id, paths, lines: review[id] ?? [] } : null;
+    return paths?.length ? { id, paths } : null;
   }
 
   function baseName(path) {
     return path.slice(path.lastIndexOf("/") + 1);
-  }
-
-  // The places a contract or data line links to, each { label, loc: { path, side, line } }, the first being where its
-  // code is. A contract line's code is its source, with the spec as the second link; a line with no source links to the
-  // spec alone. A data line's code is its entity, with the migration second, or the migration alone with no entity.
-  function lineLinks(kind, line) {
-    const second = kind === "contract" ? "spec" : "migration";
-    const there = line.path ? [{ label: second, loc: { path: line.path, side: line.side, line: line.line } }] : [];
-    if (!line.source) return there;
-    const { path, side, line: number } = line.source;
-    return [{ label: `${baseName(path)}:${number}`, loc: { path, side, line: number } }, ...there];
   }
 
   // Keeps an empty slot of the callout's nav column in the layout so the other slot stays where it is, while the slot
@@ -198,49 +186,13 @@
     return element;
   }
 
-  // The row of a file in the selected set that no stop is on: it jumps to the file's header.
-  function noStopRow(path, handlers) {
-    const main = button("prf-head-main", undefined, () => handlers.onSelectFile(path));
-    const title = make("span", "prf-title");
-    title.append(make("span", "prf-name", "no stop"), fileName(path));
-    main.append(make("span", "prf-num", "–"), title);
-    const header = make("div", "prf-head");
-    header.append(main);
-    const element = make("section", "prf-group prf-nostop");
-    element.dataset.path = path;
-    element.append(header);
-    return element;
-  }
-
-  // The contract or data lines of the selected set, each with links to its code and its spec or migration.
-  function lineTable(fileSet, handlers) {
-    const table = make("div", "prf-lines");
-    table.append(make("div", "prf-lines-title", FILE_SET_LABELS[fileSet.id]));
-    for (const line of fileSet.lines) {
-      const row = make("div", "prf-line");
-      const text = make("div", "prf-line-text");
-      text.append(...(line.impact ? [make("span", "prf-line-impact", `${line.impact} · `)] : []), ...messageNodes(line.text));
-      const links = make("div", "prf-line-links");
-      for (const { label, loc } of lineLinks(fileSet.id, line)) links.append(button("prf-line-link", label, () => handlers.onJump(loc)));
-      row.append(text, links);
-      table.append(row);
-    }
-    return table;
-  }
-
-  // With a file set selected the list is the stops on its files, in walkthrough order, then the set's files that have no
-  // stop, then the set's lines.
+  // With a file set selected the list is the stops on its files, in walkthrough order: empty when none of them is.
   function stopList(state, handlers) {
     const list = make("div", "prf-groups");
     const files = state.fileSet ? new Set(state.fileSet.paths) : null;
     const stops = files ? state.stops.filter((stop) => files.has(stop.path)) : state.stops;
     if (!files && stops.length === 0) list.append(make("p", "prf-banner", "This run has no stops to walk through."));
     for (const stop of stops) list.append(stopRow(stop, state, handlers));
-    if (files) {
-      const stopped = new Set(state.stops.map((stop) => stop.path));
-      for (const path of state.fileSet.paths.filter((path) => !stopped.has(path))) list.append(noStopRow(path, handlers));
-      if (state.fileSet.lines.length) list.append(lineTable(state.fileSet, handlers));
-    }
     return list;
   }
 
@@ -258,7 +210,7 @@
   }
 
   // state: { mode: "review" | "github", stops, selectedStop, pageSha, note, chips, fileSet }
-  // handlers: onMode(mode), onSelectStop(i), onFileSet(id), onSelectFile(path), onJump(loc)
+  // handlers: onMode(mode), onSelectStop(i), onFileSet(id)
   function render(review, state, handlers) {
     const mount = mountPoint();
     if (!mount) return;
@@ -363,7 +315,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, stopsOf, fileChips, fileSetOf, lineLinks, stopCallout, bar, stopList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, stopsOf, fileChips, fileSetOf, stopCallout, bar, stopList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

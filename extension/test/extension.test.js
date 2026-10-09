@@ -1124,11 +1124,10 @@ test("fileChips gives no chips to a run without a non-empty set, and All never c
   assert.equal(fileChips({ file_sets: SETS }, 0)[0].count, 2);
 });
 
-test("fileSetOf is the chosen set with its lines, and nothing for All, an empty set or an unknown name", () => {
+test("fileSetOf is the chosen set, and nothing for All, an empty set or an unknown name", () => {
   const { fileSetOf } = require("../tree.js");
-  const contract = [{ text: "x" }];
-  const review = { file_sets: { contract: ["a.js"], data: [] }, contract, data: [] };
-  assert.deepEqual(fileSetOf(review, "contract"), { id: "contract", paths: ["a.js"], lines: contract });
+  const review = { file_sets: { contract: ["a.js"], data: [] } };
+  assert.deepEqual(fileSetOf(review, "contract"), { id: "contract", paths: ["a.js"] });
   assert.equal(fileSetOf(review, "all"), null);
   assert.equal(fileSetOf(review, "data"), null);
   assert.equal(fileSetOf(review, "toString"), null);
@@ -1156,65 +1155,28 @@ test("the chips sit under the mode toggle, mark the chosen one and choose a set 
   }
 });
 
-test("with a set chosen the list is its stops in walkthrough order, then its files with no stop, which jump to the file", () => {
+test("with a set chosen the list is only the stops on its files, in walkthrough order, each with its file's name", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const fileSet = { id: "contract", paths: ["c.md", "b.js", "api.json"], lines: [] };
-    const picked = [];
-    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet }, { onSelectStop() {}, onSelectFile: (path) => picked.push(path) });
-    const rows = [...byClass(list, "prf-stop"), ...byClass(list, "prf-nostop")];
+    const fileSet = { id: "contract", paths: ["c.md", "b.js", "api.json"] };
+    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet }, { onSelectStop() {} });
     assert.deepEqual(
-      rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-file")[0].textContent]),
-      [["2", "Query filters", "b.js"], ["3", "Docs", "c.md"], ["–", "no stop", "api.json"]],
+      list.children.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-file")[0].textContent]),
+      [["2", "Query filters", "b.js"], ["3", "Docs", "c.md"]],
     );
-    assert.deepEqual(list.children.map((row) => row.className.split(" ")[1]), ["prf-stop", "prf-stop", "prf-nostop"]);
-    for (const row of byClass(list, "prf-nostop")) byClass(row, "prf-head-main")[0].listeners.click();
-    assert.deepEqual(picked, ["api.json"]);
+    assert.deepEqual(list.children.map((row) => row.className.split(" ")[1]), ["prf-stop", "prf-stop"]);
   } finally {
     delete globalThis.document;
   }
 });
 
-test("a set with no stop on any of its files lists only no-stop rows, not the banner for a run with no stops", () => {
+test("a set with no stop on any of its files gives an empty list, not the banner for a run with no stops", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const list = stopList({ stops: [], selectedStop: null, fileSet: { id: "data", paths: ["m.sql"], lines: [] } }, { onSelectFile() {} });
-    assert.equal(byClass(list, "prf-banner").length, 0);
-    assert.equal(byClass(list, "prf-nostop").length, 1);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a contract line links to its source and its spec; a data line to its entity and migration, or the migration alone", () => {
-  const { lineLinks } = require("../tree.js");
-  const source = { path: "src/models/Customer.java", side: "R", line: 18 };
-  const contract = { path: "openapi.json", side: "R", line: 40, source };
-  assert.deepEqual(lineLinks("contract", contract), [
-    { label: "Customer.java:18", loc: source },
-    { label: "spec", loc: { path: "openapi.json", side: "R", line: 40 } },
-  ]);
-  assert.deepEqual(lineLinks("contract", { ...contract, source: null }), [{ label: "spec", loc: { path: "openapi.json", side: "R", line: 40 } }]);
-  assert.deepEqual(lineLinks("data", { path: "db/V2__items.sql", side: "R", line: 3, source }).map((link) => link.label), ["Customer.java:18", "migration"]);
-  assert.deepEqual(lineLinks("data", { path: "db/V2__items.sql", side: "R", line: 3, source: null }).map((link) => link.label), ["migration"]);
-  assert.deepEqual(lineLinks("contract", { path: null, source: null }), []);
-});
-
-test("the set's table lists each line with its impact and text, and its links jump to the place", () => {
-  const { stopList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const source = { path: "Customer.java", side: "R", line: 18 };
-    const lines = [{ impact: "consumers may break", text: "`Customer.nickname` added", path: "openapi.json", side: "R", line: 40, source }];
-    const jumped = [];
-    const list = stopList({ stops: [], fileSet: { id: "contract", paths: ["Customer.java"], lines } }, { onSelectFile() {}, onJump: (loc) => jumped.push(loc) });
-    const [row] = byClass(list, "prf-line");
-    assert.equal(byClass(row, "prf-line-impact")[0].textContent, "consumers may break · ");
-    assert.deepEqual(byClass(row, "prf-line-link").map((link) => link.textContent), ["Customer.java:18", "spec"]);
-    for (const link of byClass(row, "prf-line-link")) link.listeners.click();
-    assert.deepEqual(jumped, [source, { path: "openapi.json", side: "R", line: 40 }]);
+    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet: { id: "data", paths: ["m.sql"] } }, {});
+    assert.deepEqual(list.children, []);
   } finally {
     delete globalThis.document;
   }

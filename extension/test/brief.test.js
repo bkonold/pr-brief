@@ -862,14 +862,12 @@ test("a context box, which covers no file, and a box the review does not list do
 test("the sidebar's state and handlers are the stops and the mode", async () => {
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJump", "onMode", "onSelectFile", "onSelectStop"]);
+  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onMode", "onSelectStop"]);
 });
 
 const SET_REVIEW = {
   ...WALK_REVIEW,
   file_sets: { contract: ["src/api.js", "api.json"], data: [] },
-  contract: [{ impact: "additive", text: "x", path: "api.json", side: "R", line: 5, source: { path: "src/api.js", side: "R", line: 12 } }],
-  data: [],
 };
 
 test("the chips are All with the page's changed-file count and each non-empty set, and the whole tree shows until one is chosen", async () => {
@@ -890,22 +888,10 @@ test("choosing a chip narrows the pane and the tree to the set without moving th
   centered.length = 0;
   jumps.length = 0;
   await renders.at(-1).handlers.onFileSet("contract");
-  assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"], lines: SET_REVIEW.contract });
+  assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"] });
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
   assert.deepEqual([centered, jumps, fileJumps, renders.at(-1).state.selectedStop], [[], [], [], 1]);
   await renders.at(-1).handlers.onFileSet("all");
   assert.equal(renders.at(-1).state.fileSet, null);
   assert.equal(filters.at(-1), null);
-});
-
-test("a no-stop row lands on its file's header and marks it, and a link in the set's table jumps to its line or file", async () => {
-  const { renders, scrolled, boxes, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW });
-  await settle();
-  await renders.at(-1).handlers.onFileSet("contract");
-  await renders.at(-1).handlers.onSelectFile("api.json");
-  assert.deepEqual([scrolled, plain(boxes.at(-1)), renders.at(-1).state.selectedStop], [["api.json"], ["api.json"], null]);
-  jumps.length = 0;
-  await renders.at(-1).handlers.onJump({ path: "src/api.js", side: "R", line: 12 });
-  await renders.at(-1).handlers.onJump({ path: "api.json", side: null, line: null });
-  assert.deepEqual([jumps, fileJumps], [[["src/api.js", "R", 12, undefined]], [["api.json", undefined]]]);
 });

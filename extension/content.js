@@ -272,12 +272,6 @@
     }
     const path = box.files[0];
     if (!path) return;
-    await selectFile(session, path, nodeId);
-  }
-
-  // Marks a file active with no stop selected, and lands its header below the sticky chrome. `nodeId` is the box the file
-  // is selected through, if any.
-  async function selectFile(session, path, nodeId = null) {
     const mine = startSelection(session);
     await change(session, () => {
       leaveLine();
@@ -288,7 +282,7 @@
       session.activeBox = activation(path);
     });
     if (current !== session || !live() || session.selection !== mine) return;
-    if (nodeId) diagram.centerOn([nodeId]);
+    diagram.centerOn([nodeId]);
     await landOnFile(session, path);
   }
 
@@ -310,9 +304,7 @@
           },
         ),
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
-      onSelectFile: (path) => selectFile(session, path),
       onFileSet: (id) => change(session, () => (session.fileSet = id)),
-      onJump: (loc) => jumpToStop(session, loc),
     };
   }
 
