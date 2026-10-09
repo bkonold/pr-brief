@@ -8,8 +8,8 @@ usage: run.py <pr> [--variant NAME] [--with-body] [--runner claude|copilot] [--m
 table (see config.py). --variant defaults to the config's `default_variant`, else the tool's current
 variant.
 
---runner defaults to claude. A copilot run uses the CLI's own stored login and is written beside the Claude run, to
-runs/<key>/<variant>_copilot/, with the same variant settings; --model defaults to the runner's entry in
+--runner defaults to claude. A copilot run uses the CLI's own stored login; either runner writes
+runs/<key>/<variant>/, and run.json records the runner and model. --model defaults to the runner's entry in
 local.toml's [model] table, else claude-opus-5-5 for claude and claude-opus-5.5 for copilot.
 
 --host defaults to local.toml's `host`, else github. --repo is the host's `owner/name` and is required
@@ -40,7 +40,7 @@ config.use_config_flag(sys.argv)
 from config import DEFAULT_VARIANT, HOME, ROOT, load_local, variant_file  # noqa: E402
 from context_pack import Pack, build, ensure_commits  # noqa: E402
 from hosts import get_host, host_names, run_key  # noqa: E402
-from runners import CLAUDE, COPILOT, RUNNERS, clean_answer, command_line, invocation, resolve_model, run_dir_name  # noqa: E402
+from runners import CLAUDE, COPILOT, RUNNERS, clean_answer, command_line, invocation, resolve_model  # noqa: E402
 from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status  # noqa: E402
 
 UPSTREAM_PROMPT_SHA = "5e9fd335372da85f9c345392337b6f31615af803"
@@ -187,7 +187,7 @@ def execute(progress: Progress) -> int:
             print(f"repo context: {len(context_md)} chars, ~{pack.stats()['estimated_tokens']} tokens", file=sys.stderr)
         return 0
 
-    run_dir: Path = HOME / "runs" / key / run_dir_name(a.variant, a.runner)
+    run_dir: Path = HOME / "runs" / key / a.variant
     run_dir.mkdir(parents=True, exist_ok=True)
     for stale in ("error.txt", "body.md", "body.html", "context.md", "contract.json", "answer.raw.txt"):
         (run_dir / stale).unlink(missing_ok=True)

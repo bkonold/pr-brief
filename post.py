@@ -39,7 +39,7 @@ def run_gh(args: list[str], stdin: str | None = None) -> str:
 
 
 def find_run(path: Path) -> Path:
-    """`path` when it is a run folder; else its newest subfolder that is one."""
+    """`path` when it is a run folder; else its newest subfolder that is one, as in `runs/<pr>/`, which holds one folder per variant."""
     if (path / "review.json").is_file():
         return path
     runs: list[Path] = sorted((d for d in path.iterdir() if (d / "review.json").is_file()),

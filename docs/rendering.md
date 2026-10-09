@@ -115,4 +115,4 @@ data the run used), `run.json` (including `diagram_edges`, the labelled and tota
 `body.md`, `body.html`, `diagram.svg`, `review.json` (the extension reads it),
 `context.md` and `contract.json` (when the variant has a context pack with a contract section) and `error.txt` on failure or when the renderer
 dropped something. Open any `.html` straight from disk. `runs/<key>/status.json` (beside the variant folders) says how far the latest run has got. A rerun of the same PR and variant overwrites its
-folder. `runs/` is git-ignored: it holds the diffs and prompts of whatever repository you ran against.
+folder, whichever runner made it; `run.json` records the `runner` and `model`. `runs/` is git-ignored: it holds the diffs and prompts of whatever repository you ran against.

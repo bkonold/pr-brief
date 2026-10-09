@@ -70,12 +70,6 @@ def invocation(runner: str, system: str, user: str, model: str, environ: Mapping
     raise ValueError(f"unknown runner {runner!r}")
 
 
-def run_dir_name(variant: str, runner: str) -> str:
-    """The folder under runs/<key>/ a run is written to: a Claude run keeps the variant's name, any other runner's
-    run sits beside it as `<variant>_<runner>`."""
-    return variant if runner == CLAUDE else f"{variant}_{runner}"
-
-
 def is_mapping(text: str) -> bool:
     """Whether `text` is a YAML mapping once a fence around the whole of it is removed, as render.py reads an answer."""
     stripped: str = re.sub(r"^```(?:yaml)?\n|\n```$", "", text.strip())
