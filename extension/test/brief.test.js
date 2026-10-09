@@ -226,6 +226,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const revealed = [];
   const boxes = [];
   const scrolled = [];
+  const filters = [];
   const prFocus = {
     page: {
       name: "Fake",
@@ -246,6 +247,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       lineAnchor: async (path, side, line) => `${path}${side}${line}`,
       fileAnchor: async (path) => `diff-${path}`,
       showCallouts: (entries) => callouts.push(entries),
+      filterTree: (paths) => filters.push(paths),
+      changedFileCount: () => 9,
       jumpToLine: async (...args) => jumps.push(args),
       jumpToFile: async (...args) => fileJumps.push(args),
     },
@@ -268,6 +271,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
       stopsOf: require("../tree.js").stopsOf,
+      fileChips: require("../tree.js").fileChips,
+      fileSetOf: require("../tree.js").fileSetOf,
       stopCallout: (stop, stops, onGo, nodes) => ({ stop, stops, onGo, nodes }),
       revealStop: (i) => revealed.push(i),
       remove() {},
@@ -295,7 +300,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled };
+  return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -677,7 +682,7 @@ test("the sidebar opens with every stop listed and the first one current", async
   await settle();
   const { state } = renders.at(-1);
   assert.deepEqual([state.stops.map((stop) => stop.i), state.selectedStop], [[1, 2, 3, 4], 1]);
-  assert.deepEqual(Object.keys(state).sort(), ["mode", "note", "pageSha", "selectedStop", "stops"]);
+  assert.deepEqual(Object.keys(state).sort(), ["chips", "fileSet", "mode", "note", "pageSha", "selectedStop", "stops"]);
   assert.deepEqual(plain(emphasized.at(-1)), ["a"]);
 });
 
@@ -857,5 +862,50 @@ test("a context box, which covers no file, and a box the review does not list do
 test("the sidebar's state and handlers are the stops and the mode", async () => {
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onMode", "onSelectStop"]);
+  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJump", "onMode", "onSelectFile", "onSelectStop"]);
+});
+
+const SET_REVIEW = {
+  ...WALK_REVIEW,
+  file_sets: { contract: ["src/api.js", "api.json"], data: [] },
+  contract: [{ impact: "additive", text: "x", path: "api.json", side: "R", line: 5, source: { path: "src/api.js", side: "R", line: 12 } }],
+  data: [],
+};
+
+test("the chips are All with the page's changed-file count and each non-empty set, and the whole tree shows until one is chosen", async () => {
+  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  await settle();
+  assert.deepEqual(plain(renders.at(-1).state.chips), [
+    { id: "all", label: "All", count: 9 },
+    { id: "contract", label: "Contract", count: 2 },
+  ]);
+  assert.equal(renders.at(-1).state.fileSet, null);
+  assert.equal(filters.at(-1), null);
+});
+
+test("choosing a chip narrows the pane and the tree to the set without moving the diagram, and All restores them", async () => {
+  const { renders, filters, centered, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onSelectStop(1);
+  centered.length = 0;
+  jumps.length = 0;
+  await renders.at(-1).handlers.onFileSet("contract");
+  assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"], lines: SET_REVIEW.contract });
+  assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
+  assert.deepEqual([centered, jumps, fileJumps, renders.at(-1).state.selectedStop], [[], [], [], 1]);
+  await renders.at(-1).handlers.onFileSet("all");
+  assert.equal(renders.at(-1).state.fileSet, null);
+  assert.equal(filters.at(-1), null);
+});
+
+test("a no-stop row lands on its file's header and marks it, and a link in the set's table jumps to its line or file", async () => {
+  const { renders, scrolled, boxes, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onFileSet("contract");
+  await renders.at(-1).handlers.onSelectFile("api.json");
+  assert.deepEqual([scrolled, plain(boxes.at(-1)), renders.at(-1).state.selectedStop], [["api.json"], ["api.json"], null]);
+  jumps.length = 0;
+  await renders.at(-1).handlers.onJump({ path: "src/api.js", side: "R", line: 12 });
+  await renders.at(-1).handlers.onJump({ path: "api.json", side: null, line: null });
+  assert.deepEqual([jumps, fileJumps], [[["src/api.js", "R", 12, undefined]], [["api.json", undefined]]]);
 });

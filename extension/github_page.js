@@ -9,6 +9,9 @@
   const BLOCK_PATH = "[data-file-path]";
   const BLOCK_ANCHOR = "table[data-diff-anchor]";
   const TREE_HOST = '#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]';
+  // Primer's tree: a directory's row carries aria-expanded and a file's does not.
+  const TREE_FILE = 'li[role="treeitem"]:not([aria-expanded])';
+  const TREE_DIR = 'li[role="treeitem"][aria-expanded]';
   const LINE_CELL = "[data-line-anchor]";
   const DIFF_CONTAINER = "#diff-comparison-viewer-container";
   const DIFF_CONTENT = `${DIFF_CONTAINER} [class*="prc-PageLayout-ContentWrapper"]`;
@@ -105,6 +108,8 @@
     contentSelector: DIFF_CONTENT,
     diagramHost,
     treeHost,
+    treeFileSelector: TREE_FILE,
+    treeDirSelector: TREE_DIR,
     descriptionHost: () => document.querySelector(DESCRIPTION),
   });
 

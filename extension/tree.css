@@ -313,3 +313,90 @@
 .prf-callout-prev:hover {
   background: var(--bgColor-neutral-muted, #818b981f);
 }
+
+.prf-file-hidden {
+  display: none !important;
+}
+
+.prf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1 0 100%;
+  gap: 6px;
+}
+
+.prf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fgColor-default, #1f2328);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--borderColor-default, #d1d9e0);
+  border-radius: 999px;
+}
+
+.prf-chip-count {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-chip[aria-pressed="true"] {
+  color: var(--fgColor-default, #1f2328);
+  background: var(--bgColor-accent-muted, #ddf4ff);
+  border-color: var(--borderColor-accent-emphasis, #0969da);
+}
+
+.prf-file {
+  display: block;
+  font-size: 12px;
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-nostop .prf-name {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-lines {
+  margin-top: 12px;
+  border-top: 1px solid var(--borderColor-muted, #d1d9e0);
+}
+
+.prf-lines-title {
+  padding: 8px 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-line {
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.prf-line-impact {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-line-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.prf-line-link {
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fgColor-accent, #0969da);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.prf-line-link:hover {
+  text-decoration: underline;
+}
