@@ -41,7 +41,6 @@ Everything that names one repository lives in files that git ignores, so the too
 ```bash
 cp local.example.toml local.toml          # clone location, GitHub URL, OpenAPI path, ...
 cp reach.example.toml reach.toml          # which app each path ships in
-cp archetypes.example.toml archetypes.toml
 ```
 
 `local.example.toml` explains each key. All of them are optional. When `local.toml` or a key is missing,
@@ -52,7 +51,7 @@ the context-pack section that needs it is skipped, with the reason recorded unde
 ### Keeping settings and runs outside the tool
 
 Set `PR_BRIEF_HOME` to a folder and the tool reads and writes everything there instead of in its own
-folder: `local.toml`, `reach.toml`, `archetypes.toml` (and their `.example.toml`
+folder: `local.toml`, `reach.toml` (and its `.example.toml`
 fallbacks), `compare.toml`, `runs/` and the `.cache/` mirror. Variants are looked up in
 `$PR_BRIEF_HOME/variants/` first, then in the tool's own `variants/`, so a variant of the same name there
 shadows the tool's. Code, `vendor/` and `extension/` always come from the tool. Unset, the variable defaults
@@ -86,10 +85,6 @@ and carry this tool as a submodule.
 #   --variants a,b    these variants, in this order, instead of compare.toml's
 #   --all             every variant that has a run for the PR
 ```
-
-`archetypes.toml` lists the kinds of change in display order and maps PR numbers to them; `compare.py`
-groups the PR index (`runs/index.html`) by kind, with unmapped PRs under Unclassified, and falls back to
-a plain list when the file is missing.
 
 Each run writes `runs/<key>/<variant>/`, where `<key>` is the PR number on GitHub and `fj-<number>` on
 Forgejo, so the two hosts' numbers cannot collide: `prompt.txt`, `answer.yaml` (raw model output), `pr.json` (the PR
@@ -182,7 +177,7 @@ from `GITHUB_WORKSPACE`, so the checkout needs `fetch-depth: 0`, and a commit it
 job runs in. The Action also checks that the runner's Chrome can start; when its sandbox cannot, the diagram is drawn
 through a wrapper that adds `--no-sandbox`. Only the page `render.py` writes is ever opened.
 
-The settings file takes the keys of `local.example.toml`, plus the reach and archetype tables inline, so one file holds
+The settings file takes the keys of `local.example.toml`, plus the reach table inline, so one file holds
 them all. `repo` is not needed in it: the Action passes the workflow's repository.
 
 ```toml
@@ -200,8 +195,8 @@ globs = ["api/**", "model/**"]
 ```
 
 The same file works locally: `run.py 42 --repo owner/name --config .github/pr-brief.toml` (and `render.py <run dir>
---config <file>`) read it in place of `local.toml`, and a `[reach]` or `[archetypes]` table in it replaces
-`reach.toml` and `archetypes.toml`. The file is read from the PR's checkout, so a PR that edits it changes its own
+--config <file>`) read it in place of `local.toml`, and a `[reach]` table in it replaces
+`reach.toml`. The file is read from the PR's checkout, so a PR that edits it changes its own
 brief. The example workflow skips fork PRs, so that only people who can already use the secret can change it.
 
 `run.py` prints the Copilot command line it starts (arguments only: the prompt goes on stdin and no token is in it), so

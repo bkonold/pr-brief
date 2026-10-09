@@ -20,13 +20,11 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from config import HOME, config_section, variant_file
+from config import HOME, variant_file
 from hosts import run_label, run_order
 from runners import CLAUDE, COPILOT, run_dir_name
 
 RUNS = HOME / "runs"
-ARCHETYPES: dict[str, Any] | None = config_section("archetypes")
-UNCLASSIFIED = "Unclassified"
 
 # The labels the browser extension's dropdown shows; a variant without one is listed under its name.
 VARIANT_LABELS: dict[str, str] = {
@@ -93,33 +91,6 @@ def pr_title(pr_dir: Path) -> str:
     return ""
 
 
-def pr_author(pr_dir: Path) -> str:
-    for pr_json in sorted(pr_dir.glob("*/pr.json")):
-        login: str | None = (json.loads(pr_json.read_text()).get("author") or {}).get("login")
-        if login:
-            return login
-    return ""
-
-
-def archetype_table(prs: list[Path]) -> str:
-    config: dict[str, Any] = ARCHETYPES
-    assigned: dict[str, str] = config["prs"]
-    groups: list[str] = [*config["order"], UNCLASSIFIED]
-    rows: list[str] = []
-    for group in groups:
-        members: list[Path] = sorted((d for d in prs if archetype_of(d.name, assigned, config["order"]) == group), key=lambda d: run_order(d.name), reverse=True)
-        for i, d in enumerate(members):
-            label: str = html.escape(group) if i == 0 else ""
-            rows.append(f'<tr><td>{label}</td><td><a href="{d.name}/index.html">{run_label(d.name)}</a> {html.escape(pr_title(d))}</td>'
-                        f'<td>{html.escape(pr_author(d))}</td></tr>')
-    return f"<table><tr><th>Archetype</th><th>PR</th><th>Author</th></tr>{''.join(rows)}</table>"
-
-
-def archetype_of(pr: str, assigned: dict[str, str], order: list[str]) -> str:
-    name: str | None = assigned.get(pr)
-    return name if name in order else UNCLASSIFIED
-
-
 def page(title: str, body: str) -> str:
     return (f'<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{html.escape(title)}</title><style>{STYLE}</style></head><body>{body}</body></html>")
@@ -148,11 +119,8 @@ def main() -> int:
     (pr_dir / "index.html").write_text(page(title, f"<h1>{html.escape(title)}</h1><div class=\"cols\" style=\"grid-template-columns: repeat({len(run_dirs)}, minmax(0, 1fr))\">{''.join(column(d) for d in run_dirs)}</div>"))
 
     prs: list[Path] = sorted((d for d in RUNS.iterdir() if (d / "index.html").exists()), key=lambda d: run_order(d.name))
-    if ARCHETYPES:
-        listing: str = archetype_table(prs)
-    else:
-        items: str = "".join(f'<li><a href="{d.name}/index.html">{run_label(d.name)}</a> {html.escape(pr_title(d))}</li>' for d in prs)
-        listing = f"<ul>{items}</ul>"
+    items: str = "".join(f'<li><a href="{d.name}/index.html">{run_label(d.name)}</a> {html.escape(pr_title(d))}</li>' for d in prs)
+    listing: str = f"<ul>{items}</ul>"
     (RUNS / "index.html").write_text(page("PR description comparisons", f"<h1>PR description comparisons</h1>{listing}"))
     return 0
 

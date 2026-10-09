@@ -6,13 +6,12 @@ config, variants and runs outside the tool and point PR_BRIEF_HOME at itself. Co
 tool's own `variants/` always come from ROOT.
 
 `local.toml` holds the settings that name one repository (see `local.example.toml`). `reach.toml`
-and `archetypes.toml` describe one repository's layout; each ships as a
-`*.example.toml` and the real file is git-ignored. A missing file or an unset key switches off
-whatever depends on it.
+describes one repository's layout; it ships as `reach.example.toml` and the real file is git-ignored. A missing file
+or an unset key switches off whatever depends on it.
 
 `--config <file>` on run.py and render.py names another TOML to read in place of `local.toml`, with the same keys. It
-may also hold the `[reach]` and `[archetypes]` tables, so a repository can keep all its settings in one file; a table
-there takes the place of `reach.toml` or `archetypes.toml`. The flag is passed on to the programs a run starts through the
+may also hold the `[reach]` table, so a repository can keep all its settings in one file; a table there takes the
+place of `reach.toml`. The flag is passed on to the programs a run starts through the
 PR_BRIEF_CONFIG environment variable, which can be set instead of the flag.
 """
 import os
@@ -33,8 +32,10 @@ KEYS: frozenset[str] = frozenset({
     "host", "forgejo_url", "forgejo_token_file",
     "default_variant", "serve_repos",
     "chrome", "model",
-    "reach", "archetypes",
+    "reach",
 })
+# Tables that earlier versions read; a file that still has one is accepted and the table is not used.
+RETIRED_KEYS: frozenset[str] = frozenset({"archetypes"})
 
 
 def use_config_flag(argv: Sequence[str]) -> None:
@@ -64,7 +65,7 @@ def load_local() -> dict[str, Any]:
             raise SystemExit(f"the config file {path} does not exist")
         return {}
     settings: dict[str, Any] = tomllib.loads(path.read_text())
-    unknown: list[str] = sorted(set(settings) - KEYS)
+    unknown: list[str] = sorted(set(settings) - KEYS - RETIRED_KEYS)
     if unknown:
         raise SystemExit(f"{path.name} has unknown keys: {', '.join(unknown)}")
     return settings
