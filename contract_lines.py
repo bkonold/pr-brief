@@ -10,7 +10,7 @@ and added enum values. `contract_lines` runs both and returns the lines, worst i
 The lines are drawn by layout.py.
 """
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -38,12 +38,28 @@ TYPE_KEYS: frozenset[str] = frozenset({"type", "format", "$ref", "items", "oneOf
 
 @dataclass(frozen=True)
 class Member:
-    """What a line is about: a schema, an operation and its controller tag, or a migration file."""
+    """What a line is about: a schema, an operation and its controller tag, or a migration file. A contract member also
+    carries what the change is, for finding the source that declares it: `kind` is the change's kind (see
+    `contract_impact`), `name` the property (for an enum value, the property that holds the enum, when it is inline),
+    `value` the enum value, and `operation_id` the operation's id."""
     schema: str | None = None
     operation: str | None = None
     tag: str | None = None
     file: str | None = None
     table: str | None = None
+    kind: str | None = None
+    name: str | None = None
+    value: str | None = None
+    operation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class Source:
+    """A line of the PR's diff that declares what a contract or data line is about: the file, `side` (`R` for a line of
+    the new file, `L` for a removed line of the old file) and the line number."""
+    path: str
+    side: str
+    line: int
 
 
 @dataclass
@@ -238,6 +254,12 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
 
     def add(kind: str, sides: frozenset[str], subject: str, scope: str, member: Member, loc: tuple[str, int] | None,
             detail: str = "", types: tuple[str, str] | None = None) -> None:
+        if kind.startswith("enum_"):
+            member = replace(member, kind=kind, name=subject.partition(".")[2] or None, value=detail)
+        elif member.operation is None and kind not in ("schema_added", "schema_removed"):
+            member = replace(member, kind=kind, name=subject)
+        else:
+            member = replace(member, kind=kind)
         changes.append(Change(kind, contract_impact(kind, sides), sides, subject, scope, member, loc, detail, types))
 
     removed_ids: dict[str, str | None] = {f"{o['method']} {o['path']}": o.get("operation_id") for o in contract.get("removed_operations", [])}
@@ -254,26 +276,26 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
     extras: dict[str, Any] = {"moves": [], "removed": [], "added": [], "deprecated": []}
     for old, new in moves:
         loc = locator.operation(new[0], new[1], new[2], "+")
-        extras["moves"].append({"method": old[0], "from": old[1], "to": new[1], "loc": loc,
+        extras["moves"].append({"method": old[0], "from": old[1], "to": new[1], "loc": loc, "operation_id": new[2],
                                 "tag": tags.get(f"{new[0]} {new[1]}") or tags.get(f"{old[0]} {old[1]}")})
     for method, path, operation_id in removed:
         if (method, path, operation_id) in moved_old:
             continue
-        extras["removed"].append({"method": method, "path": path, "tag": tags.get(f"{method} {path}"),
+        extras["removed"].append({"method": method, "path": path, "tag": tags.get(f"{method} {path}"), "operation_id": operation_id,
                                   "loc": locator.operation(method, path, None, "-")})
     for method, path, operation_id in new_operations:
         if (method, path, operation_id) in moved_new:
             continue
-        extras["added"].append({"method": method, "path": path, "tag": tags.get(f"{method} {path}"),
+        extras["added"].append({"method": method, "path": path, "tag": tags.get(f"{method} {path}"), "operation_id": operation_id,
                                 "loc": locator.operation(method, path, operation_id, "+")})
     for item in deprecated.get("operations", []):
         label = f"{item['method']} {item['path']}"
         extras["deprecated"].append({"method": item["method"], "path": item["path"], "tag": tags.get(label),
-                                     "loc": locator.operation(item["method"], item["path"], None, "+- ", first_change=True)})
+                                     "operation_id": item.get("operation_id"), "loc": locator.operation(item["method"], item["path"], None, "+- ", first_change=True)})
 
     for item in changed.get("operations", []):
         label = f"{item['method']} {item['path']}"
-        member: Member = Member(operation=label, tag=tags.get(label))
+        member: Member = Member(operation=label, tag=tags.get(label), operation_id=item.get("operation_id"))
         loc = locator.operation(item["method"], item["path"], item.get("operation_id"), "+- ", first_change=True)
         for key in item["what"]:
             if key in COSMETIC_KEYS or key.startswith("x-"):
@@ -305,7 +327,7 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
                 label = f"{item['method']} {item['path']}"
                 if label in new_labels:
                     continue
-                member = Member(operation=label, tag=tags.get(label))
+                member = Member(operation=label, tag=tags.get(label), operation_id=item.get("operation_id"))
                 kinds_text: str = "+" if kind_word == "added" else "+- "
                 loc = locator.parameter(item.get("operation_id"), item["name"], kinds_text, rank, len(group))
                 if kind_word == "added":
@@ -334,7 +356,8 @@ def collect_changes(contract: dict[str, Any], lines: list[DiffLine]) -> tuple[li
         group_ops: list[str] = ranks[name]
         method, path = operation_parts(operation)
         loc = locator.parameter(operation_ids.get(operation), name, "+- ", group_ops.index(operation), len(group_ops))
-        add("parameter_required", frozenset({REQUEST}), name, operation, Member(operation=operation, tag=tags.get(operation)), loc)
+        add("parameter_required", frozenset({REQUEST}), name, operation,
+            Member(operation=operation, tag=tags.get(operation), operation_id=operation_ids.get(operation)), loc)
 
     introduced: set[str] = set(contract.get("added_required", []))
     required_fields: list[tuple[str, str]] = []
@@ -421,6 +444,7 @@ class Line:
     change: str = ""
     on: str = ""
     side: str = ""
+    sources: list[Source] = field(default_factory=list)
 
 
 def rank_of(impact: str | None, levels: tuple[str, ...] = CONTRACT_LEVELS) -> int:
@@ -480,8 +504,9 @@ def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], sp
     lines: list[Line] = []
     schema_operations: dict[str, list[str]] = contract.get("schema_operations", {})
 
-    def member_of(operation: dict[str, Any]) -> Member:
-        return Member(operation=f"{operation['method']} {operation['path']}", tag=operation.get("tag"))
+    def member_of(operation: dict[str, Any], kind: str) -> Member:
+        return Member(operation=f"{operation['method']} {operation['path']}", tag=operation.get("tag"), kind=kind,
+                      operation_id=operation.get("operation_id"))
 
     prefix_moves: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for move in extras["moves"]:
@@ -496,12 +521,14 @@ def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], sp
         if len(moves) >= SWEEP_MINIMUM:
             text: str = f"{code(old_prefix + '/*')} → {code(new_prefix + '/*')}, {len(moves)} endpoints"
             lines.append(Line(impact, text, spec_path, moves[0]["loc"],
-                              [member_of({"method": m["method"], "path": m["to"], "tag": m["tag"]}) for m in moves],
+                              [member_of({"method": m["method"], "path": m["to"], "tag": m["tag"], "operation_id": m.get("operation_id")}, "operation_moved")
+                               for m in moves],
                               change=f"moved, {len(moves)} endpoints", on=f"{code(old_prefix + '/*')} → {code(new_prefix + '/*')}"))
         else:
             for move in moves:
                 lines.append(Line(impact, f"{code(move['from'])} → {code(move['to'])}", spec_path, move["loc"],
-                                  [member_of({"method": move["method"], "path": move["to"], "tag": move["tag"]})],
+                                  [member_of({"method": move["method"], "path": move["to"], "tag": move["tag"], "operation_id": move.get("operation_id")},
+                                             "operation_moved")],
                                   change="moved", on=f"{code(move['from'])} → {code(move['to'])}"))
 
     for key, verb, kind in (("removed", "removed", "operation_removed"), ("added", "new", "operation_added"),
@@ -522,7 +549,7 @@ def operation_pattern_lines(extras: dict[str, Any], contract: dict[str, Any], sp
                                        if labels & set(schema_operations.get(schema, [])))
                     text += f" · {plural(schemas, 'new schema')}" if schemas else ""
                     change += f", +{plural(schemas, 'schema')}" if schemas else ""
-            lines.append(Line(impact, text, spec_path, first["loc"], [member_of(o) for o in members], change=change, on=on))
+            lines.append(Line(impact, text, spec_path, first["loc"], [member_of(o, kind) for o in members], change=change, on=on))
     return lines
 
 

@@ -53,13 +53,17 @@ re-run it instead.
   `added_required` (the newly required properties that the base schema did not declare, including in an inline `allOf`
   member; they read `added (required)`, and the others `now required`).
 
+  Each section ends with its file set as a short list of links to the files' diffs, `Contract files` and `Data files`
+  (see Sources and file sets below); a set with no files draws no list.
+
   The Contract table has the columns Impact, Side, Change, On and ↗. The Data table has Impact, Change, Table and ↗.
   Impact is the chip; Side is `request`, `response` or `both` (empty for an operation or a schema no operation reaches);
   Change says what changed, with a `+` or `−` before an added or removed name (`+ productType` required param,
   `+ note` optional, `− archived`, `price` number → string, `moved`, `new GET POST PATCH, +3 schemas`, `+ col` nullable,
   `position` default 0, constraint `uq_x` dropped, `backfill (UPDATE)`); On is the endpoint, schema or family, or for a
   sweep `9 schemas: A, B, C +6`; Table is the table, or for a statement with none the migration file. ↗ is the row's
-  only link, to its diff line or its file's diff; names are code, never links. A schema or table name longer than 40
+  link, to its diff line or its file's diff. A contract row whose line has a source (below) shows the source instead,
+  `Customer.java:18`, with `spec` as a second link to the spec's diff line. Names are code, never links. A schema or table name longer than 40
   characters is cut in its middle with the whole name as the element's `title` (an endpoint wraps instead), and each
   table sits in an `overflow-x: auto` container. The chips are `<span class="pill p0|p1|p2">`: the top level is a filled
   inverted chip, the second a bold outlined chip and the rest plain outlined chips. In `body.md`, where GitHub drops
@@ -100,12 +104,35 @@ re-run it instead.
   | none | anything else (a `DO` block, a grant): one line naming the kind and the file, such as `DO block in V9.sql`, with no chip |
 
   The same statement on one table is one line with its count; one column added or dropped on 3 or more tables is one line.
+- **Sources and file sets.** The spec is generated from the Java code, so a contract line can say where the code
+  declares what changed (`sources.py`). springdoc names a schema after the simple name of its record or class and an
+  operation's `operationId` after the controller method (an overload's `_1` suffix is dropped). Among the PR's changed
+  files, and never a test file, the renderer finds, in the diff at the head commit:
+
+  | Line | Source |
+  | --- | --- |
+  | property added, removed, changed or deprecated | the line declaring it as a record component or field, in the changed model file named `<Schema>.java` (or, for a nested record, the only changed model file that declares it) |
+  | schema added or removed | that file's `record <Schema>` or `class <Schema>` line |
+  | enum value added or removed | the line of the constant, in the schema's file, else a file named for the property that holds the enum (`Status` for `status`), else the only model file that declares it |
+  | operation added, removed, changed or moved, or a parameter change | the controller method whose name is the operationId, or the `@...Mapping` annotation above it when the diff shows that |
+  | data line with a table | the changed Java file whose `@Table(name = "<table>")` names it, at that annotation; when the diff does not show the annotation, the file at the head commit is read from the mirror |
+
+  A model file is a path containing one of `model_dirs` (default `models/frontend/`) and a controller one containing
+  one of `controller_dirs` (default `controllers/`); both are keys of `local.example.toml`. A line the PR's files do not
+  settle has no source (a removed endpoint whose controller the PR does not touch, for one). A line that stands for
+  several schemas or operations has the source of its first match in `source`, and every match in the file set.
+
+  `file_sets` is `{"contract": [paths], "data": [paths]}`, each sorted without repeats and empty when the PR has none.
+  Contract is the spec when the PR changes it, the source of every contract line and every changed file under a
+  `model_dirs` path; data is the migration files and the source of every data line.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,
   `files` the paths it covers and `stops` the numbers of the stops that land on it), `walkthrough: [{i, title, why, path,
-  side, line, node}]`, and the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
-  line}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell; `impact` is
-  null for a line with no impact and `side` and `line` are null when the diff does not settle the line.
+  side, line, node}]`, the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
+  line, source}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell;
+  `impact` is null for a line with no impact, `side` and `line` are null when the diff does not settle the line, and
+  `source` is `{path, side, line}` in the PR's own code or null (`side` is `L` for a removed line); and `file_sets`.
+  A run made before `source` and `file_sets` existed has neither.
 
 ## Run folder
 
