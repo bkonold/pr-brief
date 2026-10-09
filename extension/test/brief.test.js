@@ -870,9 +870,11 @@ const SET_REVIEW = {
   file_sets: { contract: ["src/api.js", "api.json"], data: [] },
 };
 
-test("the chips are All with the page's changed-file count and each non-empty set, and the whole tree shows until one is chosen", async () => {
+test("the chips are All with the page's changed-file count and each non-empty set, in Files mode only, with the whole tree shown until one is chosen", async () => {
   const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
   await settle();
+  assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.chips, renders.at(-1).state.fileSet]), ["review", [], null]);
+  await renders.at(-1).handlers.onMode("github");
   assert.deepEqual(plain(renders.at(-1).state.chips), [
     { id: "all", label: "All", count: 9 },
     { id: "contract", label: "Contract", count: 2 },
@@ -881,17 +883,31 @@ test("the chips are All with the page's changed-file count and each non-empty se
   assert.equal(filters.at(-1), null);
 });
 
-test("choosing a chip narrows the pane and the tree to the set without moving the diagram, and All restores them", async () => {
+test("choosing a chip in Files mode narrows the tree to the set without moving the diagram, and All restores it", async () => {
   const { renders, filters, centered, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW });
   await settle();
   await renders.at(-1).handlers.onSelectStop(1);
+  await renders.at(-1).handlers.onMode("github");
   centered.length = 0;
   jumps.length = 0;
   await renders.at(-1).handlers.onFileSet("contract");
   assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"] });
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
-  assert.deepEqual([centered, jumps, fileJumps, renders.at(-1).state.selectedStop], [[], [], [], 1]);
+  assert.deepEqual([centered, jumps, fileJumps], [[], [], []]);
   await renders.at(-1).handlers.onFileSet("all");
   assert.equal(renders.at(-1).state.fileSet, null);
   assert.equal(filters.at(-1), null);
+});
+
+test("Walkthrough mode shows no chips and leaves the tree whole, and Files mode applies the chosen chip again", async () => {
+  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onFileSet("contract");
+  await renders.at(-1).handlers.onMode("review");
+  assert.deepEqual(plain([renders.at(-1).state.chips, renders.at(-1).state.fileSet, filters.at(-1)]), [[], null, null]);
+  assert.equal(renders.at(-1).state.stops.length, WALK_REVIEW.walkthrough.length);
+  await renders.at(-1).handlers.onMode("github");
+  assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"] });
+  assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
 });

@@ -66,7 +66,7 @@
 
   const FILE_SET_LABELS = { contract: "Contract", data: "Data" };
 
-  // The chips that pick which files the pane lists: "All" with the PR's changed-file count, then each of the review's
+  // The chips that narrow the host's file tree to a set of files: "All" with the PR's changed-file count, then each of the review's
   // file sets that has files. A run with no such set, or an older run that has none, gets no chips. `changed` is how
   // many files the page shows as changed; the "All" count is never smaller than a set it contains.
   function fileChips(review, changed = 0) {
@@ -81,10 +81,6 @@
   function fileSetOf(review, id) {
     const paths = Object.hasOwn(FILE_SET_LABELS, id) ? review.file_sets?.[id] : null;
     return paths?.length ? { id, paths } : null;
-  }
-
-  function baseName(path) {
-    return path.slice(path.lastIndexOf("/") + 1);
   }
 
   // Keeps an empty slot of the callout's nav column in the layout so the other slot stays where it is, while the slot
@@ -169,7 +165,6 @@
     if (current) main.setAttribute("aria-current", "step");
     const title = make("span", "prf-title");
     title.append(make("span", "prf-name", stop.title));
-    if (state.fileSet) title.append(fileName(stop.path));
     main.append(make("span", "prf-num", String(stop.i)), title);
     const header = make("div", "prf-head");
     header.append(main);
@@ -180,19 +175,10 @@
     return element;
   }
 
-  function fileName(path) {
-    const element = make("span", "prf-file", baseName(path));
-    element.title = path;
-    return element;
-  }
-
-  // With a file set selected the list is the stops on its files, in walkthrough order: empty when none of them is.
   function stopList(state, handlers) {
     const list = make("div", "prf-groups");
-    const files = state.fileSet ? new Set(state.fileSet.paths) : null;
-    const stops = files ? state.stops.filter((stop) => files.has(stop.path)) : state.stops;
-    if (!files && stops.length === 0) list.append(make("p", "prf-banner", "This run has no stops to walk through."));
-    for (const stop of stops) list.append(stopRow(stop, state, handlers));
+    if (state.stops.length === 0) list.append(make("p", "prf-banner", "This run has no stops to walk through."));
+    for (const stop of state.stops) list.append(stopRow(stop, state, handlers));
     return list;
   }
 

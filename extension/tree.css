@@ -348,9 +348,3 @@
   background: var(--bgColor-accent-muted, #ddf4ff);
   border-color: var(--borderColor-accent-emphasis, #0969da);
 }
-
-.prf-file {
-  display: block;
-  font-size: 12px;
-  color: var(--fgColor-muted, #59636e);
-}

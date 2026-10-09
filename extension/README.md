@@ -9,23 +9,23 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - A toggle, "Walkthrough" / "Files". "Files" brings the host's own file tree back (GitHub's, or Forgejo's); the toggle
   stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
-- Under the toggle, chips that narrow the pane to a set of files: "All N" (the PR's changed files), "Contract N" and
-  "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
-  (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, and clicking one never
-  moves the diagram. See "File sets" below.
+- Under the toggle in "Files" mode, chips that narrow the host's tree to a set of files: "All N" (the PR's changed
+  files), "Contract N" and "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with
+  no contract or data files (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered,
+  and clicking one never moves the diagram. See "File sets" below. "Walkthrough" mode has no chips and is never filtered.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
   diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout.
 
 ## File sets
 
-"Contract" and "Data" narrow the pane to the files that make up the PR's API contract change and its data change.
+In "Files" mode, "Contract" and "Data" narrow the host's own tree to the files that make up the PR's API contract change
+and its data change.
 
-- In "Walkthrough" mode the list is only the stops whose file is in the set, in walkthrough order, each with its file's
-  name under its title. A set with no stop on its files gives an empty list. Nothing else is listed: the contract and
-  data lines and the set's other files appear in the PR brief, not in the pane.
-- In "Files" mode the host's own tree hides the files that are not in the set, and a directory left with no visible file.
-  The host re-renders its tree, so the hiding is applied again on every refresh, as the callouts are. A tree row is
-  matched to a file by the `#diff-…` link it holds.
+- The tree hides the files that are not in the set, and a directory left with no visible file. The host re-renders its
+  tree, so the hiding is applied again on every refresh, as the callouts are. A tree row is matched to a file by the
+  `#diff-…` link it holds.
+- The chosen chip is kept while the tab is open: switching to "Walkthrough" shows the whole tree again (the walkthrough
+  list is never filtered), and switching back to "Files" applies the chip again.
 - Every diff stays in the page, whichever chip is chosen.
 
 ## The walkthrough

@@ -1155,33 +1155,6 @@ test("the chips sit under the mode toggle, mark the chosen one and choose a set 
   }
 });
 
-test("with a set chosen the list is only the stops on its files, in walkthrough order, each with its file's name", () => {
-  const { stopList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const fileSet = { id: "contract", paths: ["c.md", "b.js", "api.json"] };
-    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet }, { onSelectStop() {} });
-    assert.deepEqual(
-      list.children.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-file")[0].textContent]),
-      [["2", "Query filters", "b.js"], ["3", "Docs", "c.md"]],
-    );
-    assert.deepEqual(list.children.map((row) => row.className.split(" ")[1]), ["prf-stop", "prf-stop"]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a set with no stop on any of its files gives an empty list, not the banner for a run with no stops", () => {
-  const { stopList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet: { id: "data", paths: ["m.sql"] } }, {});
-    assert.deepEqual(list.children, []);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
 function fakeTree(links) {
   class Row {
     constructor(href, ...inside) {

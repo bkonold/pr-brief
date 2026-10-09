@@ -122,7 +122,8 @@
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
     page.showCallouts(session.mode === "review" ? session.callouts : []);
-    const fileSet = tree.fileSetOf(session.review, session.fileSet);
+    const filesMode = session.mode !== "review";
+    const fileSet = filesMode ? tree.fileSetOf(session.review, session.fileSet) : null;
     page.filterTree(fileSet?.paths ?? null);
 
     const waited = Date.now() - session.startedAt;
@@ -135,7 +136,7 @@
         stops: session.stops,
         selectedStop: session.selectedStop,
         pageSha: page.headSha(),
-        chips: tree.fileChips(session.review, page.changedFileCount()),
+        chips: filesMode ? tree.fileChips(session.review, page.changedFileCount()) : [],
         fileSet,
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
