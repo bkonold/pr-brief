@@ -168,6 +168,9 @@ class Sections(unittest.TestCase):
         self.assertIn("### **Contract**\nAPI changes not checked\n", text)
         self.assertIn("### **Data**\nDatabase changes not checked\n", text)
 
+    def test_the_page_centres_the_diagram_when_it_is_narrower_than_the_page(self) -> None:
+        self.assertIn("pre.mermaid svg { display: block; margin-left: auto; margin-right: auto; }", render.markdown_page("# T"))
+
     def test_the_page_styles_the_three_chip_levels(self) -> None:
         page = render.markdown_page("# T")
         for rank in ("p0", "p1"):

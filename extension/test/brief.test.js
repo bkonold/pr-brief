@@ -930,3 +930,8 @@ test("the parameter is read next to other query parameters and a fragment", asyn
   await settle();
   assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.fileSet?.id]), ["github", "contract"]);
 });
+
+test("the card's style centres a diagram that is narrower than its panel", () => {
+  const style = fs.readFileSync(path.join(__dirname, "..", "brief.js"), "utf8");
+  assert.match(style, /\.paper svg \{[^}]*display: block;[^}]*margin-left: auto; margin-right: auto;/);
+});

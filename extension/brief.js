@@ -94,7 +94,7 @@
     details.diagram-box > summary { font-weight: 600; }
     .diagram { margin: 8px 0 0; }
     .paper { padding: 8px; overflow: auto; color: #1f2328; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; }
-    .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
+    .paper svg { display: block; width: 100%; max-width: 100%; height: auto; margin-left: auto; margin-right: auto; }
     .caption { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
     .pill.p0 { font-weight: 600; color: var(--surface); background: var(--fg); border-color: var(--fg); }
     .pill.p1 { font-weight: 600; color: var(--fg); border-color: var(--fg); }

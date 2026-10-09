@@ -740,6 +740,7 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  body { background: #fff; margin: 0; }
  .markdown-body { box-sizing: border-box; max-width: 980px; margin: 0 auto; padding: 32px 16px; }
  pre.mermaid { background: #fff; text-align: center; }
+ pre.mermaid svg { display: block; margin-left: auto; margin-right: auto; }
  .pill { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 7px; border: 1px solid #8c959f; border-radius: 999px; white-space: nowrap; vertical-align: 1px; }
  .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
  .pill.p1 { border-color: #1f2328; font-weight: 600; }
