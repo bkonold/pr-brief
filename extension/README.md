@@ -154,7 +154,7 @@ that expands it.
 
 ## Generating a brief on demand
 
-`serve.py` (see the top-level README) can start a run for the PR on the page. The extension never talks to it from a
+`serve.py` (see the [top-level README](../README.md#commands)) can start a run for the PR on the page. The extension never talks to it from a
 page script: `background.js` makes the calls (`startRun`, `runStatus`, `cancelRun` to `/api/run`, `/api/status`,
 `/api/cancel`) and adds the server token, which the options page keeps in `chrome.storage.local` ("Server token":
 paste the contents of `~/.config/pr-brief/token`). The server also requires an `Origin` of `chrome-extension://`,
