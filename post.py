@@ -9,9 +9,11 @@ usage: post.py <run dir> [--repo owner/name] [--pr N] [--dry-run]
 `gh api`, which reads GH_TOKEN from the environment.
 
 The comment is the brief's markdown with the diagram as a ```mermaid fence, which GitHub draws itself, a walkthrough whose
-stops link to their lines in the diff, and, last, a hidden `<!-- pr-brief:v1 ... -->` comment holding review.json (gzipped
-and base64) for the browser extension. The comment that gets updated is the earliest one by the token's user that holds
-that marker. A comment over GitHub's size limit loses the hidden payload first, then walkthrough stops, then the tail of
+stops link to their lines in the diff, a footer, a hidden `<!-- pr-brief:v1 -->` marker and, last, a collapsed "Brief data"
+block. The block is a code fence holding the base64 of the gzip of review.json plus the run's `diagram.svg` and
+`body.html` (as the keys `diagram_svg` and `body_html`, null when the run has no such file); the browser extension reads
+the brief from it, so a reader needs no server. The comment that gets updated is the earliest one by the token's user that
+holds the marker. A comment over GitHub's size limit loses the data block first, then walkthrough stops, then the tail of
 the brief; it is always posted.
 
 --find-only posts nothing and needs no run: it looks for that comment and exits 0 when there is one (printing its id),
@@ -22,6 +24,7 @@ import base64
 import gzip
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +35,10 @@ COMMENT_LIMIT = 65536
 # `gh api user` is refused for the token a workflow gets, whose comments are authored by this account.
 ACTIONS_LOGIN = "github-actions[bot]"
 NOT_FOUND_EXIT = 3
+DATA_SUMMARY = "Brief data"
+DIAGRAM_FILE = "diagram.svg"
+BODY_FILE = "body.html"
+DATA_BLOCK = re.compile(rf"<details><summary>{DATA_SUMMARY}</summary>\s*```\n(?P<data>[A-Za-z0-9+/=\s]*?)\n```\s*</details>")
 PAYLOAD_DROPPED = "<sub>The data the browser extension reads was left out: the comment was over GitHub's size limit.</sub>"
 TRIMMED = "<sub>The brief is cut short: it was over GitHub's size limit.</sub>"
 
@@ -73,19 +80,34 @@ def walkthrough_markdown(stops: list[dict[str, Any]], repo: str, pr: int | str, 
     return "### Walkthrough\n\n" + "\n".join(stop_markdown(s, repo, pr) for s in chosen) + "\n" if chosen else ""
 
 
-def payload(review: dict[str, Any]) -> str:
-    """review.json as the base64 of its gzip, with no timestamp so that the same review always gives the same text."""
-    text: bytes = json.dumps(review, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+def payload(review: dict[str, Any], diagram_svg: str | None = None, body_html: str | None = None) -> str:
+    """review.json plus the run's diagram and body page as the base64 of their gzip, with no timestamp so that the same
+    inputs always give the same text."""
+    data: dict[str, Any] = {**review, "diagram_svg": diagram_svg, "body_html": body_html}
+    text: bytes = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return base64.b64encode(gzip.compress(text, mtime=0)).decode("ascii")
 
 
+def data_block(encoded: str) -> str:
+    """The collapsed block that holds a payload: GitHub and Forgejo render it as a closed details element."""
+    return f"<details><summary>{DATA_SUMMARY}</summary>\n\n```\n{encoded}\n```\n\n</details>"
+
+
 def unpack(comment: str) -> dict[str, Any] | None:
-    """The review that a comment's hidden marker holds; None when it has no marker or no payload."""
-    start: int = comment.find(MARKER)
-    if start < 0:
-        return None
-    body: str = comment[start + len(MARKER):].split("-->", 1)[0].strip()
-    return json.loads(gzip.decompress(base64.b64decode(body))) if body else None
+    """The payload (review.json plus `diagram_svg` and `body_html`) that a comment holds; None when it holds none. It is
+    read from the "Brief data" block, or from the base64 inside the marker comment where a comment has its payload there."""
+    block: re.Match[str] | None = DATA_BLOCK.search(comment)
+    encoded: str = "".join(block["data"].split()) if block else ""
+    if not encoded:
+        start: int = comment.find(MARKER)
+        encoded = comment[start + len(MARKER):].split("-->", 1)[0].strip() if start >= 0 else ""
+    return json.loads(gzip.decompress(base64.b64decode(encoded))) if encoded else None
+
+
+def run_text(run_dir: Path, name: str) -> str | None:
+    """The text of a file of the run; None when it has none."""
+    file: Path = run_dir / name
+    return file.read_text(encoding="utf-8") if file.is_file() else None
 
 
 def brief_markdown(body: str) -> str:
@@ -111,25 +133,25 @@ def build_comment(run_dir: Path, repo: str | None = None, pr: int | str | None =
     stops: list[dict[str, Any]] = review["walkthrough"]
     footer: str = f"<sub>pr-brief · {review['variant']} · {review['head_sha'][:7]}</sub>"
 
-    def assemble(shown: int, notes: list[str], hidden: str, brief_text: str = brief) -> str:
-        parts: list[str] = ["## PR Brief", brief_text, walkthrough_markdown(stops, repo, pr, shown).strip(), *notes, footer, hidden]
+    def assemble(shown: int, notes: list[str], data: str, brief_text: str = brief) -> str:
+        parts: list[str] = ["## PR Brief", brief_text, walkthrough_markdown(stops, repo, pr, shown).strip(), *notes, footer, f"{MARKER} -->", data]
         return "\n\n".join(part for part in parts if part) + "\n"
 
-    full: str = assemble(len(stops), [], f"{MARKER} {payload(review)} -->")
+    encoded: str = payload(review, run_text(run_dir, DIAGRAM_FILE), run_text(run_dir, BODY_FILE))
+    full: str = assemble(len(stops), [], data_block(encoded))
     if len(full) <= limit:
         return full
-    bare: str = f"{MARKER} -->"
     for shown in range(len(stops), -1, -1):
         notes: list[str] = [PAYLOAD_DROPPED]
         if shown < len(stops):
             notes.append(f"<sub>The walkthrough shows the first {shown} of {len(stops)} stops: the comment was over GitHub's size limit.</sub>")
-        candidate: str = assemble(shown, notes, bare)
+        candidate: str = assemble(shown, notes, "")
         if len(candidate) <= limit:
             return candidate
     notes = [PAYLOAD_DROPPED, TRIMMED]
-    overhead: int = len(assemble(0, notes, bare, "")) + 10
+    overhead: int = len(assemble(0, notes, "", "")) + 10
     cut: str = brief[: max(limit - overhead, 0)].rsplit("\n", 1)[0] if limit > overhead else ""
-    return assemble(0, notes, bare, close_fences(cut).strip())[:limit]
+    return assemble(0, notes, "", close_fences(cut).strip())[:limit]
 
 
 def token_login(gh: Gh) -> str:
