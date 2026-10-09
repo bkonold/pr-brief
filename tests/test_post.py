@@ -202,6 +202,40 @@ class UpsertTest(unittest.TestCase):
         self.assertEqual(post.upsert(REPO, 7, "new", gh), "updated")
 
 
+class FindOnlyTest(unittest.TestCase):
+    def find(self, gh: FakeGh, *extra: str) -> tuple[int, str]:
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = post.main(["--find-only", "--repo", REPO, "--pr", "7", *extra], gh)
+        return code, out.getvalue()
+
+    def test_a_brief_comment_by_the_token_s_user_exits_0_and_prints_its_id(self) -> None:
+        gh = FakeGh(comments="31\toctocat\n")
+        self.assertEqual(self.find(gh), (0, "31\n"))
+        self.assertEqual(gh.writes(), [])
+
+    def test_no_brief_comment_exits_with_the_not_found_code_and_prints_nothing(self) -> None:
+        gh = FakeGh()
+        self.assertEqual(self.find(gh), (post.NOT_FOUND_EXIT, ""))
+        self.assertEqual(gh.writes(), [])
+
+    def test_a_brief_comment_by_someone_else_does_not_count(self) -> None:
+        self.assertEqual(self.find(FakeGh(comments="31\tsomeone-else\n")), (post.NOT_FOUND_EXIT, ""))
+
+    def test_it_needs_no_run_folder_and_both_the_repo_and_the_pr(self) -> None:
+        with self.assertRaises(SystemExit) as stop:
+            post.main(["--find-only", "--repo", REPO], FakeGh())
+        self.assertEqual(stop.exception.code, 2)
+
+    def test_a_failing_gh_is_an_error_and_not_a_missing_comment(self) -> None:
+        def refused(args: list[str], stdin: str | None = None) -> str:
+            raise subprocess.CalledProcessError(1, "gh")
+        with self.assertRaises(subprocess.CalledProcessError):
+            post.main(["--find-only", "--repo", REPO, "--pr", "7", "--dry-run"], refused)
+
+
 class FindRunTest(RunFolderTest):
     def test_a_run_folder_is_itself(self) -> None:
         run_dir = self.run_dir([stop(1)])
