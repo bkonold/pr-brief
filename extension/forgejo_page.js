@@ -86,16 +86,16 @@
     return block.dataset.newFilename || block.dataset.oldFilename || null;
   }
 
-  function readHeadSha() {
-    return HEAD_SHA.exec(document.querySelector(HEAD_LINK)?.getAttribute("href") ?? "")?.[1] ?? null;
+  function readHeadSha(doc = document) {
+    return HEAD_SHA.exec(doc.querySelector(HEAD_LINK)?.getAttribute("href") ?? "")?.[1] ?? null;
   }
 
   function findRow(anchor) {
     return document.querySelector(`${LINE_REL}[rel="${anchor}"]`)?.closest("tr") ?? null;
   }
 
-  // The conversation page names no head commit, so it is asked of the instance's read-only API, from the page's own
-  // origin and session.
+  // The conversation page names no head commit (its timeline links only the commits of force pushes), so it is asked of
+  // the instance's read-only API, from the page's own origin and session; no run server is involved.
   async function fetchHeadSha(pr) {
     try {
       const response = await fetch(`/api/v1/repos/${pr.owner}/${pr.repo}/pulls/${pr.pr}`, { headers: { Accept: "application/json" } });
@@ -128,6 +128,7 @@
     changesPage: CHANGES_PAGE,
     pullPage: PULL_PAGE,
     conversationPage: CONVERSATION_PAGE,
+    conversationPath: (pr) => `/${pr.owner}/${pr.repo}/pulls/${pr.pr}`,
     filesPath: (pr) => `/${pr.owner}/${pr.repo}/pulls/${pr.pr}/files`,
     hostId: "forgejo",
     // Forgejo's PR numbers are its own, so its runs sit beside GitHub's under a prefix.

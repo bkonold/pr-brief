@@ -49,15 +49,19 @@
     return label.startsWith(ARIA_PREFIX) ? label.slice(ARIA_PREFIX.length) : null;
   }
 
-  // The embedded JSON names the head commit of the PR the page was opened on.
-  function readHeadSha() {
-    const text = document.querySelector(EMBEDDED_DATA)?.textContent ?? "";
+  // The embedded JSON of a PR's conversation page and of its files page names the PR's head commit.
+  function readHeadSha(doc = document) {
+    const text = doc.querySelector(EMBEDDED_DATA)?.textContent ?? "";
     return HEAD_SHA.exec(text)?.[1] ?? null;
   }
 
-  // Only the files view's embedded JSON names the head commit, so the conversation page asks the run server, which
-  // reads it from GitHub. `source` is loaded after this adapter, so it is looked up when the call is made.
+  // The head commit when the page the script runs on does not show it: read from the PR's conversation page, then, only
+  // when a run server is set, asked of it. `commentSource` and `source` are loaded after this adapter, so they are
+  // looked up when the call is made.
   async function fetchHeadSha(pr) {
+    const conversation = page.isConversationPage(pr) ? null : await ns.commentSource?.fetchConversation(page.conversationUrl(pr));
+    const shown = conversation ? readHeadSha(conversation) : null;
+    if (shown) return shown;
     return (await ns.source?.headSha({ host: "github", owner: pr.owner, repo: pr.repo, pr: pr.pr, key: String(pr.pr) })) ?? null;
   }
 
@@ -91,6 +95,7 @@
     changesPage: CHANGES_PAGE,
     pullPage: PULL_PAGE,
     conversationPage: CONVERSATION_PAGE,
+    conversationPath: (pr) => `/${pr.owner}/${pr.repo}/pull/${pr.pr}`,
     filesPath: (pr) => `/${pr.owner}/${pr.repo}/pull/${pr.pr}/files`,
     hostId: "github",
     runKey: (pr) => String(pr.pr),

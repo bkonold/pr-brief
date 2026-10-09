@@ -69,7 +69,7 @@
         error: (view) => card.show({ kind: "error", ...view }),
         idle: () => card.show(baseView()),
         done: async () => {
-          const fresh = await source.loadBrief(pr.owner, pr.repo, pr.pr, target.key);
+          const fresh = await source.loadBrief(pr.owner, pr.repo, pr.pr, target.key, { server: true });
           if (!live() || token !== briefToken) return;
           if (fresh) current = fresh;
           card.show(fresh ? baseView() : { kind: "error", message: "The run finished, but its brief could not be loaded" });
