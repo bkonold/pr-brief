@@ -9,7 +9,9 @@ import html
 import re
 from typing import Callable
 
-from contract_lines import Line, plural, rank_of
+from pathlib import PurePosixPath
+
+from contract_lines import Line, Source, plural, rank_of
 
 CONTRACT_COLUMNS: tuple[str, ...] = ("Impact", "Side", "Change", "On", "↗")
 DATA_COLUMNS: tuple[str, ...] = ("Impact", "Change", "Table", "↗")
@@ -73,29 +75,49 @@ def sort_key(kind: str, line: Line, levels: tuple[str, ...]) -> tuple[int, int, 
     return rank_of(line.impact, levels), 0, where
 
 
-def row_cells(kind: str, line: Line, levels: tuple[str, ...], link_of: Callable[[Line], str]) -> list[str]:
+def source_label(source: Source) -> str:
+    return f"{PurePosixPath(source.path).name}:{source.line}"
+
+
+def row_cells(kind: str, line: Line, levels: tuple[str, ...], link_of: Callable[[Line], str],
+              source_link_of: Callable[[Source], str] | None = None) -> list[str]:
     """The cells of a line's table row: the contract's Impact, Side, Change, On and link, or the data's Impact, Change,
-    Table and link."""
+    Table and link. The link of a contract line that has a source goes to the source, with the spec as a second link."""
     chip: str = pill(line.impact, levels)
     link: str = f"[↗]({link_of(line)})"
     if kind == "contract":
+        if line.sources and source_link_of:
+            source: Source = line.sources[0]
+            link = f"[{source_label(source)}]({source_link_of(source)}) · [spec]({link_of(line)})"
         return [chip, line.side, cell(line.change or line.text), cell(line.on), link]
     return [chip, cell(line.change or line.text), cell(line.on), link]
 
 
-def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str]) -> str:
+def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str],
+          source_link_of: Callable[[Source], str] | None = None) -> str:
     """A table of `lines`, in the order given."""
     columns: tuple[str, ...] = CONTRACT_COLUMNS if kind == "contract" else DATA_COLUMNS
-    rows: list[list[str]] = [row_cells(kind, line, levels, link_of) for line in lines]
+    rows: list[list[str]] = [row_cells(kind, line, levels, link_of, source_link_of) for line in lines]
     return "\n".join([f"| {' | '.join(columns)} |", f"| {' | '.join('---' for _ in columns)} |",
                       *(f"| {' | '.join(cells)} |" for cells in rows)])
 
 
-def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str]) -> str:
+def files_list(heading: str, files: list[tuple[str, str]]) -> str:
+    """`**Contract files**` and a link to each file, `(path, url)`, labelled with its name, or its whole path when two
+    files share a name; empty for no file."""
+    names: list[str] = [PurePosixPath(path).name for path, _ in files]
+    links: list[str] = [f"[{path if names.count(name) > 1 else name}]({url})" for (path, url), name in zip(files, names)]
+    return f"**{heading}** " + " · ".join(links) if files else ""
+
+
+def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str],
+            source_link_of: Callable[[Source], str] | None = None, files: list[tuple[str, str]] | None = None) -> str:
     """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` whose summary holds `heading`, the glance
-    chips and the number of lines in muted text, and one table of every line in it, sorted by `sort_key` (lines of equal
-    key keep their order)."""
+    chips and the number of lines in muted text, one table of every line in it, sorted by `sort_key` (lines of equal
+    key keep their order), and under it the section's files as links (`files` holds `(path, url)`)."""
     ordered: list[Line] = sorted(lines, key=lambda line: sort_key(kind, line, levels))
+    listed: str = files_list(f"{heading} files", files or [])
     return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong> {glance(lines, levels)} '
             f'<span class="muted">{plural(len(lines), "change")}</span></summary>\n\n'
-            f'<div class="table-wrap">\n\n{table(kind, levels, ordered, link_of)}\n\n</div>\n\n</details>')
+            f'<div class="table-wrap">\n\n{table(kind, levels, ordered, link_of, source_link_of)}\n\n</div>\n\n'
+            f'{listed + chr(10) * 2 if listed else ""}</details>')

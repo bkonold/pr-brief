@@ -16,6 +16,8 @@
   // hiding that child, and our list is mounted before it inside the column.
   const DIFF_PANE = "#diff-file-tree";
   const TREE_HOST = `${DIFF_PANE} > .diff-file-tree-items`;
+  // A file's row in the tree is a link to the file's diff. Directory rows are not matched: they stay.
+  const TREE_FILE = ".item-file";
   // A file's header: a sticky bar (top 44px) inside the box, under the sticky summary bar `.diff-detail-box`
   // (top 0, 44px high, as wide as the page), which is what the scroll offset is measured against.
   const FILE_HEADER = ".diff-file-header";
@@ -120,7 +122,7 @@
 
   const page = createPage({
     name: "Forgejo",
-    treeLabel: "Forgejo tree",
+    treeLabel: "Files",
     hosts: ["localhost:3300"],
     origin: "http://localhost:3300",
     changesPage: CHANGES_PAGE,
@@ -146,6 +148,7 @@
       return diagramHost();
     },
     treeHost,
+    treeFileSelector: TREE_FILE,
     descriptionHost: () => {
       installTheme();
       return document.querySelector(DESCRIPTION);

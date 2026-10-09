@@ -122,6 +122,8 @@
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
     page.showCallouts(session.mode === "review" ? session.callouts : []);
+    const fileSet = tree.fileSetOf(session.review, session.fileSet);
+    page.filterTree(fileSet?.paths ?? null);
 
     const waited = Date.now() - session.startedAt;
     const noBlocks = page.fileBlocks().size === 0;
@@ -133,13 +135,15 @@
         stops: session.stops,
         selectedStop: session.selectedStop,
         pageSha: page.headSha(),
+        chips: tree.fileChips(session.review, page.changedFileCount()),
+        fileSet,
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
       handlersFor(session),
     );
   }
 
-  // Without a selected box, whether in "GitHub tree" mode or with nothing chosen, every node is shown.
+  // Without a selected box, whether in "Files" mode or with nothing chosen, every node is shown.
   function renderDiagram(session) {
     if (!session.review.diagramSvg) {
       diagram.remove();
@@ -268,6 +272,12 @@
     }
     const path = box.files[0];
     if (!path) return;
+    await selectFile(session, path, nodeId);
+  }
+
+  // Marks a file active with no stop selected, and lands its header below the sticky chrome. `nodeId` is the box the file
+  // is selected through, if any.
+  async function selectFile(session, path, nodeId = null) {
     const mine = startSelection(session);
     await change(session, () => {
       leaveLine();
@@ -278,7 +288,7 @@
       session.activeBox = activation(path);
     });
     if (current !== session || !live() || session.selection !== mine) return;
-    diagram.centerOn([nodeId]);
+    if (nodeId) diagram.centerOn([nodeId]);
     await landOnFile(session, path);
   }
 
@@ -300,6 +310,9 @@
           },
         ),
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
+      onSelectFile: (path) => selectFile(session, path),
+      onFileSet: (id) => change(session, () => (session.fileSet = id)),
+      onJump: (loc) => jumpToStop(session, loc),
     };
   }
 
@@ -395,6 +408,7 @@
     stopObserving = null;
     page.cancelJump();
     page.clearLineTarget();
+    page.filterTree(null);
     focus.clearBox();
     tree.remove();
     diagram.remove();
@@ -460,6 +474,7 @@
       startedAt: Date.now(),
       stops: tree.stopsOf(review),
       selectedStop: null,
+      fileSet: "all",
       selection: 0,
       callouts: [],
     };

@@ -23,6 +23,9 @@
 //   contentSelector                 the diffs' column
 //   diagramHost()                   where the diagram panel docks (before the file pane), or null
 //   treeHost()                      the host's own file tree element, or null
+//   treeFileSelector                the tree's file rows, each being or holding a link whose href ends in the file's
+//                                   diff id (`#diff-…`)
+//   treeDirSelector                 optional: the tree's directory rows, which hold their files' rows
 //   descriptionHost()               the element the PR brief card is inserted before (the PR's opening comment on the
 //                                   conversation page), or null
 // }
@@ -33,6 +36,8 @@
   const CALLOUT_ROW = "prf-callout-row";
   const FILE_CALLOUT = "prf-callout-file";
   const PULSE = "prf-pulse";
+  const FILE_HIDDEN = "prf-file-hidden";
+  const DIFF_LINK = 'a[href*="#diff-"]';
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
   const JUMP_TIMEOUT_MS = 10000;
@@ -544,6 +549,58 @@
       endHold();
     }
 
+    // The diff id a tree row links to, or null when it has no such link.
+    function treeRowId(row) {
+      const link = row.matches?.(DIFF_LINK) ? row : row.querySelector(DIFF_LINK);
+      const href = link?.getAttribute("href") ?? "";
+      const at = href.indexOf("#diff-");
+      return at < 0 ? null : href.slice(at + 1);
+    }
+
+    // The diff ids of the files the tree is narrowed to, keyed by the paths they came from; null for the whole tree.
+    let treeFilter = null;
+    let filterToken = 0;
+
+    // Hides the tree's file rows whose diff is not in the filter, and the directory rows left with no visible file. A row
+    // with no diff link is left alone, as is a directory whose files are not in the page (collapsed). The host re-renders
+    // its tree, so this runs again on every refresh.
+    function applyTreeFilter() {
+      const host = spec.treeHost();
+      if (!host) return;
+      const ids = treeFilter?.ids;
+      const files = [...host.querySelectorAll(spec.treeFileSelector)];
+      for (const row of files) {
+        const id = ids ? treeRowId(row) : null;
+        row.classList.toggle(FILE_HIDDEN, id !== null && !ids.has(id));
+      }
+      if (!spec.treeDirSelector) return;
+      for (const dir of host.querySelectorAll(spec.treeDirSelector)) {
+        const inside = files.filter((row) => dir.contains(row));
+        dir.classList.toggle(FILE_HIDDEN, Boolean(ids) && inside.length > 0 && inside.every((row) => row.classList.contains(FILE_HIDDEN)));
+      }
+    }
+
+    // Narrows the host's own tree to the files at `paths`; null shows it whole. Calling again with the same paths only
+    // re-applies the filter.
+    async function filterTree(paths) {
+      const mine = ++filterToken;
+      const key = paths ? paths.join("\n") : null;
+      if (key !== null && treeFilter?.key !== key) {
+        const ids = new Set(await Promise.all(paths.map((path) => spec.diffId(path))));
+        if (mine !== filterToken) return;
+        treeFilter = { key, ids };
+      } else if (key === null) {
+        treeFilter = null;
+      }
+      applyTreeFilter();
+    }
+
+    // How many files the page lists as changed: the tree's rows, or the diffs loaded when the tree is not showing.
+    function changedFileCount() {
+      const rows = spec.treeHost()?.querySelectorAll(spec.treeFileSelector).length ?? 0;
+      return Math.max(rows, fileBlocks().size);
+    }
+
     function onChange(callback) {
       const observer = new MutationObserver(callback);
       observer.observe(document.body, { childList: true, subtree: true });
@@ -593,6 +650,8 @@
       clearLineTarget,
       restoreLineTarget,
       showCallouts,
+      filterTree,
+      changedFileCount,
       ownsLine,
       cancelJump,
       diagramHost: spec.diagramHost,

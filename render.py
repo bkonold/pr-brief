@@ -19,9 +19,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import yaml
 
@@ -33,10 +33,12 @@ config.use_config_flag(sys.argv)
 from config import ROOT, load_local  # noqa: E402
 import layout  # noqa: E402
 from diff_lines import file_diff_lines  # noqa: E402
-from contract_lines import CONTRACT_LEVELS, Line, contract_lines  # noqa: E402
+from context_pack import BlobReader, has_commit  # noqa: E402
+from contract_lines import CONTRACT_LEVELS, Line, Source, contract_lines  # noqa: E402
 from data_lines import DATA_LEVELS, data_lines  # noqa: E402
 from hosts import get_host  # noqa: E402
 from hosts.github import GitHub  # noqa: E402
+from sources import CONTROLLER_DIRS, MODEL_DIRS, SourceFinder  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: E402
@@ -49,6 +51,8 @@ DIAGRAM_WRAPPING_WIDTH = 280
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 CONTEXT_CAPTION = "Dashed boxes are unchanged context"
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
+MODEL_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("model_dirs", MODEL_DIRS))
+CONTROLLER_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("controller_dirs", CONTROLLER_DIRS))
 
 
 class AnswerError(Exception):
@@ -395,11 +399,50 @@ def build_lines(pr: dict[str, Any], contract: dict[str, Any] | None, diff_text: 
     return api, data
 
 
-def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str]) -> tuple[str, str]:
-    """The Contract and Data sections of a body, each one closed block with a table of all its lines. A section with
-    no lines says so, and says when its side could not be checked."""
+def head_reader(sha: str, pr: dict[str, Any]) -> Callable[[str], str | None]:
+    """Reads a changed Java file at the PR's head commit from the mirror, all of them in one call on the first read; None
+    for every file when the mirror does not hold the commit."""
+    if not has_commit(sha):
+        return lambda path: None
+    reader: BlobReader = BlobReader(sha)
+    reader.load([f["path"] for f in pr["files"] if f["path"].endswith(".java") and f.get("changeType") != "DELETED"])
+    return lambda path: reader.raw(path) or None
+
+
+def locate_sources(pr: dict[str, Any], api: list[Line], data: list[Line], diff_text: str,
+                   read_file: Callable[[str], str | None] | None = None) -> None:
+    """Gives each contract and data line the sources in the PR that declare what it is about (see sources.py);
+    `read_file` reads a changed file at the head commit, for what the diff does not show."""
+    finder: SourceFinder = SourceFinder(diff_text, [f["path"] for f in pr["files"]], MODEL_DIR_MARKERS, CONTROLLER_DIR_MARKERS,
+                                        read_file or (lambda path: None))
+    for line in api:
+        line.sources = finder.contract(line)
+    for line in data:
+        line.sources = finder.data(line)
+
+
+def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Line], data: list[Line]) -> dict[str, list[str]]:
+    """The files that make up the PR's contract change and its data change, each sorted without repeats. The contract
+    is the spec when the PR changes it, the source of every contract line and every changed file under a model
+    directory; the data is the migration files and the source of every data line."""
+    paths: list[str] = [f["path"] for f in pr["files"]]
+    spec: str | None = (contract or {}).get("path") or load_local().get("openapi_path")
+    models: set[str] = {p for p in paths if any(marker in p for marker in MODEL_DIR_MARKERS)}
+    migrations: set[str] = {p for p in paths if matches(MIGRATION_GLOBS, p)}
+    return {"contract": sorted(models | {s.path for line in api for s in line.sources} | ({spec} if spec in paths else set())),
+            "data": sorted(migrations | {s.path for line in data for s in line.sources})}
+
+
+def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str],
+             files: dict[str, list[str]] | None = None) -> tuple[str, str]:
+    """The Contract and Data sections of a body, each one closed block with a table of all its lines and a list of its
+    files. A section with no lines says so, and says when its side could not be checked."""
     repo: str = run["repo"]
     number: str = str(run["pr"])
+    file_lists: dict[str, list[str]] = files or {}
+
+    def source_link(source: Source) -> str:
+        return line_link(repo, number, {"path": source.path, "side": source.side, "line": source.line})
 
     def link_of(line: Line) -> str:
         if line.loc:
@@ -409,7 +452,8 @@ def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: 
     def draw(side: str, none: str, levels: tuple[str, ...], kind: str, lines: list[Line]) -> str:
         if not lines:
             return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
-        return layout.section(kind, kind.capitalize(), levels, lines, link_of)
+        return layout.section(kind, kind.capitalize(), levels, lines, link_of, source_link,
+                              [(path, diff_link(repo, number, path)) for path in file_lists.get(kind, [])])
 
     return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", api),
             draw("database", "No database changes", DATA_LEVELS, "data", data))
@@ -427,10 +471,12 @@ class Brief:
     stops: list[dict[str, Any]]
     contract: list[Line]
     data: list[Line]
+    file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": []})
 
 
 def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
-               notes: list[str], contract: dict[str, Any] | None = None, diff_text: str = "") -> Brief:
+               notes: list[str], contract: dict[str, Any] | None = None, diff_text: str = "",
+               read_file: Callable[[str], str | None] | None = None) -> Brief:
     paths: list[str] = [f["path"] for f in pr["files"]]
     if not paths:
         raise AnswerError("The pull request has no files, so no stop can point at one.")
@@ -442,7 +488,9 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key in data:
             ordered[key] = data[key]
     api, rows = build_lines(pr, contract, diff_text)
-    ordered["contract"], ordered["data"] = sections(run, api, rows, unchecked_sides(run, contract))
+    locate_sources(pr, api, rows, diff_text, read_file)
+    sets: dict[str, list[str]] = file_sets(pr, contract, api, rows)
+    ordered["contract"], ordered["data"] = sections(run, api, rows, unchecked_sides(run, contract), sets)
     diagram: str = render_diagram(data.get("changes_diagram"))
     node_files: dict[str, list[str]] = {}
     titles: dict[str, str] = {}
@@ -483,17 +531,20 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if idx < len(ordered) - 1:
             body += "\n\n" if key in ("contract", "data") else "\n\n___\n\n"
     body += "\n\n___\n\n"
-    return Brief(f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", count_diagram_edges(diagram), nodes, stops, api, rows)
+    return Brief(f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", count_diagram_edges(diagram), nodes, stops, api, rows, sets)
 
 
 # ---------------------------------------------------------------- review.json
 
 def line_json(line: Line) -> dict[str, Any]:
     """A contract or data line for review.json: its level (null when it has none), text, the parts of that text (what
-    changed, on what, and for a contract line the side it reaches) and where its diff line is."""
+    changed, on what, and for a contract line the side it reaches), where its diff line is in the spec or migration, and
+    `source`, where the PR's own code declares it (null when the PR has none)."""
     side, number = line.loc if line.loc else (None, None)
+    source: Source | None = line.sources[0] if line.sources else None
     return {"impact": line.impact, "text": line.text, "change": line.change, "on": line.on, "reaches": line.side,
-            "path": line.path, "side": side, "line": number}
+            "path": line.path, "side": side, "line": number,
+            "source": {"path": source.path, "side": source.side, "line": source.line} if source else None}
 
 
 def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[str, Any]:
@@ -510,6 +561,7 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
         "walkthrough": brief.stops,
         "contract": [line_json(line) for line in brief.contract],
         "data": [line_json(line) for line in brief.data],
+        "file_sets": brief.file_sets,
     }
 
 
@@ -766,7 +818,7 @@ def main() -> int:
         prompt_file: Path = run_dir / "prompt.txt"
         diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
         diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_text)
-        brief: Brief = build_body(run, pr, data, diff_lines, notes, contract, diff_text)
+        brief: Brief = build_body(run, pr, data, diff_lines, notes, contract, diff_text, head_reader(run["pr_head_sha"], pr))
         mermaid: str | None = write_diagram_svg(brief.body, run_dir)
     except AnswerError as e:
         (run_dir / DIAGRAM_SVG).unlink(missing_ok=True)
