@@ -17,7 +17,7 @@ REPO = "octo/widgets"
 HEAD = "d" * 40
 BODY = (
     "# Add a widget cache\n\n<!-- pr-agent-generated -->\n### **PR Type**\nEnhancement\n\n\n___\n\n"
-    "### **Description**\n- Cache widgets\n\n\n___\n\n### **Contract**\nNo API changes\n\n\n### **Data**\nNo database changes\n\n\n"
+    "### **Description**\n- Cache widgets\n\n\n___\n\n### **API**\nNo API changes\n\n\n### **Data**\nNo database changes\n\n\n"
     "### Diagram Walkthrough\n\n\n```mermaid\nflowchart TD\n  a[\"Cache\"] --> b[\"Store\"]\n```\n\nDashed boxes are unchanged context\n\n\n___\n\n")
 
 
@@ -65,7 +65,7 @@ class AnchorTest(unittest.TestCase):
 class BodyTest(RunFolderTest):
     def test_the_comment_has_the_brief_the_diagram_fence_the_walkthrough_the_marker_and_the_data_block_in_that_order(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1), stop(2, "src/Store.java", None)]))
-        order = ["## PR Brief", "### **Description**", "### **Contract**", "### **Data**", "```mermaid", "### Walkthrough", "1. [Stop 1](",
+        order = ["## PR Brief", "### **Description**", "### **API**", "### **Data**", "```mermaid", "### Walkthrough", "1. [Stop 1](",
                  "2. [Stop 2](", "<sub>pr-brief · v · ddddddd</sub>", f"{post.MARKER} -->", "<details><summary>Brief data</summary>"]
         positions = [comment.index(part) for part in order]
         self.assertEqual(positions, sorted(positions))
@@ -122,7 +122,7 @@ class BodyTest(RunFolderTest):
 
     def test_a_contract_table_in_the_brief_is_kept(self) -> None:
         table = "<details><summary>Contract</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
-        body = BODY.replace("### **Contract**\nNo API changes\n", table)
+        body = BODY.replace("### **API**\nNo API changes\n", table)
         comment = post.build_comment(self.run_dir([stop(1)], body))
         self.assertIn(table, comment)
 

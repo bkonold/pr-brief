@@ -50,6 +50,8 @@ DIAGRAM_FONT_SIZE = 16
 DIAGRAM_WRAPPING_WIDTH = 280
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 CONTEXT_CAPTION = "Dashed boxes are unchanged context"
+# Section headings whose name is not the key's own word.
+HEADINGS: dict[str, str] = {"type": "PR Type", "contract": "API"}
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
 MODEL_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("model_dirs", MODEL_DIRS))
 CONTROLLER_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("controller_dirs", CONTROLLER_DIRS))
@@ -522,7 +524,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key in ("contract", "data") and value.startswith("<details"):
             body += f"{value}\n"
         else:
-            body += f"### **{'PR Type' if key == 'type' else key.replace('_', ' ').capitalize()}**\n"
+            body += f"### **{HEADINGS.get(key) or key.replace('_', ' ').capitalize()}**\n"
             if isinstance(value, list):
                 value = ", ".join(str(v).rstrip() for v in value)
             if key == "description":
