@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  chrome:
+    name: Release with the Chrome build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check that the tag is the manifest version
+        run: |
+          version="$(python3 -c 'import json; print(json.load(open("extension/manifest.json"))["version"])')"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG is not v$version, the version in extension/manifest.json"
+            exit 1
+          fi
+      - name: Package the extension
+        run: python3 scripts/package_extension.py --out out
+      - name: Create the release
+        run: gh release create "$TAG" --title "$TAG" --generate-notes out/pr-brief-chrome-*.zip
+
+  firefox:
+    name: Sign the Firefox build
+    needs: chrome
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check for the AMO secrets
+        id: amo
+        run: echo "has_amo=${{ secrets.AMO_JWT_ISSUER != '' && secrets.AMO_JWT_SECRET != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Say that the Firefox build is skipped
+        if: steps.amo.outputs.has_amo != 'true'
+        run: echo "Firefox build skipped - the AMO_JWT_ISSUER and AMO_JWT_SECRET secrets are not both set, so it cannot be signed."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.amo.outputs.has_amo == 'true'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.amo.outputs.has_amo == 'true'
+        with:
+          node-version: "24"
+      - name: Package the extension
+        if: steps.amo.outputs.has_amo == 'true'
+        run: python3 scripts/package_extension.py --out out
+      - name: Sign the Firefox build
+        if: steps.amo.outputs.has_amo == 'true'
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: npx --yes web-ext@8.10.0 sign --channel unlisted --source-dir out/firefox --artifacts-dir out
+      - name: Attach the signed build to the release
+        if: steps.amo.outputs.has_amo == 'true'
+        run: gh release upload "$TAG" out/*.xpi
