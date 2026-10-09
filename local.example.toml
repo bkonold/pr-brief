@@ -67,7 +67,7 @@ callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
 # default_variant is the variant a started run uses. serve_repos is the only list of repositories a run may be
 # started for, per host, as "owner/name"; a request for any other repository is refused. Both are required to
 # start runs; without serve_repos the server still serves the runs but refuses every request to start one.
-default_variant = "diagram_walkthrough_v25"
+default_variant = "brief"
 
 [serve_repos]
 github = ["example-org/example-repo"]

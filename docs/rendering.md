@@ -9,17 +9,12 @@ cannot change them.
 
 | Variant | What it is |
 | --- | --- |
-| `diagram_walkthrough_v25` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
+| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
 
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.
 
-`compare.toml` lists the variants that make up the default compare pages. `compare.py` also writes
-`runs/<pr>/variants.json` (and so does `run.py` after a successful run, adding that run's variant when `compare.toml`
-does not list it, so the extension finds a PR run from the server) (`[{variant, label, description}]`) for the
-extension's choice of variant, using the labels in `VARIANT_LABELS`.
-
-Variants are frozen once they have been compared. To change one, add a new file; `run.json` records the sha256 of the
+A variant should not be edited once runs have been made with it. To change one, add a new file; `run.json` records the sha256 of the
 variant file that produced each run. A run made by an earlier variant is not shown by the extension, which offers to
 re-run it instead.
 
@@ -120,4 +115,4 @@ data the run used), `run.json` (including `diagram_edges`, the labelled and tota
 `body.md`, `body.html`, `diagram.svg`, `review.json` (the extension reads it),
 `context.md` and `contract.json` (when the variant has a context pack with a contract section) and `error.txt` on failure or when the renderer
 dropped something. Open any `.html` straight from disk. `runs/<key>/status.json` (beside the variant folders) says how far the latest run has got. A rerun of the same PR and variant overwrites its
-folder. `runs/` is git-ignored: it holds the diffs and prompts of whatever repository you ran against.
+folder, whichever runner made it; `run.json` records the `runner` and `model`. `runs/` is git-ignored: it holds the diffs and prompts of whatever repository you ran against.

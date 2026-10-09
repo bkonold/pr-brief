@@ -270,7 +270,7 @@ class ServeTest(unittest.TestCase):
 
 
 class ConfigTest(unittest.TestCase):
-    CONFIG = {"default_variant": "v2", "variants": ["v2", "v3"]}
+    CONFIG = {"default_variant": "v2"}
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -286,7 +286,7 @@ class ConfigTest(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
 
-    def test_config_reports_the_default_and_active_variants(self) -> None:
+    def test_config_reports_the_default_variant(self) -> None:
         self.assertEqual(self.client.call("GET", "/api/config"), (200, self.CONFIG))
         self.assertEqual(self.client.call("GET", "/api/config", origin=None), (200, self.CONFIG))
 
@@ -297,20 +297,6 @@ class ConfigTest(unittest.TestCase):
 
     def test_config_is_read_only(self) -> None:
         self.assertEqual(self.client.call("POST", "/api/config", {})[0], 405)
-
-    def test_active_variants_come_from_compare_toml(self) -> None:
-        (self.home / "compare.toml").write_text('variants = ["v3", "v1"]\n')
-        self.assertEqual(serve.load_active_variants(self.home, "v3"), ["v3", "v1"])
-
-    def test_active_variants_fall_back_to_the_default_without_compare_toml(self) -> None:
-        self.assertEqual(serve.load_active_variants(self.home, "v3"), ["v3"])
-        (self.home / "compare.toml").write_text("# no variants\n")
-        self.assertEqual(serve.load_active_variants(self.home, "v3"), ["v3"])
-
-    def test_a_malformed_variants_list_is_refused(self) -> None:
-        (self.home / "compare.toml").write_text('variants = "v3"\n')
-        with self.assertRaises(SystemExit):
-            serve.load_active_variants(self.home, "v3")
 
 
 class ProgressTest(unittest.TestCase):

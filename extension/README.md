@@ -1,8 +1,7 @@
 # PR Brief extension
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
-(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 4,
-variant v25) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the `review.json` that `render.py` writes (schema 4) and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
 where it describes the page, and the Forgejo selectors are in their own table at the end.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
@@ -69,16 +68,6 @@ on stop 1, with the default variant. The one thing kept is whether the diagram p
 If fetching `review.json` fails outright (connection refused, a network error), the list's place above GitHub's tree shows a
 note with the base URL, the command to start the server (`pd serve`) and a Retry button; GitHub's tree stays visible. Retry
 fetches again and mounts the full list on success. A 404 shows the "Generate brief" line below, and an older run shows the "Older runs" line, unless the run server says it will not run that repository.
-
-## Which variant is shown
-
-`background.js` fetches `runs/<pr>/variants.json` (`[{variant, label, description}]`, written by `compare.py`) and reads the
-server's `GET /api/config` (`{default_variant, variants}`). The run shown is, in order: the server's `default_variant` if
-the PR has it; the newest active variant the PR has (active: listed in the config's `variants`); the newest variant the PR
-has at all. If the server's config can't be read (server down, token missing), the newest variant the PR has is shown.
-Without `variants.json`, only the server's default is tried. "Newest" compares variant names with digit runs as numbers
-(`v9` < `v10`). The files view has no variant
-control; the PR brief card on the conversation page names the variant it shows.
 
 ## Boxes and files
 
@@ -213,7 +202,7 @@ the page's data, and its header links to the files view. Without a run it is the
   review-order table; the files view lists the stops.
 - Links into the PR's files view are rewritten to this host's files view, fragment kept. When the files page loads with a
   fragment that is a stop's anchor, `content.js` goes to that stop; any other fragment is left to the page.
-- `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run the variant choice above selects,
+- `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run for the server's `default_variant` (`GET /api/config`),
   the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the
   "Generate brief" bar, except where the server says it will not run the PR's repository: then nothing is mounted.
 - The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
@@ -251,7 +240,6 @@ Run the pure tests with `node --test test/*.test.js`.
 | `tree.js`, `tree.css`, `focus.css` | The stop list, the stop callout card with its previous and next stop, and the classes `focus.js` and the line jump toggle |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
-| `choose_variant.js` | Which variant to load (an ES module, used by `background.js`) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
 | `source.js` | Content-script side of the fetch |
 | `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |

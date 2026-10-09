@@ -1,4 +1,3 @@
-import { chooseVariant, switcherVariants } from "./choose_variant.js";
 import { classifyFetch } from "./classify.js";
 import { DEFAULTS, TOKEN_KEY } from "./defaults.js";
 import { TOKEN_HEADER, describeResponse } from "./serve_api.js";
@@ -40,44 +39,22 @@ async function loadDiagram(baseUrl, variant, key, file) {
   return /^[\w.-]+\.svg$/.test(file ?? "") ? loadRunFile(baseUrl, variant, key, file) : null;
 }
 
-// The variants this PR has runs for, from runs/<key>/variants.json: empty when the file is missing, null when the
-// page server can't be reached.
-async function loadVariants(baseUrl, key) {
-  let response;
-  try {
-    response = await fetch(`${baseUrl}/runs/${key}/variants.json`, { cache: "no-store" });
-  } catch {
-    return null;
-  }
-  if (!response.ok) return [];
-  try {
-    const listed = await response.json();
-    return Array.isArray(listed)
-      ? listed.filter((entry) => SAFE_NAME.test(entry?.variant ?? "")).map((entry) => ({ ...entry, label: entry.label || entry.variant }))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-// The server's { default_variant, variants }, or null when it can't be read (server down, token missing or wrong).
+// The server's { default_variant }, or the server's problem ({ problem }) when it can't be read: nothing is listening,
+// or the token is missing or wrong.
 async function loadConfig() {
   const config = await callServer("/api/config");
-  return config.ok && Array.isArray(config.variants) ? config : null;
+  return config.ok && typeof config.default_variant === "string" ? config : { problem: config.problem ?? "error" };
 }
 
-// The run a PR page shows: its review.json, the variant that was read and the PR's variants. Null when the PR has
+// The run a PR page shows: its review.json and the server's default variant it was read from. Null when the PR has
 // no run; { error: "old" } when its run was written by an older version; { error: "server" } when the page server
-// can't be reached. The page server sends no CORS headers,
-// so the fetch happens here rather than in the content script. `requested` is a variant picked on the page; otherwise
-// chooseVariant decides from the server's config. The variants returned are the ones the switcher may list.
-async function findRun({ owner, repo, pr, variant: requested, key: requestedKey }) {
+// can't be reached. The page server sends no CORS headers, so the fetch happens here rather than in the content script.
+async function findRun({ owner, repo, pr, key: requestedKey }) {
   const { baseUrl } = await settings();
   const key = SAFE_NAME.test(requestedKey ?? "") ? requestedKey : String(pr);
-  const [available, config] = await Promise.all([loadVariants(baseUrl, key), loadConfig()]);
-  const variant = chooseVariant(SAFE_NAME.test(requested ?? "") ? requested : undefined, config, available);
-  if (!SAFE_NAME.test(variant ?? "")) return available === null && config === null ? { error: "server", baseUrl } : null;
-  const variants = switcherVariants(available, config);
+  const config = await loadConfig();
+  const variant = config.default_variant;
+  if (!SAFE_NAME.test(variant ?? "")) return config.problem === "server" ? { error: "server", baseUrl } : null;
   let response;
   let failure;
   try {
@@ -91,7 +68,7 @@ async function findRun({ owner, repo, pr, variant: requested, key: requestedKey 
   try {
     const review = await response.json();
     if (!namesPr(review, owner, repo, pr)) return null;
-    return isCurrentRun(review) ? { baseUrl, key, variant, variants, review } : { error: "old", baseUrl };
+    return isCurrentRun(review) ? { baseUrl, key, variant, review } : { error: "old", baseUrl };
   } catch {
     return null;
   }
@@ -100,8 +77,8 @@ async function findRun({ owner, repo, pr, variant: requested, key: requestedKey 
 async function loadReview(request) {
   const run = await findRun(request);
   if (!run || run.error) return run;
-  const { baseUrl, key, variant, variants, review } = run;
-  return { ...review, variants, diagramSvg: await loadDiagram(baseUrl, variant, key, review.diagram) };
+  const { baseUrl, key, variant, review } = run;
+  return { ...review, diagramSvg: await loadDiagram(baseUrl, variant, key, review.diagram) };
 }
 
 // The PR brief card reads the run's rendered description and its diagram.

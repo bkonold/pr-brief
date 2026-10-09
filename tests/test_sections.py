@@ -20,7 +20,7 @@ MODEL = "api/models/Widget.java"
 MIGRATION = "db/V9__items.sql"
 SDK = "web/sdk/generated.ts"
 PATHS = [CONTROLLER, MODEL, MIGRATION, SPEC, SDK]
-RUN = {"repo": "acme/shop", "pr": 7, "with_body": False, "variant": "v24", "pr_head_sha": "abc",
+RUN = {"repo": "acme/shop", "pr": 7, "with_body": False, "variant": "brief", "pr_head_sha": "abc",
        "context": {"sections": {"contract": 0}, "dropped": {}}}
 PR = {"title": "T", "body": "", "files": [{"path": p, "additions": 2, "deletions": 1, "changeType": "MODIFIED"} for p in PATHS]}
 DIAGRAM = """```mermaid

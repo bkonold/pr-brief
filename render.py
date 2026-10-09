@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a run's answer.yaml as the PR body, and as a standalone HTML page.
 
-usage: render.py <run dir> [--config FILE]      e.g. runs/42/diagram_walkthrough_v25
+usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 
 --config names a TOML to read in place of local.toml (see config.py); run.py passes its own on.
 
