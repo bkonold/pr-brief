@@ -4,8 +4,8 @@
 usage: run.py <pr> [--variant NAME] [--with-body] [--runner claude|copilot] [--model NAME]
               [--host github|forgejo] [--repo owner/name] [--config FILE] [--prompt-only]
 
---config names a TOML to read in place of local.toml, with the same keys and, if it has them, the `[reach]` and
-`[archetypes]` tables (see config.py). --variant defaults to the config's `default_variant`, else the tool's current
+--config names a TOML to read in place of local.toml, with the same keys and, if it has one, the `[reach]`
+table (see config.py). --variant defaults to the config's `default_variant`, else the tool's current
 variant.
 
 --runner defaults to claude. A copilot run uses the CLI's own stored login and is written beside the Claude run, to

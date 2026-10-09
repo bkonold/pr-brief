@@ -128,7 +128,7 @@ class CompareColumnTest(unittest.TestCase):
             (run_dir / "pr.json").write_text(json.dumps({"title": "A PR"}))
             variant = name.removesuffix("_copilot")
             (run_dir / "run.json").write_text(json.dumps({"variant": variant, "started": "2026-10-08T10:00:00+00:00", "with_body": False, **extra}))
-        for name, value in (("HOME", self.home), ("RUNS", self.runs), ("ARCHETYPES", None)):
+        for name, value in (("HOME", self.home), ("RUNS", self.runs)):
             patch = mock.patch.object(compare, name, value)
             patch.start()
             self.addCleanup(patch.stop)

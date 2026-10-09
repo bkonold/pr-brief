@@ -1,4 +1,4 @@
-"""Tests for config.py: the `--config` file that replaces local.toml, and the reach and archetypes tables it may hold.
+"""Tests for config.py: the `--config` file that replaces local.toml, and the reach table it may hold.
 All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import os
 import sys
@@ -74,12 +74,13 @@ class ConfigFileTest(unittest.TestCase):
         self.assertNotIn("openapi_path", settings)
         self.assertNotIn("source_checkout", settings)
 
-    def test_reach_and_archetypes_may_be_tables_of_the_same_file(self) -> None:
-        os.environ[config.CONFIG_ENV] = str(self.write("c.toml", (
-            'repo = "o/r"\n[[reach.app]]\nname = "web"\nglobs = ["web/**"]\n'
-            '[archetypes]\norder = ["A", "B"]\n[archetypes.prs]\n7 = "A"\n')))
+    def test_reach_may_be_a_table_of_the_same_file(self) -> None:
+        os.environ[config.CONFIG_ENV] = str(self.write("c.toml", 'repo = "o/r"\n[[reach.app]]\nname = "web"\nglobs = ["web/**"]\n'))
         self.assertEqual(config.config_section("reach"), {"app": [{"name": "web", "globs": ["web/**"]}]})
-        self.assertEqual(config.config_section("archetypes"), {"order": ["A", "B"], "prs": {"7": "A"}})
+
+    def test_a_retired_archetypes_table_is_accepted_and_ignored(self) -> None:
+        os.environ[config.CONFIG_ENV] = str(self.write("c.toml", 'repo = "o/r"\n[archetypes]\norder = ["A"]\n'))
+        self.assertEqual(config.load_local()["repo"], "o/r")
 
     def test_a_section_without_a_table_falls_back_to_its_own_file_under_home_and_then_to_none(self) -> None:
         os.environ[config.CONFIG_ENV] = str(self.write("c.toml", 'repo = "o/r"\n'))

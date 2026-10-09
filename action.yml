@@ -3,7 +3,7 @@ description: Comment a short brief on a pull request, with a diagram and a walkt
 
 inputs:
   config:
-    description: The TOML file, relative to the checkout, that names the repository's settings, such as its reach and archetype tables. A missing file means no settings.
+    description: The TOML file, relative to the checkout, that names the repository's settings, such as its reach table. A missing file means no settings.
     default: .github/pr-brief.toml
   model:
     description: The model id the Copilot CLI uses.

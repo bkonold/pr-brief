@@ -6,6 +6,5 @@ local.toml
 
 # Repo-specific settings; copy the matching *.example.toml and edit.
 reach.toml
-archetypes.toml
 review_floor.toml
 node_modules/
