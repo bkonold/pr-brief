@@ -24,9 +24,8 @@ class GitHub:
     def diff(self, owner: str, repo: str, n: int | str) -> str:
         return gh("pr", "diff", str(n), "--repo", f"{owner}/{repo}")
 
+    def files_link(self, repo: str, pr: str) -> str:
+        return f"https://github.com/{repo}/pull/{pr}/files"
+
     def diff_link(self, repo: str, pr: str, filename: str) -> str:
         return f"https://github.com/{repo}/pull/{pr}/files#diff-{hashlib.sha256(filename.encode('utf-8')).hexdigest()}"
-
-    def line_link(self, repo: str, pr: str, start: dict[str, Any]) -> str:
-        digest: str = hashlib.sha256(start["path"].encode("utf-8")).hexdigest()
-        return f"https://github.com/{repo}/pull/{pr}/changes#diff-{digest}{start['side']}{start['line']}"

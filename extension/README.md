@@ -27,6 +27,10 @@ and its data change.
 - The chosen chip is kept while the tab is open: switching to "Walkthrough" shows the whole tree again (the walkthrough
   list is never filtered), and switching back to "Files" applies the chip again.
 - Every diff stays in the page, whichever chip is chosen.
+- The brief's "View files" links open the files page with `?pr-brief=contract` or `?pr-brief=data`. When the run has
+  that set, the page loads in "Files" mode with its chip chosen and the tree narrowed to it, with no stop selected and no
+  jump. Any other value, a set the run does not have, or no parameter gives the usual "Walkthrough" start. The parameter
+  stays in the URL.
 
 ## The walkthrough
 
@@ -77,7 +81,7 @@ variant) is not shown: see "Older runs".
 - A banner appears when the review was generated for an older head commit than the page's.
 
 Nothing about the review's state is remembered: every load and every navigation into the files page starts in "Walkthrough"
-on stop 1, with the default variant. The one thing kept is whether the diagram panel is collapsed (see below).
+on stop 1 (or in "Files" mode with a file set chosen, when the URL has `pr-brief`), with the default variant. The one thing kept is whether the diagram panel is collapsed (see below).
 
 ## When the page server is down
 
@@ -208,15 +212,12 @@ the page's data, and its header links to the files view. Without a run it is the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
   description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
-- The brief's "Contract" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
-  in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is
-  collapsed. Opened it is one table of every line (Contract: Impact, Side, Change, On, ↗; Data: Impact, Change, Table,
-  ↗), for the whole PR. The body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its
-  own container, and a name cut in the middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's
-  files view like the others. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a
-  filled chip, the second a bold outlined one and the rest outlined, drawn by the card's own style. The brief has no
-  review-order table; the files view lists the stops.
-- Links into the PR's files view are rewritten to this host's files view, fragment kept. When the files page loads with a
+- The brief's "Contract" and "Data" sections are each a bold name, one chip for each impact level present (no counts), a
+  "View files" link and a closed `<details>` whose summary counts the files (`3 files`) and which lists them as links to
+  their diffs. There is no table: the lines stay in `review.json`. The chips come from the run's
+  `<span class="pill p0|p1|p2">` markup: the top level is a filled chip, the second a bold outlined one and the rest
+  outlined, drawn by the card's own style. The brief has no review-order table; the files view lists the stops.
+- Links into the PR's files view are rewritten to this host's files view, fragment and `pr-brief` parameter kept. When the files page loads with a
   fragment that is a stop's anchor, `content.js` goes to that stop; any other fragment is left to the page.
 - `background.js` answers `loadBrief` by fetching `body.html` and `diagram.svg` of the run for the server's `default_variant` (`GET /api/config`),
   the way it fetches `review.json` (and the run's `head_sha`). With no run, or the page server down, the card is the

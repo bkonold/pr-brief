@@ -267,7 +267,7 @@
   // ---- the card's body
 
   // Links into the PR's files view (either host's path, any origin) are pointed at this host's files view,
-  // keeping the fragment that names the diff or the line.
+  // keeping the fragment that names the diff or the line, and the `pr-brief` parameter that names a file set.
   function rewriteLinks(html, filesUrl) {
     return html.replace(/\bhref="([^"]*)"/g, (whole, href) => {
       let link;
@@ -279,6 +279,8 @@
       if (!/^\/[^/]+\/[^/]+\/pulls?\/\d+\/(?:files|changes)\/?$/.test(link.pathname)) return whole;
       const target = new URL(filesUrl);
       target.hash = link.hash;
+      const fileSet = link.searchParams.get("pr-brief");
+      if (fileSet) target.searchParams.set("pr-brief", fileSet);
       return `href="${escapeAttribute(target.href)}"`;
     });
   }

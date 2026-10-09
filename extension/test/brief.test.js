@@ -201,7 +201,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {} }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", search = "", stored = {} }) {
   const log = [];
   const description = {
     name: "description",
@@ -297,7 +297,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     return timer;
   };
   const sessionStorage = { getItem: (key) => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
-  const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
+  const context = { prFocus, sessionStorage, location: { href: "x", hash, search }, URLSearchParams, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
   return { log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
@@ -531,25 +531,18 @@ test("clicking a button in the card reports its action, and show redraws the car
 const V22_MARKDOWN = [
   "# T",
   "",
-  '<details class="section">',
-  '<summary><strong>Contract</strong> <span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
+  '**Contract** <span class="pill p0"><strong>breaking</strong></span> <span class="pill p2">additive</span> · [View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)',
   "",
-  '<div class="table-wrap">',
+  "<details>",
+  "<summary>2 files</summary>",
   "",
-  "| Impact | Side | Change | On | ↗ |",
-  "| --- | --- | --- | --- | --- |",
-  '| <span class="pill p0"><strong>breaking</strong></span> | request | <code>+ kind</code> required param | <code>GET /rows</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR4) |',
-  '| <span class="pill p2">additive</span> | response | <code>+ note</code> optional | 9 schemas: <code>A</code>, <code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters</code> +6 | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR9) |',
-  '| <span class="pill p2">additive</span> |  | <code>+ a</code> nullable &#124; x | <code>widgets</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-defR3) |',
-  "",
-  "</div>",
+  "[openapi.json](https://github.com/acme/widgets/pull/7/files#diff-abc) · [Widget.java](https://github.com/acme/widgets/pull/7/files#diff-def)",
   "",
   "</details>",
   "",
-  "___",
+  "**Data** No database changes",
   "",
-  "### **Data**",
-  "No database changes",
+  "___",
   "",
   "### Diagram Walkthrough",
   "",
@@ -559,26 +552,25 @@ const V22_MARKDOWN = [
   "",
 ].join("\n");
 
-test("a v22 section is one closed details with its name and chips in the summary and one table", () => {
+test("a section is its name, its chips and a files link, then a closed details of the files, with no table", () => {
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
-  assert.equal((html.match(/<details class="section">/g) ?? []).length, 1);
-  assert.doesNotMatch(html, /<details class="section" open/);
-  assert.match(html, /<summary><strong>Contract<\/strong> <span class="pill p0"><strong>breaking<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
-  assert.equal((html.match(/<table>/g) ?? []).length, 1);
-  assert.match(html, /<thead><tr><th>Impact<\/th><th>Side<\/th><th>Change<\/th><th>On<\/th><th>↗<\/th><\/tr><\/thead>/);
-  assert.match(html, /<td><span class="pill p0"><strong>breaking<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
-  assert.match(html, /<td><a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abcR4">↗<\/a><\/td>/);
-  assert.match(html, /<code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters<\/code>/);
-  assert.match(html, /<code>\+ a<\/code> nullable &#124; x/);
-  assert.match(html, /<div class="table-wrap">\s*<table>/);
-  assert.doesNotMatch(html, /\||class="sub"|group-row|chunk/);
+  assert.match(html, /<strong>Contract<\/strong> <span class="pill p0"><strong>breaking<\/strong><\/span> <span class="pill p2">additive<\/span> · <a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files\?pr-brief=contract">View files<\/a>/);
+  assert.match(html, /<details>\s*<summary>2 files<\/summary>/);
+  assert.doesNotMatch(html, /<details open/);
+  assert.match(html, /<a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abc">openapi\.json<\/a>/);
+  assert.doesNotMatch(html, /<table|\||table-wrap/);
+});
+
+test("rewriting a link into the files view keeps its pr-brief parameter and fragment, and drops other parameters", () => {
+  const out = briefText.rewriteLinks('<a href="https://github.com/a/b/pull/7/files?pr-brief=data&amp;w=1#diff-x">x</a>', "http://forge.example/a/b/pulls/7/files");
+  assert.equal(out, '<a href="http://forge.example/a/b/pulls/7/files?pr-brief=data#diff-x">x</a>');
 });
 
 test("a v22 brief keeps the diagram after the Data section", () => {
   const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
   const contract = html.indexOf("<strong>Contract</strong>");
-  const data = html.indexOf("<h3><strong>Data</strong></h3>");
+  const data = html.indexOf("<strong>Data</strong>");
   const diagram = html.indexOf('class="diagram-box"');
   assert.ok(contract !== -1 && data > contract && diagram > data, [contract, data, diagram].join());
   assert.equal(html.slice(contract, data).includes("diagram-box"), false);
@@ -910,4 +902,28 @@ test("Walkthrough mode shows no chips and leaves the tree whole, and Files mode 
   await renders.at(-1).handlers.onMode("github");
   assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"] });
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
+});
+
+test("a files page opened with ?pr-brief=contract starts in Files mode with the Contract chip chosen and the tree filtered", async () => {
+  const { renders, filters, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW, search: "?pr-brief=contract" });
+  await settle();
+  const state = renders.at(-1).state;
+  assert.deepEqual(plain([state.mode, state.selectedStop, state.fileSet, state.chips.map((chip) => chip.id)]),
+    ["github", null, { id: "contract", paths: ["src/api.js", "api.json"] }, ["all", "contract"]]);
+  assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
+  assert.deepEqual([jumps, fileJumps], [[], []]);
+});
+
+test("a file set the run does not have, an unknown value or no parameter leaves the usual Walkthrough start", async () => {
+  for (const search of ["?pr-brief=data", "?pr-brief=elsewhere", "?pr-brief=", "?other=contract", ""]) {
+    const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW, search });
+    await settle();
+    assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.selectedStop, filters.at(-1) ?? null]), ["review", 1, null], search);
+  }
+});
+
+test("the parameter is read next to other query parameters and a fragment", async () => {
+  const { renders } = loadContent({ run: null, view: "files", review: SET_REVIEW, search: "?w=1&pr-brief=contract", hash: "#diff-abc" });
+  await settle();
+  assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.fileSet?.id]), ["github", "contract"]);
 });

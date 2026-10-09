@@ -155,7 +155,7 @@ class ForgejoTest(unittest.TestCase):
         self.assertTrue(link.startswith("http://forge.invalid/acme/widgets/pulls/7/files#diff-"))
         digest = link.rsplit("diff-", 1)[1]
         self.assertEqual(len(digest), 40)
-        self.assertEqual(host.line_link("acme/widgets", "7", {"path": "src/Widget.java", "side": "L", "line": 12}), f"{link}L12")
+        self.assertEqual(host.files_link("acme/widgets", "7"), "http://forge.invalid/acme/widgets/pulls/7/files")
 
     def test_forgejo_needs_a_url(self) -> None:
         with self.assertRaises(SystemExit):

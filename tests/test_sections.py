@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import render  # noqa: E402
+from hosts.forgejo import Forgejo  # noqa: E402
 from render import build_body, node_titles, review_json, stop_badges  # noqa: E402
 from contract_fixtures import SPEC, contract_of, document, make_diff  # noqa: E402
 from test_contract_impact import operation, props  # noqa: E402
@@ -61,48 +62,46 @@ class Sections(unittest.TestCase):
         self.addCleanup(patch.stop)
 
     def section_of(self, text: str, name: str) -> str:
-        return re.search(rf'(?s)<details class="section">\n<summary><strong>{name}</strong>.*?</details>', text).group()
+        return re.search(rf"(?s)\*\*{name}\*\* .*?(?=\n\n\*\*Data\*\*|\n\n___|\Z)", text).group()
 
-    def test_two_closed_sections_follow_the_description_and_no_rule_separates_them(self) -> None:
+    def test_two_sections_follow_the_description_and_no_rule_separates_them(self) -> None:
         brief, _ = render_body()
         text = brief.body
-        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>Contract</strong> '
-                               r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong> ')
+        self.assertRegex(text, r"(?s)### \*\*Description\*\*\n.*___\n\n\*\*Contract\*\* .*\n\n\*\*Data\*\* ")
         self.assertNotIn("Contract and data", text)
         self.assertNotIn("### **Contract**", text)
-        self.assertEqual(text.count('<details class="section">'), 2)
-        contract_to_data = text[text.index("<summary><strong>Contract</strong>"):text.index("<summary><strong>Data</strong>")]
+        self.assertNotIn('<details class="section">', text)
+        contract_to_data = text[text.index("**Contract** "):text.index("**Data** ")]
         self.assertNotIn("___", contract_to_data)
-        after_data = text[text.index("<summary><strong>Data</strong>"):]
+        after_data = text[text.index("**Data** "):]
         self.assertEqual(after_data.count("___"), 1)
         self.assertTrue(after_data.rstrip().endswith("___"))
         self.assertEqual(text.count("___"), 3)
 
-    def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
+    def test_the_contract_section_has_the_chips_the_files_link_and_the_files_and_no_table(self) -> None:
         brief, _ = render_body()
         text, lineset = brief.body, brief
         contract = self.section_of(text, "Contract")
-        summary = re.search(r"<summary>(.*?)</summary>", contract).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract breaking may break 3 changes")
-        rows = [re.sub(r"<[^>]+>", "", row) for row in contract.splitlines() if row.startswith("| <span")]
-        self.assertEqual([re.sub(r" \| \[↗\].*", "", row) for row in rows],
-                         ["| breaking | request | + owner required | ItemRequest",
-                          "| breaking |  | removed | GET /gone",
-                          "| may break |  | − b | Widget"])
+        head = contract.splitlines()[0]
+        self.assertEqual(re.sub(r"<[^>]+>", "", head), "**Contract** breaking may break · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=contract)")
+        self.assertEqual(re.findall(r"<summary>(.*?)</summary>", contract), ["1 file"])
         self.assertEqual(len(lineset.contract), 3)
-        for gone in ("chunk", "Not in any", "group-row", "<strong><code>"):
+        for gone in ("|", "chunk", "Not in any", "group-row", "table-wrap"):
             self.assertNotIn(gone, contract)
 
-    def test_the_data_section_lists_every_line_in_one_table(self) -> None:
+    def test_the_data_section_links_the_data_files(self) -> None:
         brief, _ = render_body()
-        text = brief.body
-        data = self.section_of(text, "Data")
-        summary = re.search(r"<summary>(.*?)</summary>", data).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Data destructive additive 2 changes")
+        data = self.section_of(brief.body, "Data")
+        self.assertEqual(re.sub(r"<[^>]+>", "", data.splitlines()[0]),
+                         "**Data** destructive additive · [View files](https://github.com/acme/shop/pull/7/files?pr-brief=data)")
         self.assertEqual(data.count("<details"), 1)
-        self.assertIn("| Impact | Change | Table | ↗ |", data)
-        self.assertIn("| <code>− old</code> | <code>legacy</code> |", data)
-        self.assertNotIn("Items table", data)
+        self.assertEqual(re.findall(r"<summary>(.*?)</summary>", data), ["1 file"])
+        self.assertIn("[V9__items.sql](", data)
+
+    def test_a_forgejo_run_links_its_own_files_page(self) -> None:
+        with mock.patch.object(render, "LINK_HOST", Forgejo("http://forge.invalid", None)):
+            brief, _ = render_body()
+        self.assertIn("[View files](http://forge.invalid/acme/shop/pulls/7/files?pr-brief=contract)", brief.body)
 
     def test_review_json_lists_the_boxes_the_stops_and_every_line(self) -> None:
         brief, _ = render_body()
@@ -184,7 +183,7 @@ class Sections(unittest.TestCase):
         text = brief.body
         headings = re.findall(r"^### (?:\*\*)?(.*?)(?:\*\*)?$", text, re.M)
         self.assertEqual(headings, ["PR Type", "Description", "Diagram Walkthrough"])
-        self.assertEqual(text.count("<summary><strong>"), 2)
+        self.assertEqual(text.count("**Contract**") + text.count("**Data**"), 2)
         self.assertTrue(text.rstrip().endswith("___"))
 
 

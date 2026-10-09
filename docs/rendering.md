@@ -37,37 +37,29 @@ re-run it instead.
   A stop's `node` must be a box of the diagram that covers files; when it is missing or is not, the stop takes the first
   box, in diagram order, whose files include the stop's file, with a note, and when no box holds the file `node` is null
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
-- **Contract and Data** are two sections after the description, built
-  without a model call. Each is one closed `<details>` (class `section`) whose summary holds the section's name in bold,
-  one chip for each level present, worst first (`breaking` `additive`; no counts), and the number of table
-  rows as muted text (`3 changes`, `1 change`), so they show while it is collapsed. Opened, it holds one GitHub markdown
-  table with a row per line of the whole PR. Contract rows are sorted
-  by worst level, then request before response before both (then no side), then On alphabetically; Data rows by worst
-  level, then table, then the document's order; rows with equal keys keep the document's order. With no lines a section
-  is a heading and "No API changes" or "No database changes", or that its side was not checked (no `openapi_path` or
-  mirror, no `migration_globs`). The Contract side needs `contract.json`; the Data side needs `migration_globs` in
-  `local.toml`.
+- **Contract and Data** are two sections after the description, built without a model call. Each is its name in bold,
+  one chip for each level present, worst first (`breaking` `may break` `additive`; no counts), and a `View files` link to
+  the PR's files page with `?pr-brief=contract` (or `data`): `/pull/N/files` on GitHub, `/pulls/N/files` on Forgejo. Under
+  it is a closed `<details>` whose summary counts the section's files (`3 files`) and which lists them as links to their
+  diffs (see Sources and file sets below). The body has no per-line table; every line is in `review.json`. A section with
+  no files has no link and no list. With no lines a section is a heading and "No API changes" or "No database changes",
+  or that its side was not checked (no `openapi_path` or mirror, no `migration_globs`). The Contract side needs
+  `contract.json`; the Data side needs `migration_globs` in `local.toml`.
 
   `contract.json` lists `removals`, `newly_required` and, for this
   section, `added`, `changed` (a changed property's `from` and `to` types when they differ), `schema_operations` and
   `added_required` (the newly required properties that the base schema did not declare, including in an inline `allOf`
   member; they read `added (required)`, and the others `now required`).
 
-  Each section ends with its file set as a short list of links to the files' diffs, `Contract files` and `Data files`
-  (see Sources and file sets below); a set with no files draws no list.
-
-  The Contract table has the columns Impact, Side, Change, On and ↗. The Data table has Impact, Change, Table and ↗.
-  Impact is the chip; Side is `request`, `response` or `both` (empty for an operation or a schema no operation reaches);
-  Change says what changed, with a `+` or `−` before an added or removed name (`+ productType` required param,
-  `+ note` optional, `− archived`, `price` number → string, `moved`, `new GET POST PATCH, +3 schemas`, `+ col` nullable,
-  `position` default 0, constraint `uq_x` dropped, `backfill (UPDATE)`); On is the endpoint, schema or family, or for a
-  sweep `9 schemas: A, B, C +6`; Table is the table, or for a statement with none the migration file. ↗ is the row's
-  link, to its diff line or its file's diff. A contract row whose line has a source (below) shows the source instead,
-  `Customer.java:18`, with `spec` as a second link to the spec's diff line. Names are code, never links. A schema or table name longer than 40
-  characters is cut in its middle with the whole name as the element's `title` (an endpoint wraps instead), and each
-  table sits in an `overflow-x: auto` container. The chips are `<span class="pill p0|p1|p2">`: the top level is a filled
-  inverted chip, the second a bold outlined chip and the rest plain outlined chips. In `body.md`, where GitHub drops
-  `class`, the top level is bold and the others plain. Colour is not used.
+  Each line has the fields `change` (what changed, with a `+` or `−` before an added or removed name: `+ productType`
+  required param, `+ note` optional, `− archived`, `price` number → string, `moved`, `new GET POST PATCH, +3 schemas`,
+  `+ col` nullable, `position` default 0, constraint `uq_x` dropped, `backfill (UPDATE)`), `on` (the endpoint, schema or
+  family, or for a sweep `9 schemas: A, B, C +6`; for data the table, or for a statement with none the migration file)
+  and, for a contract line, `reaches` (`request`, `response` or `both`; empty for an operation or a schema no operation
+  reaches). The chips are `<span class="pill p0|p1|p2">`: the top level is a filled inverted chip, the second a bold
+  outlined chip and the rest plain outlined chips. In `body.md`, where GitHub drops `class`, the top level is bold and
+  the others plain. Colour is not used. A level the renderer does not know (an older run's `deprecated`) draws as an
+  `other` chip.
 
   Contract levels, worst first. Every change records the side it reaches, request (a body or a parameter) or response; a
   schema used on both sides counts as both and takes the worse level, and a schema no operation reaches counts as both.
@@ -127,8 +119,8 @@ re-run it instead.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,
   `files` the paths it covers and `stops` the numbers of the stops that land on it), `walkthrough: [{i, title, why, path,
-  side, line, node}]`, the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
-  line, source}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell;
+  side, line, node}]`, the lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
+  line, source}]`, where `text` is the whole sentence, `change`, `on` and `reaches` its parts;
   `impact` is null for a line with no impact, `side` and `line` are null when the diff does not settle the line, and
   `source` is `{path, side, line}` in the PR's own code or null (`side` is `L` for a removed line); and `file_sets`.
   A run made before `source` and `file_sets` existed has neither.

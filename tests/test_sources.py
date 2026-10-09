@@ -363,22 +363,25 @@ class FileSets(unittest.TestCase):
         data = render.review_json(RUN, self.brief(paths=[SPEC, MIGRATION]), True)
         self.assertEqual({line["source"] for line in data["contract"]} | {line["source"] for line in data["data"]}, {None})
 
-    def test_the_comment_links_a_source_with_the_spec_second_and_lists_the_files(self) -> None:
+    def test_the_sections_list_their_files_behind_a_files_link(self) -> None:
         text = self.brief().body
-        contract = text[text.index("<summary><strong>Contract</strong>"):text.index("<summary><strong>Data</strong>")]
-        row = next(line for line in contract.splitlines() if "nickname" in line and line.startswith("| "))
-        self.assertRegex(row, r"\[Customer\.java:5\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}R5\) · \[spec\]\(")
-        listed = contract[contract.index("**Contract files**"):]
+        contract = text[text.index("**Contract** "):text.index("**Data** ")]
+        self.assertIn("[View files](https://github.com/acme/shop/pull/7/files?pr-brief=contract)", contract)
+        listed = contract[contract.index("<details>"):]
+        self.assertIn("<summary>5 files</summary>", listed)
         for name in ("openapi.json", "Customer.java", "CustomerController.java", "CustomerStatus.java"):
             self.assertIn(f"[{name}](", listed)
-        data = text[text.index("<summary><strong>Data</strong>"):]
-        self.assertIn("**Data files** [CustomerBE.java](", data)
+        data = text[text.index("**Data** "):]
+        self.assertIn("[CustomerBE.java](", data)
         self.assertIn("[V9__customers.sql](", data)
 
-    def test_a_section_with_no_files_has_no_list(self) -> None:
+    def test_a_section_with_no_files_has_no_list_and_no_link(self) -> None:
         text = self.brief(paths=[MIGRATION]).body
-        self.assertNotIn("Contract files", text)
-        self.assertIn("**Data files** [V9__customers.sql](", text)
+        contract = text[text.index("**Contract** "):text.index("**Data** ")]
+        self.assertNotIn("View files", contract)
+        self.assertNotIn("<details>", contract)
+        self.assertIn("pr-brief=data", text)
+        self.assertIn("[V9__customers.sql](", text)
 
 
 if __name__ == "__main__":

@@ -91,11 +91,13 @@ class BodyTest(RunFolderTest):
     def test_the_payload_is_the_same_text_every_time(self) -> None:
         self.assertEqual(post.payload(review([stop(1)])), post.payload(review([stop(1)])))
 
-    def test_a_contract_table_in_the_brief_is_kept(self) -> None:
-        table = "<details><summary>Contract</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
-        body = BODY.replace("### **Contract**\nNo API changes\n", table)
+    def test_a_contract_section_in_the_brief_is_kept_whole(self) -> None:
+        section = ('**Contract** <span class="pill p0"><strong>breaking</strong></span> · '
+                   '[View files](https://github.com/acme/widgets/pull/7/files?pr-brief=contract)\n\n'
+                   '<details>\n<summary>1 file</summary>\n\n[openapi.json](https://github.com/acme/widgets/pull/7/files#diff-ab)\n\n</details>\n')
+        body = BODY.replace("### **Contract**\nNo API changes\n", section)
         comment = post.build_comment(self.run_dir([stop(1)], body))
-        self.assertIn(table, comment)
+        self.assertIn(section, comment)
 
     def test_unpack_of_a_comment_without_a_payload_or_marker_is_none(self) -> None:
         self.assertIsNone(post.unpack("just a comment"))

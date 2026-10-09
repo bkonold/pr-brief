@@ -139,12 +139,12 @@ def count_diagram_edges(diagram: str) -> tuple[int, int]:
 LINK_HOST = GitHub()
 
 
+def files_link(repo: str, pr: str) -> str:
+    return LINK_HOST.files_link(repo, pr)
+
+
 def diff_link(repo: str, pr: str, filename: str) -> str:
     return LINK_HOST.diff_link(repo, pr, filename)
-
-
-def line_link(repo: str, pr: str, start: dict[str, Any]) -> str:
-    return LINK_HOST.line_link(repo, pr, start)
 
 
 # ---------------------------------------------------------------- globs
@@ -435,24 +435,16 @@ def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Lin
 
 def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str],
              files: dict[str, list[str]] | None = None) -> tuple[str, str]:
-    """The Contract and Data sections of a body, each one closed block with a table of all its lines and a list of its
-    files. A section with no lines says so, and says when its side could not be checked."""
+    """The Contract and Data sections of a body: each one's name, its impact chips, a link to the files page with its file
+    set selected and its files as links. A section with no lines says so, and says when its side could not be checked."""
     repo: str = run["repo"]
     number: str = str(run["pr"])
     file_lists: dict[str, list[str]] = files or {}
 
-    def source_link(source: Source) -> str:
-        return line_link(repo, number, {"path": source.path, "side": source.side, "line": source.line})
-
-    def link_of(line: Line) -> str:
-        if line.loc:
-            return line_link(repo, number, {"path": line.path, "side": line.loc[0], "line": line.loc[1]})
-        return diff_link(repo, number, line.path)
-
     def draw(side: str, none: str, levels: tuple[str, ...], kind: str, lines: list[Line]) -> str:
         if not lines:
             return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
-        return layout.section(kind, kind.capitalize(), levels, lines, link_of, source_link,
+        return layout.section(kind, kind.capitalize(), levels, lines, files_link(repo, number),
                               [(path, diff_link(repo, number, path)) for path in file_lists.get(kind, [])])
 
     return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", api),
@@ -519,7 +511,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key == "changes_diagram":
             body += f"### Diagram Walkthrough\n\n{value}\n\n{caption + chr(10) * 2 if caption else ''}"
             continue
-        if key in ("contract", "data") and value.startswith("<details"):
+        if key in ("contract", "data") and value.startswith("**"):
             body += f"{value}\n"
         else:
             body += f"### **{'PR Type' if key == 'type' else key.replace('_', ' ').capitalize()}**\n"
@@ -751,13 +743,6 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .pill { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 7px; border: 1px solid #8c959f; border-radius: 999px; white-space: nowrap; vertical-align: 1px; }
  .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
  .pill.p1 { border-color: #1f2328; font-weight: 600; }
- details > summary .pill { margin: 0 4px; }
- .muted { color: #59636e; font-size: 12px; }
- .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
- .table-wrap table { display: table; margin: 0; }
- .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }
- .table-wrap td:last-child, .table-wrap th:last-child { width: 1%; }
- .table-wrap td:nth-child(2), .table-wrap th:nth-child(2) { min-width: 9ch; }
 </style></head><body><article class="markdown-body" id="out"></article>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

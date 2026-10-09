@@ -105,10 +105,9 @@ class Forgejo:
     def diff(self, owner: str, repo: str, n: int | str) -> str:
         return self._get(f"/repos/{owner}/{repo}/pulls/{n}.diff").decode("utf-8")
 
-    # Forgejo's page ids are `diff-` plus the sha1 of the file's path, and its line anchors add the side and number.
+    def files_link(self, repo: str, pr: str) -> str:
+        return f"{self.url}/{repo}/pulls/{pr}/files"
+
+    # Forgejo's page ids are `diff-` plus the sha1 of the file's path.
     def diff_link(self, repo: str, pr: str, filename: str) -> str:
         return f"{self.url}/{repo}/pulls/{pr}/files#diff-{hashlib.sha1(filename.encode('utf-8')).hexdigest()}"
-
-    def line_link(self, repo: str, pr: str, start: dict[str, Any]) -> str:
-        digest: str = hashlib.sha1(start["path"].encode("utf-8")).hexdigest()
-        return f"{self.url}/{repo}/pulls/{pr}/files#diff-{digest}{start['side']}{start['line']}"
