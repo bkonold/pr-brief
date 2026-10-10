@@ -8,9 +8,9 @@ usage: post.py <run dir> [--repo owner/name] [--pr N] [--dry-run]
 --repo and --pr default to the run's own. --dry-run prints the comment and posts nothing; without it the program calls
 `gh api`, which reads GH_TOKEN from the environment.
 
-The comment is the brief's markdown with the diagram as a ```mermaid fence, which GitHub draws itself, a walkthrough whose
-stops link to their lines in the diff, a footer, a hidden `<!-- pr-brief:v1 -->` marker and, last, a collapsed "Brief data"
-block. The block is a code fence holding the base64 of the gzip of review.json plus the run's `diagram.svg` and
+The comment is one collapsed "PR Brief" details element, whose summary line names the variant and the head commit. It holds the
+brief's markdown with the diagram as a ```mermaid fence, which GitHub draws itself, a walkthrough whose stops link to their
+lines in the diff, any notes and a collapsed "Brief data" block; a hidden `<!-- pr-brief:v1 -->` marker follows it. The block is a code fence holding the base64 of the gzip of review.json plus the run's `diagram.svg` and
 `body.html` (as the keys `diagram_svg` and `body_html`, null when the run has no such file); the browser extension reads
 the brief from it, so a reader needs no server. The comment that gets updated is the earliest one by the token's user that
 holds the marker. A comment over GitHub's size limit loses the data block first, then walkthrough stops, then the tail of
@@ -131,10 +131,10 @@ def build_comment(run_dir: Path, repo: str | None = None, pr: int | str | None =
     pr = pr or review["pr"]
     brief: str = brief_markdown((run_dir / "body.md").read_text())
     stops: list[dict[str, Any]] = review["walkthrough"]
-    footer: str = f"<sub>pr-brief · {review['variant']} · {review['head_sha'][:7]}</sub>"
+    summary: str = f"<details>\n<summary><b>PR Brief</b> · {review['variant']} · {review['head_sha'][:7]}</summary>"
 
     def assemble(shown: int, notes: list[str], data: str, brief_text: str = brief) -> str:
-        parts: list[str] = ["## PR Brief", brief_text, walkthrough_markdown(stops, repo, pr, shown).strip(), *notes, footer, f"{MARKER} -->", data]
+        parts: list[str] = [summary, brief_text, walkthrough_markdown(stops, repo, pr, shown).strip(), *notes, data, "</details>", f"{MARKER} -->"]
         return "\n\n".join(part for part in parts if part) + "\n"
 
     encoded: str = payload(review, run_text(run_dir, DIAGRAM_FILE), run_text(run_dir, BODY_FILE))

@@ -454,7 +454,7 @@ def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: 
     def draw(side: str, none: str, levels: tuple[str, ...], kind: str, lines: list[Line]) -> str:
         if not lines:
             return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
-        return layout.section(kind, kind.capitalize(), levels, lines, link_of, source_link,
+        return layout.section(kind, HEADINGS.get(kind) or kind.capitalize(), levels, lines, link_of, source_link,
                               [(path, diff_link(repo, number, path)) for path in file_lists.get(kind, [])])
 
     return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", api),

@@ -920,7 +920,7 @@ test("the chips are All with the page's changed-file count and each non-empty se
   await settle();
   assert.deepEqual(plain(renders.at(-1).state.chips), [
     { id: "all", label: "All", count: 9 },
-    { id: "contract", label: "Contract", count: 2 },
+    { id: "contract", label: "API", count: 2 },
   ]);
   assert.equal(renders.at(-1).state.fileSet, null);
   assert.equal(filters.at(-1), null);

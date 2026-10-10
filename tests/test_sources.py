@@ -365,10 +365,10 @@ class FileSets(unittest.TestCase):
 
     def test_the_comment_links_a_source_with_the_spec_second_and_lists_the_files(self) -> None:
         text = self.brief().body
-        contract = text[text.index("<summary><strong>Contract</strong>"):text.index("<summary><strong>Data</strong>")]
+        contract = text[text.index("<summary><strong>API</strong>"):text.index("<summary><strong>Data</strong>")]
         row = next(line for line in contract.splitlines() if "nickname" in line and line.startswith("| "))
         self.assertRegex(row, r"\[Customer\.java:5\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}R5\) · \[spec\]\(")
-        listed = contract[contract.index("**Contract files**"):]
+        listed = contract[contract.index("**API files**"):]
         for name in ("openapi.json", "Customer.java", "CustomerController.java", "CustomerStatus.java"):
             self.assertIn(f"[{name}](", listed)
         data = text[text.index("<summary><strong>Data</strong>"):]

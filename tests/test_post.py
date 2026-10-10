@@ -63,13 +63,19 @@ class AnchorTest(unittest.TestCase):
 
 
 class BodyTest(RunFolderTest):
-    def test_the_comment_has_the_brief_the_diagram_fence_the_walkthrough_the_marker_and_the_data_block_in_that_order(self) -> None:
+    def test_the_comment_has_the_summary_the_brief_the_diagram_fence_the_walkthrough_the_data_block_and_the_marker_in_that_order(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1), stop(2, "src/Store.java", None)]))
-        order = ["## PR Brief", "### **Description**", "### **API**", "### **Data**", "```mermaid", "### Walkthrough", "1. [Stop 1](",
-                 "2. [Stop 2](", "<sub>pr-brief · v · ddddddd</sub>", f"{post.MARKER} -->", "<details><summary>Brief data</summary>"]
+        order = ["<details>\n<summary><b>PR Brief</b> · v · ddddddd</summary>", "### **Description**", "### **API**", "### **Data**", "```mermaid",
+                 "### Walkthrough", "1. [Stop 1](", "2. [Stop 2](", "<details><summary>Brief data</summary>", "</details>\n\n</details>", f"{post.MARKER} -->"]
         positions = [comment.index(part) for part in order]
         self.assertEqual(positions, sorted(positions))
-        self.assertTrue(comment.rstrip().endswith("```\n\n</details>"))
+        self.assertTrue(comment.rstrip().endswith(f"</details>\n\n{post.MARKER} -->"))
+
+    def test_the_data_block_sits_inside_the_one_outer_fold(self) -> None:
+        comment = post.build_comment(self.run_dir([stop(1)]))
+        self.assertEqual(comment.count("<details"), 2)
+        self.assertLess(comment.index("<summary><b>PR Brief</b>"), comment.index("<details><summary>Brief data</summary>"))
+        self.assertLess(comment.index("<details><summary>Brief data</summary>"), comment.rindex("</details>"))
 
     def test_the_marker_holds_no_payload_and_the_data_block_is_a_closed_details_with_one_unfenced_line_of_base64(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1)]))
@@ -121,7 +127,7 @@ class BodyTest(RunFolderTest):
         self.assertEqual(len(payload["walkthrough"]), 2)
 
     def test_a_contract_table_in_the_brief_is_kept(self) -> None:
-        table = "<details><summary>Contract</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
+        table = "<details><summary>API</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
         body = BODY.replace("### **API**\nNo API changes\n", table)
         comment = post.build_comment(self.run_dir([stop(1)], body))
         self.assertIn(table, comment)
@@ -175,7 +181,7 @@ class SizeTest(RunFolderTest):
         self.assertEqual(comment.count("```") % 2, 0)
         self.assertIn(post.TRIMMED, comment)
         self.assertIn(f"{post.MARKER} -->", comment)
-        self.assertTrue(comment.startswith("## PR Brief"))
+        self.assertTrue(comment.startswith("<details>\n<summary><b>PR Brief</b>"))
 
     def test_a_real_limit_is_never_exceeded_by_a_run_of_a_thousand_stops(self) -> None:
         stops = [stop(i, why="because " * 40) for i in range(1, 1001)]

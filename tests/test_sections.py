@@ -66,12 +66,12 @@ class Sections(unittest.TestCase):
     def test_two_closed_sections_follow_the_description_and_no_rule_separates_them(self) -> None:
         brief, _ = render_body()
         text = brief.body
-        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>Contract</strong> '
+        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>API</strong> '
                                r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong> ')
         self.assertNotIn("Contract and data", text)
         self.assertNotIn("### **Contract**", text)
         self.assertEqual(text.count('<details class="section">'), 2)
-        contract_to_data = text[text.index("<summary><strong>Contract</strong>"):text.index("<summary><strong>Data</strong>")]
+        contract_to_data = text[text.index("<summary><strong>API</strong>"):text.index("<summary><strong>Data</strong>")]
         self.assertNotIn("___", contract_to_data)
         after_data = text[text.index("<summary><strong>Data</strong>"):]
         self.assertEqual(after_data.count("___"), 1)
@@ -81,9 +81,9 @@ class Sections(unittest.TestCase):
     def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
         brief, _ = render_body()
         text, lineset = brief.body, brief
-        contract = self.section_of(text, "Contract")
+        contract = self.section_of(text, "API")
         summary = re.search(r"<summary>(.*?)</summary>", contract).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract callers must change consumers may break 3 changes")
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API callers must change consumers may break 3 changes")
         rows = [re.sub(r"<[^>]+>", "", row) for row in contract.splitlines() if row.startswith("| <span")]
         self.assertEqual([re.sub(r" \| \[↗\].*", "", row) for row in rows],
                          ["| callers must change | request | + owner required | ItemRequest",
