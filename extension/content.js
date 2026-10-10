@@ -1,9 +1,10 @@
 (() => {
-  const { page, source, runControl, focus, tree, diagram, brief, alive } = globalThis.prFocus;
+  const { page, source, commentSource, runControl, focus, tree, diagram, brief, alive } = globalThis.prFocus;
   if (!page) return;
 
   const SETTLE_MS = 150;
   const LOAD_GRACE_MS = 5000;
+  const BRIEF_WAIT_MS = 250;
   const NO_BLOCKS_NOTE = `Couldn't find ${page.name}'s diff blocks; selectors may need updating`;
 
   let current = null;
@@ -35,7 +36,8 @@
   }
 
   // The card is drawn for the PR's run when it has one, else as a bar offering to generate it. A run in progress
-  // on the server, left by an earlier visit, is followed from where it is.
+  // on the server, left by an earlier visit, is followed from where it is. A page with no brief comment yet, where
+  // generating is not possible, is waited on: the lookup is repeated once the document has changed and settled.
   async function mountBrief(pr) {
     const key = `${pr.owner}/${pr.repo}#${pr.pr}`;
     if (briefState?.key === key) return;
@@ -51,7 +53,10 @@
     ]);
     if (!live() || token !== briefToken) return;
     const canGenerate = runControl.mayGenerate(status);
-    if (!run && !canGenerate) return;
+    if (!run && !canGenerate) {
+      waitForBrief(state, pr);
+      return;
+    }
 
     let current = run;
     const baseView = () => (current ? { kind: "brief", ...current, runSha: current.headSha, pageSha, canGenerate } : { kind: "none", canGenerate });
@@ -84,6 +89,26 @@
     };
     placeBrief();
     if (status.ok && status.state === "running") controller.adopt(status);
+  }
+
+  // Waits for the brief comment to reach the page: once the document has changed and settled, the lookup runs again
+  // if a "Brief data" block is now in it. The wait ends with the next mount or unmount.
+  function waitForBrief(state, pr) {
+    let pending = null;
+    const stopChange = page.onChange(() => {
+      clearTimeout(pending);
+      pending = setTimeout(() => {
+        if (briefState !== state || !live()) return;
+        if (commentSource && !commentSource.extractPayload(document)) return;
+        state.stop();
+        briefState = null;
+        mountBrief(pr);
+      }, BRIEF_WAIT_MS);
+    });
+    state.stop = () => {
+      clearTimeout(pending);
+      stopChange();
+    };
   }
 
   function sessionKey(pr) {

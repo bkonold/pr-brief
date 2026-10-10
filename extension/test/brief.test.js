@@ -201,7 +201,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, startState = "running" }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, startState = "running", runs = null, payloads = null }) {
   const log = [];
   const description = {
     name: "description",
@@ -232,13 +232,13 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     page: {
       name: "Fake",
       hostId: "forgejo",
-      prFromUrl: () => ({ owner: "acme", repo: "widgets", pr: 7, view }),
+      prFromUrl: () => (nav.away ? null : { owner: "acme", repo: "widgets", pr: 7, view }),
       runKey: (pr) => `fj-${pr.pr}`,
       filesUrl: () => FILES_URL,
       currentHeadSha: async () => pageSha,
       descriptionHost: () => (hostPresent ? description : null),
       onNavigate: (callback) => (navigations.push(callback), () => {}),
-      onChange: () => () => {},
+      onChange: (callback) => (changes.push(callback), () => {}),
       cancelJump: () => lineEvents.push("cancelJump"),
       clearLineTarget: () => lineEvents.push("clearLineTarget"),
       fileBlocks: () => new Map(),
@@ -254,7 +254,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       jumpToFile: async (...args) => fileJumps.push(args),
     },
     source: {
-      loadBrief: async (...args) => (briefArgs.push(args), run),
+      loadBrief: async (...args) => (briefArgs.push(args), runs ? runs.shift() : run),
       loadReview: async () => review,
       runStatus: async (target) => (calls.push(["status", target]), status),
       startRun: async (target) => (calls.push(["start", target]), { ok: true, key: target.key, state: startState }),
@@ -289,6 +289,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       owns: () => false,
     },
     alive: () => true,
+    ...(payloads ? { commentSource: { extractPayload: () => payloads.shift() } } : {}),
   };
   const output = [];
   const consoleSpy = { log: (...a) => output.push(a), warn: (...a) => output.push(a), error: (...a) => output.push(a), info: (...a) => output.push(a), debug: (...a) => output.push(a) };
@@ -298,10 +299,10 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     return timer;
   };
   const sessionStorage = { getItem: (key) => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
-  const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
+  const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, ...(payloads ? { document: {} } : {}) };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { briefArgs, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
+  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -344,6 +345,45 @@ test("a run in progress on the server is followed when the page opens, and its f
   const { built } = loadContent({ run: null, status: { ok: true, state: "running", stage: "write", elapsed: 41, allowed: true } });
   await settle();
   assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }, { kind: "running", stage: "write", elapsed: 41 }]);
+});
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("the card is mounted once the brief comment appears after the first lookup", async () => {
+  const { built, briefArgs, changes } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false } });
+  await settle();
+  assert.equal(built.length, 0);
+  assert.equal(changes.length, 1);
+  changes[0]();
+  await wait(350);
+  assert.equal(built.length, 1);
+  assert.equal(briefArgs.length, 2);
+});
+
+test("the lookup is not repeated while the page still has no brief block", async () => {
+  const { built, briefArgs, changes } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false }, payloads: [null, "data"] });
+  await settle();
+  changes[0]();
+  await wait(350);
+  assert.equal(briefArgs.length, 1);
+  assert.equal(built.length, 0);
+  changes[0]();
+  await wait(350);
+  assert.equal(briefArgs.length, 2);
+  assert.equal(built.length, 1);
+});
+
+test("navigating away stops waiting for the comment", async () => {
+  const { built, briefArgs, changes, nav, navigations } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false } });
+  await settle();
+  changes[0]();
+  nav.away = true;
+  for (const navigate of navigations) navigate();
+  await wait(350);
+  changes[0]();
+  await wait(350);
+  assert.equal(briefArgs.length, 1);
+  assert.equal(built.length, 0);
 });
 
 test("one card is built for a run, however many times the page announces a navigation", async () => {
