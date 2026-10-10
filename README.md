@@ -120,9 +120,8 @@ that needs a missing key is skipped, with the reason in `run.json`. Set `PR_BRIE
 python3 serve.py                                   # serve runs/ on 127.0.0.1:8765 for the extension
 ```
 
-`--variant chunks` is a proof of concept that groups the diff's hunks into an ordered stack of chunks instead of drawing a
-diagram, and `scripts/eval_chunks.py` scores its run against a hand-written grouping (see [eval/](eval/README.md) and
-[docs/rendering.md](docs/rendering.md)).
+A brief's Chunks section groups the diff's hunks into an ordered stack of chunks, and `scripts/eval_chunks.py` scores a
+brief run against a hand-written grouping (see [eval/](eval/README.md) and [docs/rendering.md](docs/rendering.md)).
 
 ## Browser extension
 

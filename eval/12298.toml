@@ -1,4 +1,4 @@
-# Expected chunks for PR 12298, for `python scripts/eval_chunks.py runs/12298/chunks eval/12298.toml`.
+# Expected chunks for PR 12298, for `python scripts/eval_chunks.py runs/12298/brief eval/12298.toml`.
 
 [chunks."Dynamic attributes model"] # placeholder, fill in
 hunks = [

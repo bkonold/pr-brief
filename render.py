@@ -612,13 +612,11 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
     if diagram:
         node_files = clean_node_files(data.get("node_files"), declaration_positions(diagram.split("\n")), paths, notes)
         titles = node_titles(diagram)
-    elif chunks is None or "changes_diagram" in data:
+    else:
         notes.append("no changes_diagram")
     stops, stop_notes = resolve_stops(data.get("walkthrough"), paths, diff_lines, node_files)
-    if chunks is not None and "walkthrough" not in data:
-        stop_notes = []
     notes.extend(stop_notes + chunk_notes)
-    if not stops and not chunks:
+    if not stops:
         raise AnswerError("The walkthrough has no stop left, so there is nothing to guide a reviewer through:\n"
                           + "\n".join(f"- {note}" for note in stop_notes + chunk_notes))
     stops_on: dict[str, list[int]] = {node: [stop["i"] for stop in stops if stop["node"] == node] for node in node_files}

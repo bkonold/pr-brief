@@ -5,14 +5,13 @@
 One TOML per variant in `variants/` (see `PR_BRIEF_HOME` in the [README](../README.md#run-it-locally) for adding your own). Keys: `description`, `context` (see
 [Context packs](context.md)), `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
 field in the prompt's schema and example), `hunk_ids` (default false: the prompt's diff carries a `[hNN]` tag at the end of
-each `@@` line, and the repository context lists the hunks that belong together), `diagram` (default true: false leaves the
+each `@@` line, and the repository context lists the hunks that belong together; the `brief` variant sets it), `diagram` (default true: false leaves the
 `changes_diagram` field out of the prompt) and `[context_options]`. The renderer has one set of settings and a variant
 cannot change them. [prompt.md](prompt.md) shows how the variant's rules and fields become the prompt.
 
 | Variant | What it is |
 | --- | --- |
-| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
-| `chunks` | Proof of concept: no diagram or walkthrough; the model assigns every hunk of the diff, by its `[hNN]` tag, to one of an ordered stack of 2 to 7 chunks, each with a title, a summary, the earlier chunks it depends on and a risk; a Contract and a Data section for the whole PR |
+| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR; and the diff's hunks, each assigned by its `[hNN]` tag to one of an ordered stack of 2 to 7 chunks with a title, a summary, the earlier chunks it depends on and a risk |
 
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.
@@ -44,7 +43,7 @@ re-run it instead.
   box, in diagram order, whose files include the stop's file, with a note, and when no box holds the file `node` is null
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
 - **Chunks.** A chunk is a set of hunks that tells one story a reviewer can judge on its own, and the chunks are an ordered
-  stack. With a `hunk_ids` variant, `hunks.py` numbers every hunk of the diff `h01`, `h02`, ... in diff order and tags its
+  stack. In the `brief` variant, which sets `hunk_ids`, `hunks.py` numbers every hunk of the diff `h01`, `h02`, ... in diff order and tags its
   `@@` line; the answer's `chunks` is `[{title, summary, hunks, depends_on, risk, risk_reason}]` where `hunks` holds only
   those ids, so the model never copies code. The prompt's repository context also lists the hunks that hold one contract or
   data line (the spec line and the code that declares it, the migration statement and its entity) as hunks that belong
@@ -57,8 +56,8 @@ re-run it instead.
   each hunk (`path:first–last`, the old lines for a deleted file) with its id; files with no hunk (a pure rename, a binary
   file) are listed after the chunks. `review.json` gets `chunks: [{i, title, summary, risk, risk_reason, depends_on, hunks:
   [{id, path, change, old: [start, count], new: [start, count]}]}]` only when the answer has a `chunks` key; the schema is
-  still 4. A run with chunks needs no walkthrough and no diagram. `scripts/eval_chunks.py` scores a run against
-  `eval/<pr>.toml`.
+  still 4. Chunks are additive: a missing diagram or walkthrough is noted, and no stop left is an error, chunks or
+  not. `scripts/eval_chunks.py` scores a run against `eval/<pr>.toml`.
 - **Contract and Data** are two sections after the description, built
   without a model call. Each is one closed `<details>` (class `section`) whose two-line summary holds the section's name
   in bold on the first line and, after a `<br>`, one chip for each level present, worst first (`callers must change`

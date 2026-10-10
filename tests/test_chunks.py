@@ -241,10 +241,11 @@ class ChunksSection(unittest.TestCase):
         self.assertEqual(chunks_section([], self.BY_ID, link_of, [("a", "u")]), "")
 
 
-RUN = {"repo": "acme/shop", "pr": 7, "with_body": False, "variant": "chunks", "pr_head_sha": "abc"}
+RUN = {"repo": "acme/shop", "pr": 7, "with_body": False, "variant": "brief", "pr_head_sha": "abc"}
 PATHS = ["api/Item.java", "api/ItemTest.java", "api/Gone.java", "api/After.java"]
 PR = {"title": "T", "body": "", "files": [{"path": p, "additions": 2, "deletions": 1, "changeType": "MODIFIED"} for p in PATHS]}
-ANSWER = {"description": "does things",
+STOPS = [{"file": path, "title": "t", "why": "w"} for path in PATHS[:3]]
+ANSWER = {"description": "does things", "walkthrough": STOPS,
           "chunks": [chunk("The model", ["h01", "h02"], risk="medium", risk_reason="Key."), chunk("Tests", ["h03", "h04"], depends_on=[1])]}
 
 
@@ -266,19 +267,21 @@ class ChunksInTheBody(unittest.TestCase):
         self.assertRegex(brief.body, r"- \[`api/Item\.java:3–7`\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}R3\) \(h01\)")
         self.assertRegex(brief.body, r"- \[`api/Gone\.java:1–2`\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}L1\) \(h04\)")
 
-    def test_an_answer_with_chunks_and_no_walkthrough_or_diagram_renders_without_noise(self) -> None:
+    def test_a_missing_diagram_is_noted_as_it_is_without_chunks(self) -> None:
         brief, notes = self.build(ANSWER)
-        self.assertEqual(notes, [])
-        self.assertEqual((brief.stops, brief.nodes), ([], {}))
+        self.assertEqual(notes, ["no changes_diagram"])
+        self.assertEqual(([stop["path"] for stop in brief.stops], brief.nodes), (PATHS[:3], {}))
         self.assertNotIn("Diagram Walkthrough", brief.body)
 
     def test_a_walkthrough_that_is_present_but_broken_is_still_noted(self) -> None:
-        _, notes = self.build({**ANSWER, "walkthrough": "text", "changes_diagram": ""})
-        self.assertEqual(notes, ["no changes_diagram", "no walkthrough"])
+        with self.assertRaises(AnswerError) as caught:
+            self.build({**ANSWER, "walkthrough": "text", "changes_diagram": ""})
+        self.assertIn("- no walkthrough", str(caught.exception))
 
     def test_the_resolution_notes_are_kept(self) -> None:
         _, notes = self.build({**ANSWER, "chunks": [chunk("A", ["h01", "h99"])]})
-        self.assertEqual(notes, ["chunk 1: unknown hunk h99 dropped", "unassigned hunks gathered into the last chunk: h02, h03, h04"])
+        self.assertEqual(notes, ["no changes_diagram", "chunk 1: unknown hunk h99 dropped",
+                                 "unassigned hunks gathered into the last chunk: h02, h03, h04"])
 
     def test_an_answer_with_no_chunks_key_has_no_chunks_section(self) -> None:
         data = {"description": "d", "walkthrough": [{"file": "api/Item.java", "title": "t", "why": "w"}]}
@@ -287,8 +290,8 @@ class ChunksInTheBody(unittest.TestCase):
         self.assertIsNone(brief.chunks)
         self.assertEqual(notes, ["no changes_diagram", "1 stops, expected 3 to 10"])
 
-    def test_an_answer_with_neither_stops_nor_chunks_is_an_error(self) -> None:
-        for data in ({"description": "d"}, {"description": "d", "chunks": "text"}):
+    def test_an_answer_with_no_stops_is_an_error_whatever_its_chunks(self) -> None:
+        for data in ({"description": "d"}, {"description": "d", "chunks": "text"}, {"description": "d", "chunks": ANSWER["chunks"]}):
             with self.assertRaises(AnswerError) as caught:
                 self.build(data)
             self.assertIn("The walkthrough has no stop left", str(caught.exception))
@@ -296,14 +299,12 @@ class ChunksInTheBody(unittest.TestCase):
             self.build({"description": "d", "chunks": "text"})
         self.assertIn("- no chunks", str(caught.exception))
 
-    def test_stops_alone_are_enough_and_chunks_alone_are_enough(self) -> None:
-        stops = [{"file": "api/Item.java", "title": "t", "why": "w"}]
-        self.assertEqual(self.build({"description": "d", "walkthrough": stops, "chunks": "text"})[0].chunks, [])
-        self.assertEqual(self.build({"description": "d", "chunks": ANSWER["chunks"]})[0].stops, [])
+    def test_stops_are_enough_without_chunks(self) -> None:
+        self.assertEqual(self.build({"description": "d", "walkthrough": STOPS, "chunks": "text"})[0].chunks, [])
 
 
 class ReviewJsonChunks(unittest.TestCase):
-    RUN = {"repo": "acme/shop", "pr": 7, "pr_head_sha": "a" * 40, "variant": "chunks"}
+    RUN = {"repo": "acme/shop", "pr": 7, "pr_head_sha": "a" * 40, "variant": "brief"}
 
     def test_the_chunks_are_listed_with_their_hunks_as_objects(self) -> None:
         chunks, _ = resolve([chunk("A", ["h01", "h02"], risk="high", risk_reason="Why."), chunk("B", ["h03", "h04"], depends_on=[1])])
