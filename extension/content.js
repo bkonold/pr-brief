@@ -117,7 +117,7 @@
     page.restoreLineTarget();
     page.showCallouts(session.mode === "review" ? session.callouts : []);
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
-    page.filterTree(fileSet?.paths ?? null);
+    page.filterFiles(fileSet?.paths ?? null);
 
     const waited = Date.now() - session.startedAt;
     const noBlocks = page.fileBlocks().size === 0;
@@ -218,6 +218,12 @@
     return session.selection;
   }
 
+  // A selection in a file the chip hides shows every file again, so the target can be seen.
+  function showFileOf(session, path) {
+    const fileSet = tree.fileSetOf(session.review, session.fileSet);
+    if (fileSet && !fileSet.paths.includes(path)) session.fileSet = "all";
+  }
+
   // Makes the stop's file the active one, gives the stop's box the diagram's halo and jumps to the stop's line, or to its
   // file's header when the stop has no line. A stop on no box selects no box. `scroll: false` leaves the diff where it
   // is, so only the box, the list and the highlight follow. The diagram zooms to the stop's box, except with `zoom: false`,
@@ -226,6 +232,7 @@
   async function selectStop(session, stop, { scroll = true, zoom = true, ...jump } = {}) {
     const mine = startSelection(session);
     await change(session, () => {
+      showFileOf(session, stop.path);
       leaveLine();
       deactivate(session);
       session.mode = "review";
@@ -273,6 +280,7 @@
   async function selectFile(session, path, nodeId = null) {
     const mine = startSelection(session);
     await change(session, () => {
+      showFileOf(session, path);
       leaveLine();
       deactivate(session);
       session.mode = "review";
@@ -391,7 +399,7 @@
     stopObserving = null;
     page.cancelJump();
     page.clearLineTarget();
-    page.filterTree(null);
+    page.filterFiles(null);
     focus.clearBox();
     tree.remove();
     diagram.remove();

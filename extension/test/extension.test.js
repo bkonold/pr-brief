@@ -1302,35 +1302,74 @@ function fakeTree(links) {
   return { files, dir, host };
 }
 
-test("filterTree hides the tree's file rows outside the set and a directory left empty, and shows them all for null", async () => {
+function fakeBlocks(ids) {
+  const blocks = ids.map((id) => ({ id, hidden: false, classList: { toggle(name, on) { blocks.find((block) => block.id === id).hidden = on; } } }));
+  globalThis.document = { querySelectorAll: (selector) => (selector === "block" ? blocks : []) };
+  return blocks;
+}
+
+function withBlocks(ids, body) {
+  return async () => {
+    const blocks = fakeBlocks(ids);
+    try {
+      await body(blocks);
+    } finally {
+      delete globalThis.document;
+    }
+  };
+}
+
+test("filterFiles hides the tree's file rows outside the set and a directory left empty, and shows them all for null", withBlocks([], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b", "https://host/pull/1/files#diff-c"]);
-  const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
-  await page.filterTree(["a", "c"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
+  await page.filterFiles(["a", "c"]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true, false]);
   assert.equal(tree.dir.hidden, false);
-  await page.filterTree(["b"]);
+  await page.filterFiles(["b"]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [true, false, true]);
-  await page.filterTree(["zzz"]);
+  await page.filterFiles(["zzz"]);
   assert.equal(tree.dir.hidden, true);
-  await page.filterTree(null);
+  await page.filterFiles(null);
   assert.deepEqual([...tree.files, tree.dir].map((row) => row.hidden), [false, false, false, false]);
-});
+}));
 
-test("filterTree is applied again to rows the host re-rendered, without asking for the ids again", async () => {
+test("filterFiles is applied again to rows the host re-rendered, without asking for the ids again", withBlocks([], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b"]);
   let asked = 0;
-  const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
-  await page.filterTree(["a"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
+  await page.filterFiles(["a"]);
   for (const row of tree.files) row.hidden = false;
-  await page.filterTree(["a"]);
+  await page.filterFiles(["a"]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
   assert.equal(asked, 1);
-});
+}));
 
-test("a tree row with no diff link is left showing, and a page with no tree is left alone", async () => {
+test("a tree row with no diff link is left showing, and a page with no tree is left alone", withBlocks([], async () => {
   const tree = fakeTree([null, "#diff-b"]);
-  const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => `diff-${path}` });
-  await page.filterTree(["a"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => `diff-${path}` });
+  await page.filterFiles(["a"]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
-  await filePage({ treeHost: () => null, treeFileSelector: "file", diffId: async (path) => path }).filterTree(["a"]);
-});
+  await filePage({ blockSelector: "block", treeHost: () => null, treeFileSelector: "file", diffId: async (path) => path }).filterFiles(["a"]);
+}));
+
+test("filterFiles hides the diff blocks outside the set, with or without a tree, and shows them all for null", withBlocks(["diff-a", "diff-b", "diff-c"], async (blocks) => {
+  const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => `diff-${path}` });
+  await page.filterFiles(["a", "c"]);
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, true, false]);
+  await page.filterFiles(["b"]);
+  assert.deepEqual(blocks.map((block) => block.hidden), [true, false, true]);
+  await page.filterFiles(null);
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, false, false]);
+}));
+
+test("a diff block that appears after the filter was set is hidden when the filter is applied again", withBlocks(["diff-a"], async (blocks) => {
+  const tree = fakeTree(["#diff-a", "#diff-b"]);
+  let asked = 0;
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
+  await page.filterFiles(["a"]);
+  assert.deepEqual(blocks.map((block) => block.hidden), [false]);
+  const later = fakeBlocks(["diff-a", "diff-b"]);
+  await page.filterFiles(["a"]);
+  assert.deepEqual(later.map((block) => block.hidden), [false, true]);
+  assert.equal(asked, 1);
+}));
