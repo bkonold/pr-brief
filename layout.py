@@ -103,21 +103,22 @@ def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callab
 
 
 def files_list(heading: str, files: list[tuple[str, str]]) -> str:
-    """`**Contract files**` and a link to each file, `(path, url)`, labelled with its name, or its whole path when two
-    files share a name; empty for no file."""
+    """`**Contract files**`, a blank line, then one `- [name](url)` item per file, `(path, url)`, in the order given; the label
+    is the file's name, or its whole path when two files share a name. Empty for no file."""
     names: list[str] = [PurePosixPath(path).name for path, _ in files]
-    links: list[str] = [f"[{path if names.count(name) > 1 else name}]({url})" for (path, url), name in zip(files, names)]
-    return f"**{heading}** " + " · ".join(links) if files else ""
+    items: list[str] = [f"- [{path if names.count(name) > 1 else name}]({url})" for (path, url), name in zip(files, names)]
+    return f"**{heading}**\n\n" + "\n".join(items) if files else ""
 
 
 def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str],
             source_link_of: Callable[[Source], str] | None = None, files: list[tuple[str, str]] | None = None) -> str:
-    """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` whose summary holds `heading`, the glance
-    chips and the number of lines in muted text, one table of every line in it, sorted by `sort_key` (lines of equal
-    key keep their order), and under it the section's files as links (`files` holds `(path, url)`)."""
+    """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` whose two-line summary holds `heading`
+    alone on the first line and, after a `<br>`, the glance chips and the number of lines in muted text, so a collapsed
+    section shows both; inside it, one table of every line, sorted by `sort_key` (lines of equal key keep their order), and
+    under it the section's files as a bulleted list of links (`files` holds `(path, url)`)."""
     ordered: list[Line] = sorted(lines, key=lambda line: sort_key(kind, line, levels))
     listed: str = files_list(f"{heading} files", files or [])
-    return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong> {glance(lines, levels)} '
+    return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong><br>\n{glance(lines, levels)} '
             f'<span class="muted">{plural(len(lines), "change")}</span></summary>\n\n'
             f'<div class="table-wrap">\n\n{table(kind, levels, ordered, link_of, source_link_of)}\n\n</div>\n\n'
             f'{listed + chr(10) * 2 if listed else ""}</details>')
