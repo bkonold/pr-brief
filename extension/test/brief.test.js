@@ -904,7 +904,7 @@ test("a context box, which covers no file, and a box the review does not list do
 test("the sidebar's state and handlers are the stops and the mode", async () => {
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJump", "onMode", "onSelectFile", "onSelectStop"]);
+  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onMode", "onSelectStop"]);
 });
 
 const SET_REVIEW = {
@@ -940,14 +940,16 @@ test("choosing a chip narrows the pane and the tree to the set without moving th
   assert.equal(filters.at(-1), null);
 });
 
-test("a no-stop row lands on its file's header and marks it, and a link in the set's table jumps to its line or file", async () => {
-  const { renders, scrolled, boxes, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+test("switching the mode resets the chip to All and shows the whole tree again", async () => {
+  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
   await settle();
   await renders.at(-1).handlers.onFileSet("contract");
-  await renders.at(-1).handlers.onSelectFile("api.json");
-  assert.deepEqual([scrolled, plain(boxes.at(-1)), renders.at(-1).state.selectedStop], [["api.json"], ["api.json"], null]);
-  jumps.length = 0;
-  await renders.at(-1).handlers.onJump({ path: "src/api.js", side: "R", line: 12 });
-  await renders.at(-1).handlers.onJump({ path: "api.json", side: null, line: null });
-  assert.deepEqual([jumps, fileJumps], [[["src/api.js", "R", 12, undefined]], [["api.json", undefined]]]);
+  assert.equal(renders.at(-1).state.fileSet.id, "contract");
+  await renders.at(-1).handlers.onMode("review");
+  assert.equal(renders.at(-1).state.fileSet, null);
+  assert.equal(filters.at(-1), null);
+  await renders.at(-1).handlers.onFileSet("contract");
+  await renders.at(-1).handlers.onMode("github");
+  assert.equal(renders.at(-1).state.fileSet, null);
+  assert.equal(filters.at(-1), null);
 });
