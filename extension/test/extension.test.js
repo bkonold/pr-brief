@@ -688,15 +688,47 @@ test("a walkthrough row shows the stop's number and its title, and marks the cur
   }
 });
 
-test("the walkthrough list opens with a line saying what the stops are for", () => {
+const STOPS_TIP =
+  "A few lines picked from the diff, in the order to read them. A stop opens its lines and lights its box in the diagram. Stops don't cover every change; Layers and Files do.";
+const LAYERS_TIP =
+  "Every changed hunk, grouped into layers that each make sense alone, each building on the ones before. Pick one to narrow the diff to its lines; mark it judged when done. Risk is the model's judgment.";
+
+function tipOf(lede) {
+  const [button] = byClass(lede, "prf-info-button");
+  const [tip] = byClass(lede, "prf-tip");
+  return { button, tip, text: lede.children[0].textContent };
+}
+
+test("the walkthrough list opens with a line saying what the stops are for, with an info tip", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const list = stopList({ stops: WALK_STOPS, selectedStop: null }, {});
-    assert.equal(list.children[0].className, "prf-lede");
-    assert.equal(list.children[0].textContent, `${WALK_STOPS.length} stops, in reading order`);
-    assert.equal(list.children[0].title, "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.");
-    assert.equal(stopList({ stops: WALK_STOPS.slice(0, 1), selectedStop: null }, {}).children[0].textContent, "1 stop, in reading order");
+    const lede = list.children[0];
+    assert.equal(lede.className, "prf-lede");
+    assert.equal(lede.title, undefined);
+    const { button, tip, text } = tipOf(lede);
+    assert.equal(text, `${WALK_STOPS.length} stops, in reading order`);
+    assert.deepEqual([tip.textContent, tip.attributes.role], [STOPS_TIP, "tooltip"]);
+    assert.match(tip.id, /^prf-tip-\d+$/);
+    assert.deepEqual(
+      [button.tag, button.type, button.attributes["aria-label"], button.attributes["aria-describedby"]],
+      ["button", "button", "About this tab", tip.id],
+    );
+    assert.deepEqual(button.children.map((child) => [child.tag, child.className, child.attributes.width]), [["svg", "prf-info-icon", "16"]]);
+    assert.equal(tipOf(stopList({ stops: WALK_STOPS.slice(0, 1), selectedStop: null }, {}).children[0]).text, "1 stop, in reading order");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("each info tip has its own id", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const first = tipOf(stopList({ stops: WALK_STOPS, selectedStop: null }, {}).children[0]);
+    const second = tipOf(stopList({ stops: WALK_STOPS, selectedStop: null }, {}).children[0]);
+    assert.notEqual(first.tip.id, second.tip.id);
   } finally {
     delete globalThis.document;
   }
@@ -1389,11 +1421,16 @@ test("the chunks filter line counts the chunks and how many are judged, singular
   const { chunkList, filters } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const lede = (chunks, judged) => byClass(filters({ mode: "chunks", chunks, selectedChunk: null, judged: new Set(judged) }, {}), "prf-lede")[0].textContent;
-    assert.equal(lede(CHUNKS, [2]), "3 layers · 1 judged");
-    assert.equal(lede(CHUNKS, []), "3 layers · 0 judged");
-    assert.equal(lede(CHUNKS.slice(0, 1), [1]), "1 layer · 1 judged");
-    assert.equal(lede(CHUNKS, [2, 99]), "3 layers · 1 judged");
+    const ledeOf = (chunks, judged) => byClass(filters({ mode: "chunks", chunks, selectedChunk: null, judged: new Set(judged) }, {}), "prf-lede")[0];
+    const lede = (chunks, judged) => tipOf(ledeOf(chunks, judged)).text;
+    assert.equal(lede(CHUNKS, [2]), "Every change in 3 layers, foundations first \u00b7 1 judged");
+    assert.equal(lede(CHUNKS, []), "Every change in 3 layers, foundations first \u00b7 0 judged");
+    assert.equal(lede(CHUNKS.slice(0, 1), [1]), "Every change in 1 layer, foundations first \u00b7 1 judged");
+    assert.equal(lede(CHUNKS, [2, 99]), "Every change in 3 layers, foundations first \u00b7 1 judged");
+    const layers = ledeOf(CHUNKS, []);
+    const { button, tip } = tipOf(layers);
+    assert.equal(layers.title, undefined);
+    assert.deepEqual([tip.textContent, tip.attributes.role, button.attributes["aria-describedby"]], [LAYERS_TIP, "tooltip", tip.id]);
     assert.deepEqual(byClass(chunkList({ chunks: CHUNKS, selectedChunk: null, judged: new Set() }, {}), "prf-lede"), []);
   } finally {
     delete globalThis.document;

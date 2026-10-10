@@ -84,6 +84,7 @@
 /* The filter line under the toggle: what narrows the pane at its left, the Tests dropdown at its right. Its right padding
    matches `.prf-groups`, so the line ends where the list does. */
 .prf-filters {
+  position: relative;
   display: flex;
   flex: none;
   flex-wrap: wrap;
@@ -95,6 +96,7 @@
 }
 
 .prf-filters .prf-lede {
+  position: static;
   margin: 0;
 }
 
@@ -219,6 +221,7 @@
 }
 
 .prf-filters .prf-lede {
+  position: static;
   margin: 0;
 }
 
@@ -277,10 +280,66 @@
 }
 
 .prf-lede {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  align-items: center;
   margin: 0 0 8px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--fgColor-muted, #59636e);
+}
+
+.prf-info-button {
+  display: inline-flex;
+  flex: none;
+  padding: 0;
+  color: var(--fgColor-muted, #59636e);
+  cursor: help;
+  background: none;
+  border: 0;
+}
+
+.prf-info-button:hover,
+.prf-info-button:focus-visible {
+  color: var(--fgColor-default, #1f2328);
+}
+
+.prf-info-button:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: 1px;
+  border-radius: 50%;
+}
+
+/* Overlays what follows the lede, spanning the lede's width. */
+.prf-tip {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 10;
+  display: none;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--fgColor-default, #1f2328);
+  white-space: normal;
+  background: var(--overlay-bgColor, var(--bgColor-default, #ffffff));
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 6px;
+  box-shadow: var(--shadow-floating-small, 0 1px 3px rgba(0, 0, 0, 0.12));
+}
+
+/* In the filter line the lede is only as wide as its text, so the tooltip spans the line instead, inside its right padding. */
+.prf-filters .prf-tip {
+  right: 14px;
+}
+
+.prf-info:hover .prf-tip,
+.prf-info:focus-within .prf-tip {
+  display: block;
 }
 
 .prf-groups {

@@ -19,6 +19,8 @@
   const CHECK_ICON = "M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z";
   // Three stacked layers, filled.
   const LAYERS_ICON = "M8 1 15 4.5 8 8 1 4.5ZM1 7.4 8 10.9 15 7.4V8.9L8 12.4 1 8.9ZM1 10.4 8 13.9 15 10.4V11.9L8 15.4 1 11.9Z";
+  // Octicons' info, 16-unit filled.
+  const INFO_ICON = "M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
   function staleMessage(review, pageSha) {
     if (!review.head_sha || !pageSha || review.head_sha.toLowerCase() === pageSha.toLowerCase()) return null;
@@ -53,6 +55,33 @@
     const svg = svgIcon(d, size, className);
     svg.firstChild.setAttribute("fill", "currentColor");
     return svg;
+  }
+
+  let tipCount = 0;
+
+  // An info icon whose focus or hover shows `text` in a tooltip that overlays what is below it. The button takes focus
+  // and does nothing else; the tooltip belongs to it through `aria-describedby`.
+  function infoTip(text) {
+    tipCount += 1;
+    const id = `prf-tip-${tipCount}`;
+    const trigger = make("button", "prf-info-button");
+    trigger.type = "button";
+    trigger.setAttribute("aria-label", "About this tab");
+    trigger.setAttribute("aria-describedby", id);
+    trigger.append(filledIcon(INFO_ICON, 16, "prf-info-icon"));
+    const tip = make("span", "prf-tip", text);
+    tip.id = id;
+    tip.setAttribute("role", "tooltip");
+    const info = make("span", "prf-info");
+    info.append(trigger, tip);
+    return info;
+  }
+
+  // A lede line: its `text`, then the info icon for `help`.
+  function lede(text, help) {
+    const element = make("p", "prf-lede");
+    element.append(make("span", undefined, text), infoTip(help));
+    return element;
   }
 
   function svgIcon(d, size, className) {
@@ -259,13 +288,12 @@
     return element;
   }
 
-  // The line above the stops, counting them; its tooltip says what the list is for.
-  const LEDE_HELP = "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.";
+  // The line above the stops, counting them; its info icon says what the list is for.
+  const STOPS_HELP =
+    "A few lines picked from the diff, in the order to read them. A stop opens its lines and lights its box in the diagram. Stops don't cover every change; Layers and Files do.";
 
   function ledeOf(count) {
-    const lede = make("p", "prf-lede", `${count} ${count === 1 ? "stop" : "stops"}, in reading order`);
-    lede.title = LEDE_HELP;
-    return lede;
+    return lede(`${count} ${count === 1 ? "stop" : "stops"}, in reading order`, STOPS_HELP);
   }
 
   // The stops in walkthrough order, under the lede. With a file set selected, only the stops whose file is in the set;
@@ -431,10 +459,14 @@
     return element;
   }
 
-  // The line counting the layers and how many are judged.
+  const LAYERS_HELP =
+    "Every changed hunk, grouped into layers that each make sense alone, each building on the ones before. Pick one to narrow the diff to its lines; mark it judged when done. Risk is the model's judgment.";
+
+  // The line counting the layers and how many are judged; its info icon says what the layers are.
   function chunksLede(state) {
     const judged = state.chunks.filter((chunk) => state.judged?.has(chunk.i)).length;
-    return make("p", "prf-lede", `${state.chunks.length} ${state.chunks.length === 1 ? "layer" : "layers"} \u00b7 ${judged} judged`);
+    const count = state.chunks.length;
+    return lede(`Every change in ${count} ${count === 1 ? "layer" : "layers"}, foundations first \u00b7 ${judged} judged`, LAYERS_HELP);
   }
 
   // The layers in order.
