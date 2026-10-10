@@ -141,6 +141,7 @@
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
     page.showCallouts(calloutsShown(session));
+    sizeCallouts(session);
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
     const mode = testsMode(session);
     const exempt = exemptPaths(session);
@@ -280,6 +281,40 @@
     if (session.mode === "review") return session.callouts;
     if (session.mode !== "chunks") return [];
     return session.chunkCallouts.filter((entry) => entry.key === `chunk:${session.selectedChunk}`);
+  }
+
+  // The callouts of the shown mode's whole set: all stops in the walkthrough, all layers in the layers tab; none in Files.
+  function calloutSetOf(session) {
+    if (session.mode === "review") return session.callouts;
+    if (session.mode === "chunks") return session.chunkCallouts;
+    return null;
+  }
+
+  // Gives every callout of the shown mode the width of the widest one at its natural width, as the page-wide
+  // --prf-callout-width that tree.css reads. The page draws only the diff near the viewport, so the width comes from
+  // the data: every card is built into a hidden container and measured. The lists are rebuilt as a whole (on load and
+  // on a Tests change) and a mode switch picks another, so measuring again whenever the set shown is not the one last
+  // measured covers each change, and a refresh for anything else costs nothing. Files mode keeps the last width.
+  function sizeCallouts(session) {
+    const set = calloutSetOf(session);
+    if (!set || set === session.sizedFor) return;
+    session.sizedFor = set;
+    const host = document.createElement("div");
+    Object.assign(host.style, { position: "absolute", visibility: "hidden", left: "-10000px", top: "0" });
+    const cards = set.map((entry) => {
+      const card = entry.render();
+      card.style.width = "max-content";
+      return card;
+    });
+    host.append(...cards);
+    document.body.append(host);
+    let width;
+    try {
+      width = tree.widestWidth(cards, (card) => card.getBoundingClientRect().width);
+    } finally {
+      host.remove();
+    }
+    if (width !== null) document.documentElement.style.setProperty("--prf-callout-width", `${width}px`);
   }
 
   function selectedChunkOf(session) {
@@ -710,6 +745,7 @@
       selection: 0,
       callouts: [],
       chunkCallouts: [],
+      sizedFor: null,
     };
     const session = current;
     session.judged = loadJudged(session);

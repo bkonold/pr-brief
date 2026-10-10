@@ -200,7 +200,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0 }) {
   const log = [];
   const description = {
     name: "description",
@@ -231,6 +231,18 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const filters = [];
   const hunkFilters = [];
   const excluded = [];
+  const properties = {};
+  const measuring = { appended: [], removed: [], measured: 0 };
+  const withBox = (card) =>
+    Object.defineProperties(card, {
+      style: { value: {} },
+      getBoundingClientRect: { value: () => (measuring.measured++, { width: cardWidth(card) }) },
+    });
+  const fakeDocument = {
+    createElement: () => ({ style: {}, children: [], append(...nodes) { this.children.push(...nodes); }, remove() { measuring.removed.push(this); } }),
+    body: { append: (host) => measuring.appended.push(host) },
+    documentElement: { style: { setProperty: (name, value) => (properties[name] = value) } },
+  };
   const prFocus = {
     page: {
       name: "Fake",
@@ -281,8 +293,9 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       fileChips: require("../tree.js").fileChips,
       fileSetOf: require("../tree.js").fileSetOf,
       testsOf: require("../tree.js").testsOf,
-      stopCallout: (stop, stops, onGo, nodes) => ({ stop, stops, onGo, nodes }),
-      chunkCallout: (chunk, chunks, onGo, onJudged, judged) => ({ chunk, chunks, onGo, onJudged, judged }),
+      widestWidth: require("../tree.js").widestWidth,
+      stopCallout: (stop, stops, onGo, nodes) => withBox({ stop, stops, onGo, nodes }),
+      chunkCallout: (chunk, chunks, onGo, onJudged, judged) => withBox({ chunk, chunks, onGo, onJudged, judged }),
       revealStop: (i) => revealed.push(i),
       revealChunk: (i) => revealed.push(`chunk ${i}`),
       remove() {},
@@ -309,10 +322,10 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   };
   const sessionStorage = { getItem: (key) => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
   const localStorage = { getItem: (key) => local[key] ?? null, setItem: (key, value) => (local[key] = value) };
-  const context = { prFocus, sessionStorage, localStorage, location: { href: "x", host: "forge.example", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, ...(payloads ? { document: {} } : {}) };
+  const context = { prFocus, sessionStorage, localStorage, location: { href: "x", host: "forge.example", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, document: fakeDocument };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters, hunkFilters, excluded, local };
+  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters, hunkFilters, excluded, local, properties, measuring };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -1333,4 +1346,66 @@ test("showing only tests keeps a chunk's test hunks and drops the rest", async (
   await renders.at(-1).handlers.onSelectChunk(1);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "db/V1.sql", side: "R", start: 1, count: 6 }]);
   assert.equal(excluded.at(-1), null);
+});
+
+const WIDTH = "--prf-callout-width";
+
+test("the callout width is measured from every stop when the walkthrough is shown, and is left alone in Files mode", async () => {
+  const widths = { 1: 400.2, 2: 612.4, 3: 530, 4: 480 };
+  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: WALK_REVIEW, cardWidth: (card) => widths[card.stop.i] });
+  await settle();
+  assert.deepEqual([properties, measuring.measured], [{}, 0]);
+  await renders.at(-1).handlers.onMode("review");
+  assert.deepEqual(properties, { [WIDTH]: "613px" });
+  const [host] = measuring.appended;
+  assert.deepEqual(
+    [measuring.appended.length, measuring.removed, host.style, host.children.map((card) => [card.stop.i, card.style.width])],
+    [1, [host], { position: "absolute", visibility: "hidden", left: "-10000px", top: "0" }, [[1, "max-content"], [2, "max-content"], [3, "max-content"], [4, "max-content"]]],
+  );
+  await renders.at(-1).handlers.onMode("github");
+  assert.deepEqual([properties, measuring.measured], [{ [WIDTH]: "613px" }, 4]);
+});
+
+test("the width is not measured again for a refresh that leaves the shown set as it was", async () => {
+  const { renders, measuring } = loadContent({ run: null, view: "files", review: WALK_REVIEW, cardWidth: () => 500 });
+  await settle();
+  await renders.at(-1).handlers.onMode("review");
+  await renders.at(-1).handlers.onSelectStop(2);
+  await renders.at(-1).handlers.onFileSet("all");
+  assert.deepEqual([measuring.appended.length, measuring.measured], [1, 4]);
+});
+
+test("a mode switch measures the layers, and the layers' own widths count, not the stops'", async () => {
+  const { renders, properties } = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, cardWidth: (card) => (card.stop ? 900 : 500 + card.chunk.i * 10) });
+  await settle();
+  await renders.at(-1).handlers.onMode("review");
+  assert.equal(properties[WIDTH], "900px");
+  await renders.at(-1).handlers.onSelectChunk(1);
+  assert.equal(properties[WIDTH], "530px");
+});
+
+test("every layer is measured, not only the selected one", async () => {
+  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, cardWidth: (card) => [0, 520, 700, 610][card.chunk.i] });
+  await settle();
+  await renders.at(-1).handlers.onSelectChunk(1);
+  assert.deepEqual([properties[WIDTH], measuring.measured], ["700px", 3]);
+});
+
+test("changing the Tests mode builds the layer callouts again and measures them again", async () => {
+  let wide = 640;
+  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: TESTS_REVIEW, cardWidth: () => wide });
+  await settle();
+  await renders.at(-1).handlers.onSelectChunk(1);
+  assert.equal(properties[WIDTH], "640px");
+  const before = measuring.appended.length;
+  wide = 555;
+  await renders.at(-1).handlers.onTestsMode("hide");
+  assert.deepEqual([properties[WIDTH], measuring.appended.length - before], ["555px", 1]);
+});
+
+test("a mode with no callouts leaves the width as it was", async () => {
+  const { renders, properties } = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, walkthrough: [] }, cardWidth: () => 500 });
+  await settle();
+  await renders.at(-1).handlers.onMode("review");
+  assert.deepEqual(properties, {});
 });

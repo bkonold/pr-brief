@@ -476,6 +476,12 @@
     return card;
   }
 
+  // The widest of `cards` by `measure`, a width in px, rounded up to a whole pixel; null for no cards.
+  function widestWidth(cards, measure) {
+    if (cards.length === 0) return null;
+    return Math.ceil(Math.max(...cards.map(measure)));
+  }
+
   // Our list sits just before GitHub's tree in the same column; GitHub's tree is hidden while ours shows.
   function mountPoint() {
     const host = ns.page.treeHost();
@@ -608,7 +614,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, bar, filters, stopList, chunkRow, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, bar, filters, stopList, chunkRow, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

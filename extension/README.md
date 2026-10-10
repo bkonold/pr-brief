@@ -118,6 +118,12 @@ variant) is not shown: see "Older runs".
 - A stop with no line has its callout as the first child of that file's diff entry (the GitHub diff entry, the Forgejo
   file box), so it sits directly above the file header and spans the entry's full width with the same card. The jump
   places the callout like a line stop's, so the header shows under it, and marks and pulses the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
+- Every callout of the shown mode (all stops in Walkthrough, all layers in Layers) has the same width: that of the widest
+  card at its natural width, its heading and its Previous/Next column, not its summary, at least 480px and never more than
+  the space it sits in. The host draws only the diff near the viewport, so the width is measured from the data: every card
+  is built into a hidden container, and the widest, rounded up, is set as `--prf-callout-width` on the page, which
+  `tree.css` reads. It is measured again whenever the shown set is rebuilt (the brief loading, a mode switch, a Tests
+  change), not on scroll; Files mode keeps the last width.
 - The stop's line is left exactly as the host draws it. Each callout card starts at the file pane's left edge, and the
   jumped-to stop's card border is the full purple where the other callouts' is purple at 45%. The file, line number and code are not repeated, since the diff row shows them. Only
   one card is marked as the target; the mark goes whenever the line target clears (another selection, a new jump or

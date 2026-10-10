@@ -2077,3 +2077,18 @@ test("an excluded block is hidden even when the hunk filter keeps it, and its ro
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
   assert.ok(Row);
 });
+
+test("widestWidth is the widest card by the measure, rounded up to a whole pixel", () => {
+  const { widestWidth } = require("../tree.js");
+  const widths = { a: 480, b: 612.2, c: 530.9 };
+  assert.equal(widestWidth(["a", "b", "c"], (card) => widths[card]), 613);
+  assert.equal(widestWidth(["a", "c"], (card) => widths[card]), 531);
+  assert.equal(widestWidth(["a"], (card) => widths[card]), 480);
+});
+
+test("widestWidth is null when there are no cards, and does not measure", () => {
+  const { widestWidth } = require("../tree.js");
+  const measured = [];
+  assert.equal(widestWidth([], (card) => measured.push(card)), null);
+  assert.deepEqual(measured, []);
+});
