@@ -150,9 +150,10 @@ class ParseHunks(unittest.TestCase):
         self.assertEqual(parse_hunks(NO_COUNTS)[0].lines, ["-a", "+b"])
         self.assertEqual(parse_hunks(NO_COUNTS.rstrip("\n"))[0].lines, ["-a", "+b"])
 
-    def test_hunk_json_lists_the_id_file_change_and_both_ranges(self) -> None:
+    def test_hunk_json_lists_the_id_file_change_both_ranges_and_line_counts(self) -> None:
         self.assertEqual(hunk_json(parse_hunks(TWO_HUNKS)[1]),
-                         {"id": "h02", "path": "src/Widget.java", "change": "modified", "old": [20, 3], "new": [21, 3]})
+                         {"id": "h02", "path": "src/Widget.java", "change": "modified", "old": [20, 3], "new": [21, 3],
+                          "added": 1, "removed": 1})
 
 
 class TagHeaders(unittest.TestCase):

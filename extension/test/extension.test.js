@@ -1468,6 +1468,66 @@ test("filesOf groups a chunk's hunks by path, in the order of each path's first 
   assert.deepEqual(filesOf(CHUNKS[2]), []);
 });
 
+const COUNTED = [
+  { i: 1, title: "One", summary: "", risk: "low", risk_reason: "", depends_on: [], hunks: [
+    { id: "h1", path: "src/a.js", change: "modified", old: [1, 2], new: [1, 3], added: 5, removed: 2 },
+    { id: "h2", path: "src/b.js", change: "modified", old: [4, 2], new: [4, 2], added: 0, removed: 7 },
+    { id: "h3", path: "src/a.js", change: "modified", old: [30, 1], new: [31, 4], added: 3, removed: 1 },
+  ] },
+  { i: 2, title: "Two", summary: "", risk: "high", risk_reason: "", depends_on: [], hunks: [{ id: "h4", path: "src/c.js", change: "added", old: [0, 0], new: [1, 9], added: 9, removed: 0 }] },
+];
+
+test("a layer row shows its added and removed totals before the risk pill, and a file line its own sums over the layer's hunks", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const rows = byClass(chunkList({ chunks: COUNTED, selectedChunk: 1, judged: new Set([1]) }, {}), "prf-chunk");
+    const stats = (element) => byClass(element, "prf-diffstat").map((stat) => stat.children.map((part) => [part.className, part.textContent]));
+    const meta = byClass(rows[0], "prf-chunk-meta")[0];
+    assert.deepEqual(meta.children.map((child) => child.className.split(" ")[0]), ["prf-diffstat", "prf-risk", "prf-judged-tick"]);
+    assert.deepEqual(stats(meta), [[["prf-stat-added", "+8"], ["prf-stat-removed", "\u221210"]]]);
+    assert.deepEqual(stats(byClass(rows[1], "prf-chunk-meta")[0]), [[["prf-stat-added", "+9"], ["prf-stat-removed", "\u22120"]]]);
+    const files = byClass(rows[0], "prf-chunk-file");
+    assert.deepEqual(files.map((file) => byClass(file, "prf-chunk-file-name")[0].textContent), ["a.js", "b.js"]);
+    assert.deepEqual(files.map((file) => file.children.at(-1).className), ["prf-diffstat", "prf-diffstat"]);
+    assert.deepEqual(files.map((file) => stats(file)[0].map(([, text]) => text)), [["+8", "\u22123"], ["+0", "\u22127"]]);
+    assert.deepEqual(byClass(rows[1], "prf-chunk-file"), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a layer or file with a hunk that lacks its counts shows no counts", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const [counted] = COUNTED;
+    const withoutCounts = { id: "h9", path: "src/b.js", change: "modified", old: [9, 1], new: [9, 1] };
+    const half = { ...withoutCounts, id: "h8", path: "src/d.js", added: 4 };
+    const chunk = { ...counted, hunks: [...counted.hunks, withoutCounts, half] };
+    const row = byClass(chunkList({ chunks: [chunk, { ...counted, i: 2, hunks: [withoutCounts] }], selectedChunk: 1, judged: new Set() }, {}), "prf-chunk")[0];
+    assert.deepEqual(byClass(byClass(row, "prf-chunk-meta")[0], "prf-diffstat"), []);
+    const files = byClass(row, "prf-chunk-file");
+    assert.deepEqual(files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, byClass(file, "prf-diffstat").length]), [["a.js", 1], ["b.js", 0], ["d.js", 0]]);
+    const old = byClass(chunkList({ chunks: CHUNKS, selectedChunk: 2, judged: new Set() }, {}), "prf-chunk");
+    assert.deepEqual(old.map((element) => byClass(element, "prf-diffstat").length), [0, 0, 0]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a file line the Tests control keeps out of view is dimmed with its counts", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [{ ...COUNTED[0], hunks: [COUNTED[0].hunks[0], { ...COUNTED[0].hunks[1], path: "src/b.test.js" }] }];
+    const files = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/b.test.js"], testsMode: "hide" }, {}), "prf-chunk-file");
+    assert.deepEqual(files.map((file) => [file.className.split(" ").includes("prf-dimmed"), byClass(file, "prf-diffstat").length]), [[false, 1], [true, 1]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test("only the selected chunk's row lists its files, by name with the path as the tooltip, and a click opens the file in the chunk", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();

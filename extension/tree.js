@@ -276,6 +276,18 @@
     return make("span", `prf-risk prf-risk-${risk}`, risk);
   }
 
+  // GitHub's `+N −M` count of the lines `hunks` add and remove, or null when there are no hunks or any hunk lacks either
+  // count (a review made before the counts were written).
+  function diffStat(hunks) {
+    if (!hunks.length || !hunks.every((hunk) => Number.isInteger(hunk.added) && Number.isInteger(hunk.removed))) return null;
+    const stat = make("span", "prf-diffstat");
+    stat.append(
+      make("span", "prf-stat-added", `+${hunks.reduce((sum, hunk) => sum + hunk.added, 0)}`),
+      make("span", "prf-stat-removed", `\u2212${hunks.reduce((sum, hunk) => sum + hunk.removed, 0)}`),
+    );
+    return stat;
+  }
+
   // The files a layer touches, each with its hunks in the layer's order, listed in the order of each file's first hunk.
   function filesOf(chunk) {
     const files = new Map();
@@ -348,7 +360,7 @@
   }
 
   // The layer's files under one folder line each (a folder icon and its label, its full directory as the tooltip), each
-  // file a button (a file icon and its name) with its full path as the tooltip. A file the Tests control keeps out of view is struck through, and so is a folder line
+  // file a button (a file icon, its name and, at the right end, the lines the layer adds to and removes from it) with its full path as the tooltip. A file the Tests control keeps out of view is struck through, and so is a folder line
   // whose files all are.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
@@ -366,6 +378,8 @@
         file.classList.toggle("prf-dimmed", excluded[index]);
         file.title = path;
         file.append(filledIcon(FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", baseName(path)));
+        const stat = diffStat(files[index].hunks);
+        if (stat) file.append(stat);
         return file;
       });
       folder.classList.toggle("prf-dimmed", excluded.every(Boolean));
@@ -375,13 +389,15 @@
     return list;
   }
 
-  // One row per layer, on one line: its number and title, then at the end its risk and a tick once it is judged. The
+  // One row per layer, on one line: its number and title, then at the end its added and removed line counts, its risk and a tick once it is judged. The
   // current layer is marked and, as the only one, lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
     if (current) main.setAttribute("aria-current", "step");
     const meta = make("span", "prf-chunk-meta");
+    const stat = diffStat(chunk.hunks);
+    if (stat) meta.append(stat);
     if (chunk.risk) meta.append(riskPill(chunk.risk));
     if (state.judged?.has(chunk.i)) {
       const tick = make("span", "prf-judged-tick");

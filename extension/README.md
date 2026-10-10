@@ -142,21 +142,22 @@ link to a stop's line selects that stop. The one thing kept is whether the diagr
 
 `review.json`'s `chunks` (the layers; the code calls them chunks), when the brief has them, is an ordered list of `{i, title, summary, risk, risk_reason, depends_on,
 hunks}`: the change cut into pieces to judge one at a time. `risk` is `"low"`, `"medium"` or `"high"`, `depends_on` the
-numbers of the layers this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count]}`.
+numbers of the layers this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count], added, removed}`, the last two
+being the lines the hunk adds and removes (a review made before they were written has none).
 A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" entry in the toggle.
 
 - The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer, on one line: its number and its title, and
-  at the end a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
+  at the end the layer's line counts over all its hunks in GitHub's diffstat form (`+12` in the success green, `−34` in the danger red, 12px, tabular figures; both shown even when one is 0), a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
   stop's is, and scrolled into view when a layer is opened from its callout.
 - The selected row, and only it, lists the files its layer touches, grouped by folder. Each folder is one line, not a button, with a
   muted folder icon (GitHub's `file-directory-fill`) and its label in muted 12px text; a long label wraps rather than being cut off,
   preferring to break after a `/`, and hangs under its own first character, not under the icon. The folder's full directory is the tooltip.
   Its files sit under it, indented so each file's icon is under the label's first character: one button per file with a muted file icon (`file`) and the
-  file's name in the default text colour, and its full path as the tooltip. Folders come in the order of their first
+  file's name in the default text colour, and its full path as the tooltip, and at its right end that file's line counts over this layer's hunks only (the name keeps wrapping and shrinking, the counts stay on one line). A layer or file with a hunk that has no counts shows none. Folders come in the order of their first
   hunk in the layer, and files within a folder in the order of each file's first hunk. A click
   jumps to that file's first hunk of the layer, at the line the layer's own jump would use, and stays in the tab: the
   selection and the page filter do not change. A click on a file of a layer that is not selected opens that layer first. A file the
-  Tests control keeps out of view is struck through, and so is a folder line whose files all are; their icons dim with them.
+  Tests control keeps out of view is struck through, and so is a folder line whose files all are; their icons and line counts dim with them.
 - Folder labels shorten a JVM source folder, one shaped `<module>/src/<set>/<lang>/<package>` with `<lang>` java, kotlin,
   scala, groovy or resources (the module is empty when `src` is at the repo root): `<module> › <package>` for the `main` set and
   `<module> <set> › <package>` for another, e.g. `acme-api test › creators/lumber`. The package segments every JVM folder in

@@ -55,9 +55,10 @@ re-run it instead.
   `<details>` per layer whose summary has its number, title, risk and risk reason, then its summary sentence and a link to
   each hunk (`path:first–last`, the old lines for a deleted file) with its id; files with no hunk (a pure rename, a binary
   file) are listed after the layers. `review.json` gets `chunks: [{i, title, summary, risk, risk_reason, depends_on, hunks:
-  [{id, path, change, old: [start, count], new: [start, count]}]}]` only when the answer has a `chunks` key; the schema is
-  still 4. Layers are additive: a missing diagram or walkthrough is noted, and no stop left is an error, layers or
-  not. `scripts/eval_chunks.py` scores a run against `eval/<pr>.toml`.
+  [{id, path, change, old: [start, count], new: [start, count], added, removed}]}]` only when the answer has a `chunks`
+  key, `added` and `removed` being how many of the hunk's lines start with `+` and with `-` (a `\ No newline at end of
+  file` marker is neither); the schema is still 4, the two counts being additive. Layers are additive: a missing diagram
+  or walkthrough is noted, and no stop left is an error, layers or not. `scripts/eval_chunks.py` scores a run against `eval/<pr>.toml`.
 - **Contract and Data** are two sections after the description, built
   without a model call. Each is one closed `<details>` (class `section`) whose two-line summary holds the section's name
   in bold on the first line and, after a `<br>`, one chip for each level present, worst first (`callers must change`

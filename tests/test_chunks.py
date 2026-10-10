@@ -316,7 +316,17 @@ class ReviewJsonChunks(unittest.TestCase):
             {"i": 2, "title": "B", "summary": "What it does.", "risk": "low", "risk_reason": "", "depends_on": [1],
              "hunks": [hunk_json(HUNKS[2]), hunk_json(HUNKS[3])]}])
         self.assertEqual(data["chunks"][0]["hunks"][0], {"id": "h01", "path": "api/Item.java", "change": "modified",
-                                                        "old": [3, 4], "new": [3, 5]})
+                                                        "old": [3, 4], "new": [3, 5], "added": 2, "removed": 1})
+
+    def test_a_hunk_object_counts_its_added_and_removed_lines(self) -> None:
+        self.assertEqual([(hunk["id"], hunk["added"], hunk["removed"]) for hunk in map(hunk_json, HUNKS)],
+                         [("h01", 2, 1), ("h02", 1, 1), ("h03", 2, 0), ("h04", 0, 2)])
+
+    def test_a_no_newline_marker_is_not_counted_and_a_removal_only_hunk_adds_nothing(self) -> None:
+        diff = ("diff --git a/x/Note.txt b/x/Note.txt\n--- a/x/Note.txt\n+++ b/x/Note.txt\n@@ -1,2 +1,2 @@\n keep\n-old\n"
+                "\\ No newline at end of file\n+new\n\\ No newline at end of file\n"
+                "@@ -10,3 +10,1 @@\n keep\n-gone one\n-gone two\n")
+        self.assertEqual([(hunk["added"], hunk["removed"]) for hunk in map(hunk_json, parse_hunks(diff))], [(1, 1), (0, 2)])
 
     def test_a_brief_with_no_chunks_has_no_chunks_key_and_an_empty_list_is_kept(self) -> None:
         self.assertNotIn("chunks", review_json(self.RUN, Brief("", (0, 0), {}, [], [], []), False))

@@ -121,9 +121,12 @@ def hunk_at(hunks: list[Hunk], path: str, side: str, line: int) -> Hunk | None:
 
 
 def hunk_json(hunk: Hunk) -> dict[str, Any]:
-    """A hunk for review.json: its id, file, how the file changed and its old and new ranges as `[start, count]`."""
+    """A hunk for review.json: its id, file, how the file changed, its old and new ranges as `[start, count]`, and how many of
+    its lines were added (start with `+`) and removed (start with `-`)."""
     return {"id": hunk.id, "path": hunk.path, "change": hunk.change,
-            "old": [hunk.old_start, hunk.old_count], "new": [hunk.new_start, hunk.new_count]}
+            "old": [hunk.old_start, hunk.old_count], "new": [hunk.new_start, hunk.new_count],
+            "added": sum(line.startswith("+") for line in hunk.lines),
+            "removed": sum(line.startswith("-") for line in hunk.lines)}
 
 
 def hunk_number(name: str) -> int:

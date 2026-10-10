@@ -458,6 +458,31 @@
   margin-left: 22px;
 }
 
+.prf-diffstat {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.prf-chunk-file .prf-diffstat {
+  margin-left: auto;
+}
+
+.prf-stat-added {
+  color: var(--fgColor-success, #1a7f37);
+}
+
+.prf-stat-removed {
+  color: var(--fgColor-danger, #cf222e);
+}
+
+.prf-chunk-file.prf-dimmed .prf-diffstat {
+  opacity: 0.5;
+}
+
 .prf-chunk-file {
   font: inherit;
   font-size: 12px;
