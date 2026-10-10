@@ -231,11 +231,14 @@ view. Without a brief it is the "Generate brief" bar described above, and only w
 
 - It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
   are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.
+- The diagram, in the card and in the diagram pane, follows the host's theme: its text, outline and halo colours are the
+  Primer names (Forgejo's mapped by its adapter), with the system's `prefers-color-scheme` as the fallback, and the
+  purple accents stay the same. The card's and the pane's own rules re-theme a diagram whose SVG was written with fixed colours.
 - `body.html` from `render.py` is a standalone page that draws itself: the description is a markdown string in a
   script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
   `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
-  description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
+  description's bullets, with the caption about dashed boxes under it, on the site's own surface colour. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - The brief's "API" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
   in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is

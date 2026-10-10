@@ -583,22 +583,24 @@ DIAGRAM_STYLE = r"""
 const DIAGRAM_CONFIG = {
   themeVariables: { fontFamily: '-apple-system, "Segoe UI", sans-serif' },
   themeCSS: `
+    .root { --prd-text: var(--fgColor-default, #26215c); --prd-sub: var(--fgColor-muted, #5f5e5a); --prd-bg: var(--bgColor-default, #fff); --prd-cluster: var(--borderColor-muted, #e5e3f0); --prd-context: var(--borderColor-default, #b4b2a9); --prd-cluster-text: var(--fgColor-muted, #8a8a99); }
+    @media (prefers-color-scheme: dark) { .root { --prd-text: var(--fgColor-default, #e6eaf2); --prd-sub: var(--fgColor-muted, #a3acbd); --prd-bg: var(--bgColor-default, #0d1117); --prd-cluster: var(--borderColor-muted, #3d3f4a); --prd-context: var(--borderColor-default, #6e7681); --prd-cluster-text: var(--fgColor-muted, #a3acbd); } }
     .node rect.label-container { rx: 14px; ry: 14px; fill: none; stroke: #9370db; stroke-width: 1px; }
-    .node.context rect.label-container { fill: none; stroke: #b4b2a9; stroke-dasharray: 4 4; }
+    .node.context rect.label-container { fill: none; stroke: var(--prd-context); stroke-dasharray: 4 4; }
     .label { padding: 0; font: inherit; white-space: normal; border: 0; border-radius: 0; }
     .nodeLabel, .edgeLabel, .edgeLabel p { font-size: __FONT_SIZE__px; line-height: 1.5; }
-    .node .nodeLabel, .node .label div { color: #26215c; text-align: center; }
+    .node .nodeLabel, .node .label div { color: var(--prd-text); text-align: center; }
     .node .nodeLabel p { margin: 0; }
     .nodeLabel .badge { display: inline-block; margin-right: .25em; padding: 0 .5em; font-size: .75em; line-height: 1.4; font-weight: 600; letter-spacing: normal; white-space: nowrap; color: #fff; background: #7f77dd; border-radius: 1em; }
-    .nodeLabel .t { font-weight: 600; }
-    .nodeLabel .s { color: #5f5e5a; font-weight: 400; }
-    .context .nodeLabel, .context .label div { color: #5f5e5a; }
+    .nodeLabel .t { color: inherit; font-weight: 600; }
+    .nodeLabel .s { color: var(--prd-sub); font-weight: 400; }
+    .context .nodeLabel, .context .label div { color: var(--prd-sub); }
     path.flowchart-link { stroke: #9370db; stroke-width: 1px; fill: none; }
     .marker, .arrowMarkerPath { fill: none !important; stroke: #9370db !important; stroke-width: 1px; }
     .edgeLabel rect { fill: transparent !important; opacity: 0; }
-    .edgeLabel, .edgeLabel p, .edgeLabel span, .labelBkg { background-color: transparent !important; color: #7f77dd !important; font-weight: 400; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
-    .cluster rect { fill: none; stroke: #e5e3f0; stroke-width: 1px; rx: 8px; ry: 8px; }
-    .cluster-label .nodeLabel, .cluster-label span, .cluster-label p { color: #8a8a99; font-size: __CLUSTER_FONT_SIZE__px; font-weight: 400; }
+    .edgeLabel, .edgeLabel p, .edgeLabel span, .labelBkg { background-color: transparent !important; color: #7f77dd !important; font-weight: 400; text-shadow: 0 0 3px var(--prd-bg), 0 0 3px var(--prd-bg), 0 0 3px var(--prd-bg); }
+    .cluster rect { fill: none; stroke: var(--prd-cluster); stroke-width: 1px; rx: 8px; ry: 8px; }
+    .cluster-label .nodeLabel, .cluster-label span, .cluster-label p { color: var(--prd-cluster-text); font-size: __CLUSTER_FONT_SIZE__px; font-weight: 400; }
   `,
 };
 
@@ -744,7 +746,7 @@ def write_diagram_svg(md: str, run_dir: Path) -> str | None:
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.css">
 <style>
  body { background: #fff; margin: 0; }
  .markdown-body { box-sizing: border-box; max-width: 980px; margin: 0 auto; padding: 32px 16px; }
@@ -754,6 +756,13 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .pill.p1 { border-color: #1f2328; font-weight: 600; }
  details > summary .pill { margin: 0 4px; }
  .muted { color: #59636e; font-size: 12px; }
+ @media (prefers-color-scheme: dark) {
+  body, pre.mermaid { background: #0d1117; }
+  .pill { border-color: #9198a1; }
+  .pill.p0 { background: #f0f6fc; border-color: #f0f6fc; color: #0d1117; }
+  .pill.p1 { border-color: #f0f6fc; }
+  .muted { color: #9198a1; }
+ }
  .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
  .table-wrap table { display: table; margin: 0; }
  .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }
