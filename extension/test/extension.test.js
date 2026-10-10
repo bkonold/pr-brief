@@ -1423,6 +1423,42 @@ test("a chunk row shows the number, title, risk, hunk count and a tick when judg
   }
 });
 
+test("filesOf groups a chunk's hunks by path, in the order of each path's first hunk", () => {
+  const { filesOf } = require("../tree.js");
+  const hunk = (id, path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
+  const chunk = { i: 1, hunks: [hunk("h1", "src/b.js"), hunk("h2", "src/a.js"), hunk("h3", "src/b.js"), hunk("h4", "src/b.js")] };
+  assert.deepEqual(filesOf(chunk), [
+    { path: "src/b.js", hunks: [chunk.hunks[0], chunk.hunks[2], chunk.hunks[3]] },
+    { path: "src/a.js", hunks: [chunk.hunks[1]] },
+  ]);
+  assert.deepEqual(filesOf(CHUNKS[2]), []);
+});
+
+test("only the selected chunk's row lists its files, by name with the path as the tooltip and the hunk count, and a click opens the file in the chunk", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const picked = [];
+    const chunks = [{ ...CHUNKS[0], hunks: [{ ...CHUNKS[0].hunks[0], path: "src/deep/a.js" }] }, { ...CHUNKS[1], hunks: [...CHUNKS[1].hunks, { id: "h4", path: "b.js", change: "modified", old: [9, 1], new: [9, 1] }] }, CHUNKS[2]];
+    const rows = (selectedChunk) => byClass(chunkList({ chunks, selectedChunk, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk");
+    assert.deepEqual(rows(null).map((row) => byClass(row, "prf-chunk-files").length), [0, 0, 0]);
+    assert.deepEqual(rows(2).map((row) => byClass(row, "prf-chunk-files").length), [0, 1, 0]);
+    const files = byClass(rows(2)[1], "prf-chunk-file");
+    assert.deepEqual(
+      files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title, byClass(file, "prf-chunk-file-count")[0].textContent]),
+      [["b.js", "b.js", "2"], ["c.js", "c.js", "1"]],
+    );
+    const nested = byClass(rows(1)[0], "prf-chunk-file");
+    assert.deepEqual(nested.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title, byClass(file, "prf-chunk-file-count")[0].textContent]), [["a.js", "src/deep/a.js", "1"]]);
+    assert.equal(byClass(rows(3)[2], "prf-chunk-files")[0].children.length, 0);
+    for (const file of files) file.listeners.click();
+    nested[0].listeners.click();
+    assert.deepEqual(picked, [[2, "b.js"], [2, "c.js"], [1, "src/deep/a.js"]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test("a chunk callout names the chunk, its risk and why, its summary and what it needs, which go", () => {
   const { chunkCallout } = require("../tree.js");
   globalThis.document = fakeDom();

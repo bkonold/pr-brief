@@ -952,7 +952,7 @@ test("a context box, which covers no file, and a box the review does not list do
 test("the sidebar's state and handlers are the stops and the mode", async () => {
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJudged", "onMode", "onSelectChunk", "onSelectStop"]);
+  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJudged", "onMode", "onSelectChunk", "onSelectFileInChunk", "onSelectStop"]);
 });
 
 const SET_REVIEW = {
@@ -1078,6 +1078,35 @@ test("the chunk callout's buttons open a chunk without the pulse, and a chunk nu
   const shown = jumps.length;
   await onGo(99);
   assert.deepEqual([jumps.length, renders.at(-1).state.selectedChunk], [shown, 2]);
+});
+
+test("a file in the selected chunk jumps to its first hunk there, leaving the tab and the filter as they are", async () => {
+  const { renders, hunkFilters, jumps } = await loadChunks();
+  await renders.at(-1).handlers.onSelectChunk(1);
+  const filter = hunkFilters.at(-1);
+  const shown = jumps.length;
+  await renders.at(-1).handlers.onSelectFileInChunk(1, "db/V1.sql");
+  assert.deepEqual(jumps.slice(shown).map((jump) => jump.slice(0, 3)), [["db/V1.sql", "R", 1]]);
+  assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedChunk, hunkFilters.at(-1) === filter], ["chunks", 1, true]);
+});
+
+test("a file of a chunk with no new lines in its first hunk there lands on the old side, and a path the chunk does not touch does nothing", async () => {
+  const { renders, jumps } = await loadChunks();
+  await renders.at(-1).handlers.onSelectChunk(3);
+  const shown = jumps.length;
+  await renders.at(-1).handlers.onSelectFileInChunk(3, "src/ui.js");
+  assert.deepEqual(jumps.slice(shown).map((jump) => jump.slice(0, 3)), [["src/ui.js", "L", 40]]);
+  await renders.at(-1).handlers.onSelectFileInChunk(3, "src/other.js");
+  assert.equal(jumps.length, shown + 1);
+});
+
+test("a file of another chunk selects that chunk first, narrowing the page, then jumps to the file's first hunk", async () => {
+  const { renders, hunkFilters, jumps } = await loadChunks();
+  await renders.at(-1).handlers.onSelectChunk(1);
+  await renders.at(-1).handlers.onSelectFileInChunk(2, "src/old.js");
+  assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedChunk], ["chunks", 2]);
+  assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/old.js", side: "L", start: 1, count: 20 }]);
+  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/ui.js", "R", 4], ["src/old.js", "L", 1], ["src/old.js", "L", 1]]);
 });
 
 test("every mode other than chunks clears the hunk filter, and the chunks tab applies the selected chunk's again", async () => {

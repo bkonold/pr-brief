@@ -280,7 +280,11 @@
   // a pure deletion), its first old line; null for a chunk with no hunks.
   function chunkTarget(chunk) {
     const hunk = chunk.hunks[0];
-    if (!hunk) return null;
+    return hunk ? hunkTarget(hunk) : null;
+  }
+
+  // The first line a hunk shows: its first new line, or its first old line when it has no new lines.
+  function hunkTarget(hunk) {
     return hunk.new[1] > 0 ? { path: hunk.path, side: "R", line: hunk.new[0] } : { path: hunk.path, side: "L", line: hunk.old[0] };
   }
 
@@ -381,6 +385,17 @@
     if (target) await page.jumpToLine(target.path, target.side, target.line, jump);
   }
 
+  // Lands on a file's first hunk of a chunk. A chunk that is not the selected one is opened first, which narrows the page;
+  // the selected chunk's filter and the tab stay as they are.
+  async function jumpInChunk(session, i, path) {
+    if (session.selectedChunk !== i) await selectChunk(session, i);
+    if (current !== session || !live() || session.selectedChunk !== i) return;
+    const hunk = session.chunks.find((chunk) => chunk.i === i)?.hunks.find((candidate) => candidate.path === path);
+    if (!hunk) return;
+    const target = hunkTarget(hunk);
+    await page.jumpToLine(target.path, target.side, target.line);
+  }
+
   // Clears the selection: no box or stop selected and no line or box marked. The pane's mode stays as it is.
   function resetReview(session) {
     return change(
@@ -447,6 +462,7 @@
         ),
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
       onSelectChunk: (i) => selectChunk(session, i),
+      onSelectFileInChunk: (i, path) => jumpInChunk(session, i, path),
       onJudged: (i, on) => setJudged(session, i, on),
       onFileSet: (id) => change(session, () => (session.fileSet = id)),
     };

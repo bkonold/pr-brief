@@ -227,8 +227,30 @@
     return `${count} ${count === 1 ? "hunk" : "hunks"}`;
   }
 
+  // The files a chunk touches, each with its hunks in the chunk's order, listed in the order of each file's first hunk.
+  function filesOf(chunk) {
+    const files = new Map();
+    for (const hunk of chunk.hunks) {
+      if (!files.has(hunk.path)) files.set(hunk.path, { path: hunk.path, hunks: [] });
+      files.get(hunk.path).hunks.push(hunk);
+    }
+    return [...files.values()];
+  }
+
+  // One button per file the chunk touches: the file's name, its full path as the tooltip, and its hunk count.
+  function chunkFiles(chunk, handlers) {
+    const list = make("div", "prf-chunk-files");
+    for (const { path, hunks } of filesOf(chunk)) {
+      const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, path));
+      file.title = path;
+      file.append(make("span", "prf-chunk-file-name", baseName(path)), make("span", "prf-chunk-file-count", String(hunks.length)));
+      list.append(file);
+    }
+    return list;
+  }
+
   // One row per chunk: its number and title, then its risk, its hunk count and a tick once it is judged. The current
-  // chunk is marked.
+  // chunk is marked and, as the only one, lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
@@ -250,6 +272,7 @@
     element.classList.toggle("prf-selected", current);
     element.dataset.chunk = String(chunk.i);
     element.append(header);
+    if (current) element.append(chunkFiles(chunk, handlers));
     return element;
   }
 
@@ -336,7 +359,7 @@
 
   // state: { mode: "review" | "chunks" | "github", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
   // fileSet }, `judged` being a Set of chunk numbers
-  // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onFileSet(id)
+  // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onSelectFileInChunk(i, path), onFileSet(id)
   function render(review, state, handlers) {
     const mount = mountPoint();
     if (!mount) return;
@@ -450,7 +473,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, fileChips, fileSetOf, stopCallout, chunkCallout, bar, stopList, chunkRow, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, fileChips, fileSetOf, stopCallout, chunkCallout, bar, stopList, chunkRow, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;
