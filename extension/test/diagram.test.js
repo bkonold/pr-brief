@@ -786,3 +786,137 @@ test("applyEmphasis points emphasized edges with an accent arrowhead and restore
   applyEmphasis(card, found, null);
   assert.equal(found.edges[0].element.getAttribute("marker-end"), "url(#head)");
 });
+
+function loadDiagramWithPage(stored) {
+  const path = require.resolve("../diagram.js");
+  const saved = { cached: require.cache[path], prFocus: globalThis.prFocus, document: globalThis.document, DOMParser: globalThis.DOMParser, sessionStorage: globalThis.sessionStorage, innerWidth: globalThis.innerWidth };
+  class Element {
+    constructor(tag) {
+      this.tag = tag;
+      this.localName = tag;
+      this.children = [];
+      this.values = {};
+      this.listeners = {};
+      this.classes = new Set();
+      this.style = { setProperty() {} };
+      this.isConnected = true;
+      this.classList = {
+        add: (name) => this.classes.add(name),
+        remove: (name) => this.classes.delete(name),
+        contains: (name) => this.classes.has(name),
+        toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name)),
+      };
+    }
+    set className(value) {
+      this.classes = new Set(value.split(" ").filter(Boolean));
+    }
+    get className() {
+      return [...this.classes].join(" ");
+    }
+    append(...nodes) {
+      this.children.push(...nodes);
+    }
+    setAttribute(name, value) {
+      this.values[name] = String(value);
+    }
+    get attributes() {
+      return Object.entries(this.values).map(([name, value]) => ({ name, value }));
+    }
+    getAttribute(name) {
+      return this.values[name] ?? null;
+    }
+    addEventListener(name, listener) {
+      this.listeners[name] = listener;
+    }
+    querySelector(selector) {
+      const name = selector.slice(1);
+      for (const child of this.children) {
+        if (child.classes?.has(name)) return child;
+        const inner = child.querySelector?.(selector);
+        if (inner) return inner;
+      }
+      return null;
+    }
+    querySelectorAll() {
+      return [];
+    }
+    before() {}
+    remove() {}
+    getBoundingClientRect() {
+      return { width: 0, height: 0, left: 0, top: 0 };
+    }
+  }
+  const svg = new Element("svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  globalThis.document = { createElement: (tag) => new Element(tag), importNode: (node) => node };
+  globalThis.DOMParser = class {
+    parseFromString() {
+      return { documentElement: svg, querySelector: () => null };
+    }
+  };
+  globalThis.sessionStorage = { getItem: (key) => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
+  globalThis.innerWidth = 1200;
+  const anchor = new Element("div");
+  globalThis.prFocus = { alive: () => false, page: { diagramHost: () => ({ top: "0px", order: "-1", content: anchor }) } };
+  delete require.cache[path];
+  const diagram = require("../diagram.js");
+  let panel = null;
+  const render = () => {
+    anchor.before = (node) => (panel = node);
+    diagram.render("<svg/>", { onNode() {}, onReset() {} });
+    return panel;
+  };
+  const restore = () => {
+    delete require.cache[path];
+    if (saved.cached) require.cache[path] = saved.cached;
+    for (const [name, value] of Object.entries(saved)) {
+      if (name === "cached") continue;
+      if (value === undefined) delete globalThis[name];
+      else globalThis[name] = value;
+    }
+  };
+  return { render, restore };
+}
+
+const chevronOf = (panel) => panel.children.find((child) => child.classes.has("prd-header")).children.find((child) => child.classes.has("prd-chevron"));
+
+test("the diagram panel is mounted collapsed when this tab has not expanded it", () => {
+  const stored = {};
+  const { render, restore } = loadDiagramWithPage(stored);
+  try {
+    const panel = render();
+    assert.equal(panel.classList.contains("prd-collapsed"), true);
+    const chevron = chevronOf(panel);
+    assert.deepEqual([chevron.getAttribute("aria-label"), chevron.getAttribute("aria-expanded")], ["Expand change diagram", "false"]);
+    assert.deepEqual(stored, {});
+  } finally {
+    restore();
+  }
+});
+
+test("the diagram panel is mounted expanded when this tab expanded it earlier", () => {
+  const { render, restore } = loadDiagramWithPage({ "prFocus:diagramCollapsed": "0" });
+  try {
+    const panel = render();
+    assert.equal(panel.classList.contains("prd-collapsed"), false);
+    const chevron = chevronOf(panel);
+    assert.deepEqual([chevron.getAttribute("aria-label"), chevron.getAttribute("aria-expanded")], ["Collapse change diagram", "true"]);
+  } finally {
+    restore();
+  }
+});
+
+test("expanding the collapsed diagram panel remembers it for this tab, and collapsing it again remembers that", () => {
+  const stored = {};
+  const { render, restore } = loadDiagramWithPage(stored);
+  try {
+    const panel = render();
+    const chevron = chevronOf(panel);
+    chevron.listeners.click();
+    assert.deepEqual([panel.classList.contains("prd-collapsed"), stored["prFocus:diagramCollapsed"]], [false, "0"]);
+    chevron.listeners.click();
+    assert.deepEqual([panel.classList.contains("prd-collapsed"), stored["prFocus:diagramCollapsed"]], [true, "1"]);
+  } finally {
+    restore();
+  }
+});

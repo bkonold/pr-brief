@@ -27,8 +27,8 @@ earliest block in the page.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
-- A toggle, "Walkthrough" / "Files". "Files" brings the host's own file tree back (GitHub's, or Forgejo's); the toggle
-  stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
+- A toggle, "Walkthrough" / "Files". The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
+  swaps in the stop list, and the toggle stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
 - Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
@@ -101,8 +101,9 @@ variant) is not shown: see "Older runs".
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-Nothing about the review's state is remembered: every load and every navigation into the files page starts in "Walkthrough"
-on stop 1, with the default variant. The one thing kept is whether the diagram panel is collapsed (see below).
+Nothing about the review's state is remembered: every load and every navigation into the files page opens as GitHub would,
+in "Files" mode with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
+link to a stop's line selects that stop. The one thing kept is whether the diagram panel is expanded (see below).
 
 ## When the page server is down
 
@@ -127,9 +128,9 @@ sticky or fixed elements that span the diff column), then flashes the header for
 When `review.json` names a `diagram` (`diagram.svg` in the run directory), `background.js` fetches it with the review
 and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
 diagram, stop list, code, and the other two columns narrow by the panel's width (by default the width at which the walkthrough draws the diagram's widest box with its halo at 100%, at most 40% of the viewport, at least 220px) instead of being
-covered. The panel is sticky at the file tree pane's offset and as tall as the pane. Its header's `‹` button collapses it
-(remembered in `sessionStorage`) into a 30px rail in the same spot, with "Diagram" written vertically under a `›` button
-that expands it.
+covered. The panel is sticky at the file tree pane's offset and as tall as the pane. It is mounted collapsed, as a 30px rail
+in that spot with "Diagram" written vertically under a `›` button that expands it; the header's `‹` button collapses it
+again. Whether this tab expanded it is remembered in `sessionStorage`, so a reload keeps it expanded.
 - The diagram, the stop list and the code are separated by single dividers: the panel's right border, then GitHub's own
   rule down the pane's right edge.
 
@@ -152,13 +153,13 @@ that expands it.
   400%), as does a pinch (Chrome reports a trackpad pinch as Ctrl + wheel); the page does not scroll while the pointer
   is over the canvas. Pressing and dragging anywhere on the canvas pans it; a drag that starts on a box pans once it
   moves more than 4px, and a shorter press is a box click. The header has −, the current zoom (click it for 100%), +
-  and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop
-  callout highlighted, GitHub's tree swapped back out for the review list, and the canvas
-  back at its resting view. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge
+  and ↺ (Reset). Reset clears the selection: no box or stop selected, no line, box or stop
+  callout highlighted, the pane's mode as it is, and the canvas
+  back at its resting view. The stop callouts stay in the diff. Panning stops when a diagram edge
   reaches the middle of the canvas.
 - Focusing a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas over about
-  200ms (at once under reduced motion). From a stop row, a callout's Previous/Next, a stop's link or anchor, or the
-  stop-1 selection on load, it also zooms so the box, halo included, takes 90% of the pane's width, kept between 0.5
+  200ms (at once under reduced motion). From a stop row, a callout's Previous/Next, or a stop's link or
+  anchor, it also zooms so the box, halo included, takes 90% of the pane's width, kept between 0.5
   and 1.25 (titles between 8px and 20px), and set to exactly 1 when it comes within 5% of it; at the default pane width it
   is exactly 1. A click on a box in the
   diagram, dragging, the wheel, a pinch and Reset never change the zoom: a box click only pans, at the reader's zoom.
@@ -172,10 +173,9 @@ that expands it.
   focused box back where a click on it would, at the new width (with its walkthrough zoom, when it came from the
   list or Next/Previous), and a diagram still at rest stays at rest. When the page replaces the panel (GitHub re-renders the files page
   after it loads), the new panel goes back to the box the old one was following. Zoom and position are not saved.
-- Loading the files page in "Walkthrough" mode selects stop 1 as a click on it would: its box is highlighted, the canvas
-  pans to it, its callout shows and the diff scrolls to it. A stop the URL links to is opened instead. When the URL
-  already names a diff line or review comment (`#diff-…`, `#r…`, `#discussion_r…`) that is not a stop's, stop 1 is
-  highlighted and panned to but the diff does not scroll, so the line the URL names stays in view.
+- Loading the files page selects nothing: no box is highlighted, the canvas stays at its resting view and the diff is not
+  scrolled. A stop the URL links to (`#diff-…` naming a stop's line or file) is opened instead, as a click on it would,
+  which switches to "Walkthrough" mode.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.
   GitHub's CSP allows the SVG's own `<style>` and inline `style` attributes, so no restyling is needed.
 - Mermaid 11 ids: a node is `<g class="node" id="pr-diagram-flowchart-<nodeId>-<n>">`; an edge is a `path` with
@@ -231,11 +231,14 @@ view. Without a brief it is the "Generate brief" bar described above, and only w
 
 - It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
   are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.
+- The diagram, in the card and in the diagram pane, follows the host's theme: its text, outline and halo colours are the
+  Primer names (Forgejo's mapped by its adapter), with the system's `prefers-color-scheme` as the fallback, and the
+  purple accents stay the same. The card's and the pane's own rules re-theme a diagram whose SVG was written with fixed colours.
 - `body.html` from `render.py` is a standalone page that draws itself: the description is a markdown string in a
   script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
   `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
-  description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
+  description's bullets, with the caption about dashed boxes under it, on the site's own surface colour. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - The brief's "API" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
   in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is

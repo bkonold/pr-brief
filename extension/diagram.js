@@ -343,11 +343,13 @@
     return make("p", "prd-caption", text);
   }
 
+  // The panel starts collapsed; it is expanded only when this tab expanded it earlier ("0"). Unreadable storage counts
+  // as unset.
   function readCollapsed() {
     try {
-      return sessionStorage.getItem(COLLAPSED_KEY) === "1";
+      return sessionStorage.getItem(COLLAPSED_KEY) !== "0";
     } catch {
-      return false;
+      return true;
     }
   }
 
