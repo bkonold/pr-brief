@@ -19,6 +19,9 @@
 //   entryOf(block)                  the whole entry of one file's diff, which holds the file callout above its header
 //   diffId(path)                    the id of a file's diff block (async)
 //   findRow(anchor)                 the table row of a line anchor, or null
+//   loadDiff(id)                    optional: when the diff block with this id shows the host's control for loading a
+//                                   diff it does not render by default, clicks it and returns true; else false. The host
+//                                   may replace the block once the diff has loaded, so the block is looked up by id again
 //   fileHeaderSelector              a file's header; stickySkip: elements the sticky-chrome scan ignores
 //   containerSelector               the diffs' container, watched for rows that appear
 //   contentSelector                 the diffs' column
@@ -42,6 +45,7 @@
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
   const JUMP_TIMEOUT_MS = 10000;
+  const LOAD_TIMEOUT_MS = 30000;
   const STICKY_BAND_VIEWPORTS = 0.3;
   const LAND_TOLERANCE = 1;
   const CALLOUT_GAP = 16;
@@ -493,7 +497,8 @@
 
     // A diff's rows may be rendered only once the diff is near the window, so the file's diff is scrolled
     // to first; then the line's row is waited for, highlighted, and scrolled so its callout sits in the stop place (see
-    // calloutPlace), where it is held. If the row never appears the view stays at the file's header. Returns whether the
+    // calloutPlace), where it is held. A diff the host holds back behind a load control is loaded first, and the wait is
+    // longer since the host fetches it. If the row never appears the view stays at the file's header. Returns whether the
     // callout ended in place. `pulse: false` lands without the pulse.
     async function jumpToLine(path, side, line, { pulse = true } = {}) {
       const mine = ++latestJump;
@@ -504,7 +509,8 @@
       const anchor = `${id}${side}${line}`;
       if (!entryOfId(id) || mine !== latestJump) return false;
       scrollToElement(entryOfId(id));
-      const found = await waitForRow(anchor, JUMP_TIMEOUT_MS);
+      const loading = !findRow(anchor) && Boolean(spec.loadDiff?.(id));
+      const found = await waitForRow(anchor, loading ? LOAD_TIMEOUT_MS : JUMP_TIMEOUT_MS);
       if (!found || mine !== latestJump) return false;
       lineTarget = { anchor };
       found.classList.add(LINE_TARGET);
@@ -652,6 +658,7 @@
       entryFor,
       lineAnchor,
       fileAnchor,
+      loadDiff: spec.loadDiff,
       scrollToElement,
       fileHeaderOf,
       stickyOffset,
