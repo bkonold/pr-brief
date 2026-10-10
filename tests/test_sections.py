@@ -111,7 +111,7 @@ class Sections(unittest.TestCase):
         self.assertNotIn("chunks", data)
         self.assertNotIn("unchunked", data)
         first = next(line for line in data["contract"] if line["on"] == "`ItemRequest`")
-        self.assertEqual(set(first), {"impact", "text", "change", "on", "reaches", "path", "side", "line", "source"})
+        self.assertEqual(set(first), {"impact", "text", "change", "on", "reaches", "path", "side", "line", "source", "sources"})
         self.assertEqual((first["change"], first["on"], first["reaches"]), ("`+ owner` required", "`ItemRequest`", "request"))
         self.assertEqual((first["impact"], first["path"], first["side"]), ("callers must change", SPEC, "R"))
         self.assertIsInstance(first["line"], int)
