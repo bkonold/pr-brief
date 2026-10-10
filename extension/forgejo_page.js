@@ -94,8 +94,8 @@
     return HEAD_SHA.exec(doc.querySelector(HEAD_LINK)?.getAttribute("href") ?? "")?.[1] ?? null;
   }
 
-  function findRow(anchor) {
-    return document.querySelector(`${LINE_REL}[rel="${anchor}"]`)?.closest("tr") ?? null;
+  function findRow(anchor, root = document) {
+    return root.querySelector(`${LINE_REL}[rel="${anchor}"]`)?.closest("tr") ?? null;
   }
 
   // The lines a row shows: each line-number cell holds a span whose `rel` is the diff's id, the side and the number; an

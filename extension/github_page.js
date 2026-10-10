@@ -72,8 +72,8 @@
     return (await ns.source?.headSha({ host: "github", owner: pr.owner, repo: pr.repo, pr: pr.pr, key: String(pr.pr) })) ?? null;
   }
 
-  function findRow(anchor) {
-    return document.querySelector(`${LINE_CELL}[data-line-anchor="${anchor}"]`)?.closest("tr") ?? null;
+  function findRow(anchor, root = document) {
+    return root.querySelector(`${LINE_CELL}[data-line-anchor="${anchor}"]`)?.closest("tr") ?? null;
   }
 
   // The lines a row shows: its line cell carries a data-line-anchor of the diff's id, the side and the number (one per

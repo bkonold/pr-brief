@@ -70,7 +70,7 @@ has no Tests control and no test behaviour: it shows the files its file set choo
 | Only | `only` | the test files only |
 
 - **Diff and tree.** In "Files", in "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
-  with none, whatever the chip or the layer keeps (`page.excludeFiles`, a third filter that only subtracts). In "only" the
+  with none, whatever the chip or the layer keeps (the `exclude` of `page.filter`, a third filter that only subtracts). In "only" the
   page is narrowed to the test files by the file filter (within the chosen chip, if any), so no list of the PR's other files is
   needed. Either way the host's own tree rows follow, as with a chip.
 - **Dimming.** In the selected layer's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
@@ -392,7 +392,7 @@ The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
 `prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `conversationUrl(pr)`, `isConversationPage(pr?)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
 `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
-`restoreLineTarget`, `ownsLine`, `cancelJump`, `filterFiles(paths | null)`, `filterHunks(ranges | null)` (`ranges` being `[{path, side, start, count}]`), `excludeFiles(paths | null)`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `filter({ files, hunks, exclude })` (each `null` for none: `files` and `exclude` are paths, `hunks` is `[{path, side, start, count}]`; one call sets all three and applies them in one pass), `blockCount()`, `changedFileCount(blocks?)`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange`, `quietly(fn)` (runs `fn` so that the `onChange` watchers do not see its own changes to the page, after handing them the changes made before it), `isStructural(node)` (whether a node a mutation added or removed is, or holds, a table row, diff block or tree row) and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)

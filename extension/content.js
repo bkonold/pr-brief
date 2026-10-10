@@ -126,7 +126,12 @@
     }, delay);
   }
 
+  // The extension's own writes to the document are made quietly, so they do not schedule another refresh.
   function refresh() {
+    page.quietly(applySession);
+  }
+
+  function applySession() {
     const session = current;
     if (session?.offline && live()) {
       tree.renderServerNote(session.offline, { onRetry: () => retry(session) });
@@ -145,23 +150,19 @@
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
     const mode = testsMode(session);
     const exempt = exemptPaths(session);
+    const hidden = mode === "hide" ? session.tests.filter((path) => !exempt.has(path)) : null;
     if (session.mode === "review") {
-      page.filterFiles(fileSet?.paths ?? null);
-      page.filterHunks(null);
-      page.excludeFiles(null);
+      page.filter({ files: fileSet?.paths ?? null });
     } else if (session.mode === "chunks") {
       const chunk = selectedChunkOf(session);
-      page.filterFiles(null);
-      page.filterHunks(chunk ? chunkRanges(session, chunk) : null);
-      page.excludeFiles(mode === "hide" ? session.tests.filter((path) => !exempt.has(path)) : null);
+      page.filter({ hunks: chunk ? chunkRanges(session, chunk) : null, exclude: hidden });
     } else {
-      page.filterFiles(mode === "only" ? onlyTestPaths(session, fileSet, exempt) : (fileSet?.paths ?? null));
-      page.filterHunks(null);
-      page.excludeFiles(mode === "hide" ? session.tests.filter((path) => !exempt.has(path)) : null);
+      page.filter({ files: mode === "only" ? onlyTestPaths(session, fileSet, exempt) : (fileSet?.paths ?? null), exclude: hidden });
     }
 
     const waited = Date.now() - session.startedAt;
-    const noBlocks = page.fileBlocks().size === 0;
+    const blocks = page.blockCount();
+    const noBlocks = blocks === 0;
     if (noBlocks && waited < LOAD_GRACE_MS) schedule(LOAD_GRACE_MS - waited + SETTLE_MS);
     tree.render(
       session.review,
@@ -173,7 +174,7 @@
         selectedChunk: session.selectedChunk,
         judged: session.judged,
         pageSha: page.headSha(),
-        chips: tree.fileChips(session.review, page.changedFileCount()),
+        chips: tree.fileChips(session.review, page.changedFileCount(blocks)),
         fileSet,
         tests: session.tests,
         testsMode: mode,
@@ -652,14 +653,18 @@
     start();
   }
 
-  function causedByTree(record) {
-    const added = [...record.addedNodes];
-    return owned(record.target) || (added.length > 0 && record.removedNodes.length === 0 && added.every(owned));
+  // Whether a mutation changes what the extension draws: the host adding or removing rows, diff blocks or tree rows, or
+  // dropping one of our own panels from the page. The host's hover toolbars and menus, and changes inside our own
+  // elements, do not.
+  function needsRefresh(record) {
+    if (owned(record.target)) return false;
+    const removed = [...record.removedNodes];
+    return removed.some(owned) || [...record.addedNodes, ...removed].some((node) => !owned(node) && page.isStructural(node));
   }
 
   function onMutations(records) {
     if (!live()) return;
-    if (!records.every(causedByTree)) schedule(SETTLE_MS);
+    if (records.some(needsRefresh)) schedule(SETTLE_MS);
   }
 
   function teardown() {
@@ -670,9 +675,7 @@
     stopObserving = null;
     page.cancelJump();
     page.clearLineTarget();
-    page.filterFiles(null);
-    page.filterHunks(null);
-    page.excludeFiles(null);
+    page.filter();
     focus.clearBox();
     tree.remove();
     diagram.remove();

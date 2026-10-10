@@ -225,3 +225,67 @@ test("Forgejo's loadDiff clicks the box's load link when it has one", () => {
     done();
   }
 });
+
+test("clearLineTarget takes the target and the flash off the rows a jump marked, without searching the document", async () => {
+  const dom = fakeJumpPage({});
+  try {
+    dom.rows.set("diff-aR5", dom.row);
+    assert.equal(await dom.page.jumpToLine("a", "R", 5), true);
+    assert.deepEqual([dom.row.classes.has("prf-line-target"), dom.row.classes.has("prf-pulse")], [true, true]);
+    dom.page.clearLineTarget();
+    assert.deepEqual([dom.row.classes.has("prf-line-target"), dom.row.classes.has("prf-pulse")], [false, false]);
+  } finally {
+    await dom.done();
+  }
+});
+
+function findRowDocument(blocks) {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "document");
+  globalThis.document = {
+    getElementById: (id) => blocks[id] ?? null,
+    querySelector: () => assert.fail("the document is searched although the block is in the page"),
+    querySelectorAll: () => [],
+  };
+  return () => {
+    if (original) Object.defineProperty(globalThis, "document", original);
+    else delete globalThis.document;
+  };
+}
+
+test("a line anchor's row is searched for inside its diff block, and in the document when the block is not in the page", () => {
+  const block = {};
+  const roots = [];
+  const done = findRowDocument({ "diff-a": block });
+  try {
+    const page = createPage({ findRow: (anchor, root) => (roots.push([anchor, root]), null) });
+    const render = () => ({});
+    page.showCallouts([{ key: 1, anchor: "diff-aR5", render }, { key: 2, anchor: "diff-aL12", render }]);
+    assert.deepEqual(roots, [["diff-aR5", block], ["diff-aL12", block]]);
+    roots.length = 0;
+    page.showCallouts([{ key: 3, anchor: "diff-bR5", render }]);
+    assert.equal(roots[0][0], "diff-bR5");
+    assert.equal(roots[0][1], globalThis.document);
+  } finally {
+    done();
+  }
+});
+
+test("the GitHub and Forgejo adapters search a block's own rows for the anchor, and name the block by the anchor's diff id", async () => {
+  for (const adapter of [githubPage, forgejoPage]) {
+    const asked = [];
+    const queried = [];
+    const id = await adapter.fileAnchor("src/a.js");
+    const anchor = await adapter.lineAnchor("src/a.js", "R", 5);
+    const done = findRowDocument({});
+    globalThis.document.getElementById = (wanted) => (asked.push(wanted), { querySelector: (query) => (queried.push(query), null) });
+    try {
+      adapter.showCallouts([{ key: 1, anchor, render: () => ({}) }]);
+      assert.deepEqual(asked, [id]);
+      assert.equal(queried.length, 1);
+      assert.equal(queried[0].includes(`"${anchor}"`), true);
+    } finally {
+      adapter.showCallouts([]);
+      done();
+    }
+  }
+});

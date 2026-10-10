@@ -18,7 +18,8 @@
 //   blockSelector, pathOfBlock(b)   the element holding one file's diff, and the path it shows
 //   entryOf(block)                  the whole entry of one file's diff, which holds the file callout above its header
 //   diffId(path)                    the id of a file's diff block (async)
-//   findRow(anchor)                 the table row of a line anchor, or null
+//   findRow(anchor, root)           the table row of a line anchor, or null; `root` is the diff block holding it, or the
+//                                   document when that block is not in the page
 //   rowLines(tr)                    the diff lines a table row shows, as [{ side, line }] with side "L" (old file) or "R"
 //                                   (new file), read from the row's line anchors; empty for a row that shows no line
 //   hunkRow(tr)                     whether a row that shows no line is a hunk header (the `@@` line) or an expand-context
@@ -59,6 +60,7 @@
   const LAND_CORRECTIONS = 3;
   const IDLE_POLL_MS = 50;
   const IDLE_POLLS = 3;
+  const LINE_SUFFIX = /[LR]\d+$/;
 
   // The pure geometry below does not depend on the host.
 
@@ -261,9 +263,14 @@
     let lineTarget = null;
     // The callouts to show, as given to showCallouts.
     let callouts = [];
+    // The elements carrying LINE_TARGET or PULSE, so clearing them needs no scan of the page.
+    let targetMarked = new Set();
+    // The rows carrying HUNK_HIDDEN.
+    let hunkHidden = new Set();
 
+    // A line anchor is its diff block's id plus the side and number, so the search starts at that block.
     function findRow(anchor) {
-      return spec.findRow(anchor);
+      return spec.findRow(anchor, document.getElementById(anchor.replace(LINE_SUFFIX, "")) ?? document);
     }
 
     function calloutRowOf(row) {
@@ -311,15 +318,17 @@
     // Each entry's place is found again on every call: it keeps the callout it has, makes one the host dropped, and
     // removes a callout that no longer sits at its place or belongs to no entry.
     function placeCallouts() {
-      const wanted = new Map(callouts.map((entry) => [String(entry.key), entry]));
-      for (const element of document.querySelectorAll(`.${CALLOUT_ROW}`)) {
-        const entry = wanted.get(element.dataset.key);
-        if (!entry || !isPlaced(element, entry)) element.remove();
-      }
-      for (const entry of callouts) {
-        if (entry.file) placeFileCallout(entry);
-        else placeLineCallout(entry);
-      }
+      quietly(() => {
+        const wanted = new Map(callouts.map((entry) => [String(entry.key), entry]));
+        for (const element of document.querySelectorAll(`.${CALLOUT_ROW}`)) {
+          const entry = wanted.get(element.dataset.key);
+          if (!entry || !isPlaced(element, entry)) element.remove();
+        }
+        for (const entry of callouts) {
+          if (entry.file) placeFileCallout(entry);
+          else placeLineCallout(entry);
+        }
+      });
     }
 
     // Shows a callout for each stop: entries are { key, anchor, file?, render() }. `anchor` is a line's anchor, or, with
@@ -330,9 +339,15 @@
       placeCallouts();
     }
 
+    function markTarget(element) {
+      element.classList.add(LINE_TARGET);
+      targetMarked.add(element);
+    }
+
     function clearLineTarget() {
       lineTarget = null;
-      for (const row of document.querySelectorAll(`.${LINE_TARGET}, .${PULSE}`)) row.classList.remove(LINE_TARGET, PULSE);
+      for (const element of targetMarked) element.classList.remove(LINE_TARGET, PULSE);
+      targetMarked = new Set();
     }
 
     // Flashes the stop's line once the jump has landed. The animation runs on the row's cells, whose `animationend` events
@@ -346,6 +361,7 @@
       };
       row.addEventListener("animationend", end);
       row.classList.add(PULSE);
+      targetMarked.add(row);
     }
 
     function targetElement(target) {
@@ -355,7 +371,7 @@
     // The host re-renders diff rows, which drops our class; the target gets it back.
     function restoreLineTarget() {
       const element = lineTarget ? targetElement(lineTarget) : null;
-      if (element && !element.classList.contains(LINE_TARGET)) element.classList.add(LINE_TARGET);
+      if (element && !element.classList.contains(LINE_TARGET)) markTarget(element);
     }
 
     function ownsLine(node) {
@@ -535,7 +551,7 @@
       const found = await waitForRow(anchor, loading ? LOAD_TIMEOUT_MS : JUMP_TIMEOUT_MS);
       if (!found || mine !== latestJump) return false;
       lineTarget = { anchor };
-      found.classList.add(LINE_TARGET);
+      markTarget(found);
       placeCallouts();
       const place = () => linePlace(anchor, entryOfId(id));
       const landed = await scrollUntilLanded(place, newScrollToken());
@@ -545,7 +561,7 @@
         clearLineTarget();
         return false;
       }
-      row.classList.add(LINE_TARGET);
+      markTarget(row);
       holdStop(place);
       if (pulse) pulseLine(row);
       return landed;
@@ -565,7 +581,7 @@
       const marked = targetElement(target);
       if (marked) {
         lineTarget = target;
-        marked.classList.add(LINE_TARGET);
+        markTarget(marked);
       }
       const place = () => filePlace(anchor);
       const landed = await scrollUntilLanded(place, newScrollToken());
@@ -577,7 +593,7 @@
         clearLineTarget();
         return false;
       }
-      callout.classList.add(LINE_TARGET);
+      markTarget(callout);
       holdStop(place);
       return landed;
     }
@@ -599,15 +615,13 @@
 
     // The diff ids of the files the page is narrowed to, keyed by the paths they came from; null for every file.
     let fileFilter = null;
-    let filterToken = 0;
     // The line ranges the page is narrowed to: { key, byId, loading }, `byId` mapping a diff id to the ranges
     // [{ side, start, count }] of its file that stay, and `loading` the diffs whose load control was clicked.
     let hunkFilter = null;
-    let hunkToken = 0;
     // The diff ids of the files that stay hidden whatever the filters above keep, keyed by the paths they came from; null
     // when none is.
     let excluded = null;
-    let excludeToken = 0;
+    let filterToken = 0;
 
     // The diff ids the active filter keeps: the hunk filter's files when it is set, else the file filter's; null when no
     // file is hidden.
@@ -648,26 +662,32 @@
     // row (a callout, a comment thread) is left alone. A kept diff the host holds back behind its load control is loaded,
     // once. Without a filter every hidden row is shown again.
     function applyHunkFilter() {
-      for (const row of document.querySelectorAll(`.${HUNK_HIDDEN}`)) row.classList.remove(HUNK_HIDDEN);
-      if (!hunkFilter) return;
-      for (const block of document.querySelectorAll(spec.blockSelector)) {
-        const ranges = hunkFilter.byId.get(block.id);
-        if (!ranges || excluded?.ids.has(block.id)) continue;
-        if (!hunkFilter.loading.has(block.id) && spec.loadDiff?.(block.id)) hunkFilter.loading.add(block.id);
-        const rows = [...block.querySelectorAll("tr")];
-        let nextHidden = false;
-        for (let index = rows.length - 1; index >= 0; index -= 1) {
-          const row = rows[index];
-          if (row.classList.contains(CALLOUT_ROW)) continue;
-          const lines = spec.rowLines?.(row) ?? [];
-          if (lines.length > 0) {
-            nextHidden = !lines.some((line) => covers(ranges, line));
-            row.classList.toggle(HUNK_HIDDEN, nextHidden);
-          } else if (nextHidden && spec.hunkRow?.(row)) {
-            row.classList.add(HUNK_HIDDEN);
+      const hidden = new Set();
+      if (hunkFilter) {
+        for (const block of document.querySelectorAll(spec.blockSelector)) {
+          const ranges = hunkFilter.byId.get(block.id);
+          if (!ranges || excluded?.ids.has(block.id)) continue;
+          if (!hunkFilter.loading.has(block.id) && spec.loadDiff?.(block.id)) hunkFilter.loading.add(block.id);
+          const rows = [...block.querySelectorAll("tr")];
+          let nextHidden = false;
+          for (let index = rows.length - 1; index >= 0; index -= 1) {
+            const row = rows[index];
+            if (row.classList.contains(CALLOUT_ROW)) continue;
+            const lines = spec.rowLines?.(row) ?? [];
+            if (lines.length > 0) {
+              nextHidden = !lines.some((line) => covers(ranges, line));
+              if (nextHidden) hidden.add(row);
+            } else if (nextHidden && spec.hunkRow?.(row)) {
+              hidden.add(row);
+            }
           }
         }
       }
+      for (const row of hunkHidden) {
+        if (!hidden.has(row)) row.classList.remove(HUNK_HIDDEN);
+      }
+      for (const row of hidden) row.classList.add(HUNK_HIDDEN);
+      hunkHidden = hidden;
     }
 
     function applyFilters() {
@@ -675,65 +695,101 @@
       applyHunkFilter();
     }
 
-    // Narrows the host's tree and the diff to the files at `paths`; null shows every file. Calling again with the same
-    // paths only re-applies the filter, which hides diffs the host loaded since.
-    async function filterFiles(paths) {
+    async function idsOf(paths) {
+      return new Set(await Promise.all(paths.map((path) => spec.diffId(path))));
+    }
+
+    async function hunkIdsOf(ranges) {
+      const ids = await Promise.all(ranges.map((range) => spec.diffId(range.path)));
+      const byId = new Map();
+      ranges.forEach(({ side, start, count }, index) => byId.set(ids[index], [...(byId.get(ids[index]) ?? []), { side, start, count }]));
+      return byId;
+    }
+
+    // Sets the three filters at once and applies them with one pass over the page; each is null for none.
+    //   files    the paths the diff and the host's tree are narrowed to.
+    //   hunks    [{ path, side, start, count }]: only the files they name are shown, and in each only the rows showing a line
+    //            inside one of its ranges. It takes the place of `files` while set.
+    //   exclude  the paths hidden whatever the other two keep.
+    // The ids of a filter are looked up again only when its paths or ranges change, so calling again with the same
+    // arguments only re-applies the filters, which covers the diffs and rows the host rendered since. A newer call wins
+    // over an older one that is still looking up ids.
+    async function filter({ files = null, hunks = null, exclude = null } = {}) {
       const mine = ++filterToken;
-      const key = paths ? paths.join("\n") : null;
-      if (key !== null && fileFilter?.key !== key) {
-        const ids = new Set(await Promise.all(paths.map((path) => spec.diffId(path))));
+      const filesKey = files ? files.join("\n") : null;
+      const hunksKey = hunks ? JSON.stringify(hunks) : null;
+      const excludeKey = exclude ? exclude.join("\n") : null;
+      const newFiles = filesKey !== null && fileFilter?.key !== filesKey;
+      const newHunks = hunksKey !== null && hunkFilter?.key !== hunksKey;
+      const newExclude = excludeKey !== null && excluded?.key !== excludeKey;
+      if (newFiles || newHunks || newExclude) {
+        const [fileIds, byId, excludeIds] = await Promise.all([
+          newFiles ? idsOf(files) : null,
+          newHunks ? hunkIdsOf(hunks) : null,
+          newExclude ? idsOf(exclude) : null,
+        ]);
         if (mine !== filterToken) return;
-        fileFilter = { key, ids };
-      } else if (key === null) {
-        fileFilter = null;
+        if (newFiles) fileFilter = { key: filesKey, ids: fileIds };
+        if (newHunks) hunkFilter = { key: hunksKey, byId, loading: new Set() };
+        if (newExclude) excluded = { key: excludeKey, ids: excludeIds };
       }
+      if (filesKey === null) fileFilter = null;
+      if (hunksKey === null) hunkFilter = null;
+      if (excludeKey === null) excluded = null;
       applyFilters();
     }
 
-    // Narrows the page to the lines in `ranges`, [{ path, side, start, count }]: only the files they name are shown, and
-    // in each only the rows showing a line inside one of its ranges. It takes the place of the file filter while set; null
-    // shows every file and row again. Calling again with the same ranges only re-applies it, which covers the rows the
-    // host rendered since.
-    async function filterHunks(ranges) {
-      const mine = ++hunkToken;
-      const key = ranges ? JSON.stringify(ranges) : null;
-      if (key !== null && hunkFilter?.key !== key) {
-        const ids = await Promise.all(ranges.map((range) => spec.diffId(range.path)));
-        if (mine !== hunkToken) return;
-        const byId = new Map();
-        ranges.forEach(({ side, start, count }, index) => byId.set(ids[index], [...(byId.get(ids[index]) ?? []), { side, start, count }]));
-        hunkFilter = { key, byId, loading: new Set() };
-      } else if (key === null) {
-        hunkFilter = null;
-      }
-      applyFilters();
+    // How many diff blocks the page holds.
+    function blockCount() {
+      return document.querySelectorAll(spec.blockSelector).length;
     }
 
-    // Hides the files at `paths` from the diff and the host's tree, whatever the file filter and the hunk filter keep; null
-    // hides none. Calling again with the same paths only re-applies the filters.
-    async function excludeFiles(paths) {
-      const mine = ++excludeToken;
-      const key = paths ? paths.join("\n") : null;
-      if (key !== null && excluded?.key !== key) {
-        const ids = new Set(await Promise.all(paths.map((path) => spec.diffId(path))));
-        if (mine !== excludeToken) return;
-        excluded = { key, ids };
-      } else if (key === null) {
-        excluded = null;
-      }
-      applyFilters();
-    }
-
-    // How many files the page lists as changed: the tree's rows, or the diffs loaded when the tree is not showing.
-    function changedFileCount() {
+    // How many files the page lists as changed: the tree's rows, or the `blocks` loaded when the tree is not showing.
+    function changedFileCount(blocks = blockCount()) {
       const rows = spec.treeHost()?.querySelectorAll(spec.treeFileSelector).length ?? 0;
-      return Math.max(rows, fileBlocks().size);
+      return Math.max(rows, blocks);
     }
 
+    // The elements whose arrival or removal changes what the extension draws: table rows, diff blocks and tree rows.
+    const STRUCTURAL = ["tr", spec.blockSelector, spec.treeFileSelector, spec.treeDirSelector].filter(Boolean).join(", ");
+
+    // Whether a node a mutation added or removed is, or holds, one of those. The host's hover toolbars and menus are not.
+    function isStructural(node) {
+      return node.nodeType === 1 && (node.matches(STRUCTURAL) || node.querySelector(STRUCTURAL) !== null);
+    }
+
+    // The active onChange watchers, so that quietly can reach their observers.
+    const watchers = new Set();
+    let quietDepth = 0;
+
+    // `callback(records)` is called when the page's document gains or loses nodes. Returns how to stop.
     function onChange(callback) {
-      const observer = new MutationObserver(callback);
-      observer.observe(document.body, { childList: true, subtree: true });
-      return () => observer.disconnect();
+      const watcher = { callback, observer: new MutationObserver(callback) };
+      watcher.observer.observe(document.body, { childList: true, subtree: true });
+      watchers.add(watcher);
+      return () => {
+        watcher.observer.disconnect();
+        watchers.delete(watcher);
+      };
+    }
+
+    // Runs `fn`, whose own changes to the document no watcher sees, and returns its result. The changes the page made
+    // before `fn` are still delivered first. Only what `fn` does before it returns counts. A call inside another one
+    // just runs.
+    function quietly(fn) {
+      if (quietDepth > 0 || watchers.size === 0) return fn();
+      const active = [...watchers];
+      for (const { observer, callback } of active) {
+        const pending = observer.takeRecords();
+        if (pending.length > 0) callback(pending, observer);
+      }
+      quietDepth += 1;
+      try {
+        return fn();
+      } finally {
+        quietDepth -= 1;
+        for (const { observer } of active) observer.takeRecords();
+      }
     }
 
     // A PR tab can change page under the content script without a reload.
@@ -783,10 +839,11 @@
       clearLineTarget,
       restoreLineTarget,
       showCallouts,
-      filterFiles,
-      filterHunks,
-      excludeFiles,
+      filter,
+      blockCount,
       changedFileCount,
+      isStructural,
+      quietly,
       ownsLine,
       cancelJump,
       diagramHost: spec.diagramHost,

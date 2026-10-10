@@ -751,7 +751,7 @@ function fakeTable(anchors) {
   const lines = new Map(anchors.map((anchor) => [anchor, new Row("line")]));
   rows.push(...lines.values());
   const classes = (selector) => rows.filter((row) => row.className.split(" ").includes(selector.slice(1)));
-  globalThis.document = { createElement: () => new Row(), querySelectorAll: classes };
+  globalThis.document = { createElement: () => new Row(), querySelectorAll: classes, getElementById: () => null };
   const addLine = (anchor) => {
     lines.set(anchor, new Row("line"));
     rows.push(lines.get(anchor));
@@ -1124,7 +1124,7 @@ test("jumpToFile does nothing for a diff that is not in the page", async () => {
 
 function fakeHeader() {
   const classes = new Set();
-  return { classes, classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } };
+  return { classes, classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name), contains: (name) => classes.has(name) } };
 }
 
 test("focus offers no way to hide a diff, and markBox marks only the active files' headers without touching any diff", async () => {
@@ -1318,27 +1318,27 @@ function withBlocks(ids, body) {
   };
 }
 
-test("filterFiles hides the tree's file rows outside the set and a directory left empty, and shows them all for null", withBlocks([], async () => {
+test("filter with files hides the tree's file rows outside the set and a directory left empty, and shows them all for null", withBlocks([], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b", "https://host/pull/1/files#diff-c"]);
   const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
-  await page.filterFiles(["a", "c"]);
+  await page.filter({ files: ["a", "c"] });
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true, false]);
   assert.equal(tree.dir.hidden, false);
-  await page.filterFiles(["b"]);
+  await page.filter({ files: ["b"] });
   assert.deepEqual(tree.files.map((row) => row.hidden), [true, false, true]);
-  await page.filterFiles(["zzz"]);
+  await page.filter({ files: ["zzz"] });
   assert.equal(tree.dir.hidden, true);
-  await page.filterFiles(null);
+  await page.filter({ files: null });
   assert.deepEqual([...tree.files, tree.dir].map((row) => row.hidden), [false, false, false, false]);
 }));
 
-test("filterFiles is applied again to rows the host re-rendered, without asking for the ids again", withBlocks([], async () => {
+test("filter with files is applied again to rows the host re-rendered, without asking for the ids again", withBlocks([], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b"]);
   let asked = 0;
   const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
-  await page.filterFiles(["a"]);
+  await page.filter({ files: ["a"] });
   for (const row of tree.files) row.hidden = false;
-  await page.filterFiles(["a"]);
+  await page.filter({ files: ["a"] });
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
   assert.equal(asked, 1);
 }));
@@ -1346,18 +1346,18 @@ test("filterFiles is applied again to rows the host re-rendered, without asking 
 test("a tree row with no diff link is left showing, and a page with no tree is left alone", withBlocks([], async () => {
   const tree = fakeTree([null, "#diff-b"]);
   const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => `diff-${path}` });
-  await page.filterFiles(["a"]);
+  await page.filter({ files: ["a"] });
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
-  await filePage({ blockSelector: "block", treeHost: () => null, treeFileSelector: "file", diffId: async (path) => path }).filterFiles(["a"]);
+  await filePage({ blockSelector: "block", treeHost: () => null, treeFileSelector: "file", diffId: async (path) => path }).filter({ files: ["a"] });
 }));
 
-test("filterFiles hides the diff blocks outside the set, with or without a tree, and shows them all for null", withBlocks(["diff-a", "diff-b", "diff-c"], async (blocks) => {
+test("filter with files hides the diff blocks outside the set, with or without a tree, and shows them all for null", withBlocks(["diff-a", "diff-b", "diff-c"], async (blocks) => {
   const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => `diff-${path}` });
-  await page.filterFiles(["a", "c"]);
+  await page.filter({ files: ["a", "c"] });
   assert.deepEqual(blocks.map((block) => block.hidden), [false, true, false]);
-  await page.filterFiles(["b"]);
+  await page.filter({ files: ["b"] });
   assert.deepEqual(blocks.map((block) => block.hidden), [true, false, true]);
-  await page.filterFiles(null);
+  await page.filter({ files: null });
   assert.deepEqual(blocks.map((block) => block.hidden), [false, false, false]);
 }));
 
@@ -1365,10 +1365,10 @@ test("a diff block that appears after the filter was set is hidden when the filt
   const tree = fakeTree(["#diff-a", "#diff-b"]);
   let asked = 0;
   const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
-  await page.filterFiles(["a"]);
+  await page.filter({ files: ["a"] });
   assert.deepEqual(blocks.map((block) => block.hidden), [false]);
   const later = fakeBlocks(["diff-a", "diff-b"]);
-  await page.filterFiles(["a"]);
+  await page.filter({ files: ["a"] });
   assert.deepEqual(later.map((block) => block.hidden), [false, true]);
   assert.equal(asked, 1);
 }));
@@ -1647,8 +1647,7 @@ function fakeDiff(blockIds) {
     block.querySelectorAll = (selector) => (selector === "tr" ? block.rows : []);
     return block;
   });
-  const all = () => blocks.flatMap((block) => block.rows);
-  globalThis.document = { querySelectorAll: (selector) => (selector === "block" ? blocks : selector === ".prf-hunk-hidden" ? all().filter((row) => row.hidden) : []) };
+  globalThis.document = { querySelectorAll: (selector) => (selector === "block" ? blocks : []) };
   return { blocks, Row, line };
 }
 
@@ -1663,7 +1662,7 @@ function hunkPage(extra = {}) {
   });
 }
 
-test("filterHunks hides the rows outside the ranges and the hunk header or expand row left standing before a hidden one", async () => {
+test("filter with hunks hides the rows outside the ranges and the hunk header or expand row left standing before a hidden one", async () => {
   const { blocks, Row, line } = fakeDiff(["diff-a", "diff-b"]);
   const [a, b] = blocks;
   a.rows = [
@@ -1679,10 +1678,10 @@ test("filterHunks hides the rows outside the ranges and the hunk header or expan
   ];
   b.rows = [line(["R", 1])];
   const page = hunkPage();
-  await page.filterHunks([{ path: "a", side: "R", start: 10, count: 2 }]);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 10, count: 2 }] });
   assert.deepEqual(a.rows.map((row) => row.hidden), [false, false, false, true, true, false, true, true, false]);
   assert.deepEqual([a.fileHidden, b.fileHidden], [false, true]);
-  await page.filterHunks(null);
+  await page.filter({ hunks: null });
   assert.deepEqual([...a.rows, ...b.rows].map((row) => row.hidden), new Array(10).fill(false));
   assert.deepEqual([a.fileHidden, b.fileHidden], [false, false]);
 });
@@ -1691,35 +1690,36 @@ test("a row is kept when any of its lines is in a range of its own side, so a re
   const { blocks, line } = fakeDiff(["diff-a"]);
   blocks[0].rows = [line(["L", 5]), line(["R", 5]), line(["L", 5], ["R", 5]), line(["L", 6]), line(["R", 4]), line(["R", 7])];
   const page = hunkPage();
-  await page.filterHunks([{ path: "a", side: "L", start: 5, count: 1 }]);
+  await page.filter({ hunks: [{ path: "a", side: "L", start: 5, count: 1 }] });
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true, false, true, true, true]);
-  await page.filterHunks([{ path: "a", side: "R", start: 5, count: 2 }, { path: "a", side: "L", start: 6, count: 1 }]);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 5, count: 2 }, { path: "a", side: "L", start: 6, count: 1 }] });
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [true, false, false, false, true, true]);
 });
 
 test("a row that shows no line and is no hunk row is left alone, with or without hunk detection", async () => {
   const { blocks, Row, line } = fakeDiff(["diff-a"]);
   blocks[0].rows = [new Row([]), line(["R", 99]), new Row([]), new Row([], { hunk: true }), line(["R", 98])];
-  await hunkPage().filterHunks([{ path: "a", side: "R", start: 1, count: 1 }]);
+  await hunkPage().filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }] });
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true, false, true, true]);
-  await hunkPage({ hunkRow: undefined }).filterHunks([{ path: "a", side: "R", start: 1, count: 1 }]);
+  for (const row of blocks[0].rows) row.hidden = false;
+  await hunkPage({ hunkRow: undefined }).filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }] });
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true, false, false, true]);
 });
 
-test("filterHunks is applied again to rows the host rendered since, without asking for the ids again, and a new filter drops the old rows' hiding", async () => {
+test("filter with hunks is applied again to rows the host rendered since, without asking for the ids again, and a new filter drops the old rows' hiding", async () => {
   const { blocks, Row, line } = fakeDiff(["diff-a", "diff-b"]);
   const [a, b] = blocks;
   a.rows = [line(["R", 1])];
   let asked = 0;
   const page = hunkPage({ diffId: async (path) => (asked += 1, `diff-${path}`) });
   const ranges = [{ path: "a", side: "R", start: 1, count: 1 }];
-  await page.filterHunks(ranges);
+  await page.filter({ hunks: ranges });
   a.rows.push(line(["R", 2]), new Row([], { hunk: true }), line(["R", 9]));
-  await page.filterHunks(ranges);
+  await page.filter({ hunks: ranges });
   assert.deepEqual(a.rows.map((row) => row.hidden), [false, true, true, true]);
   assert.equal(asked, 1);
   b.rows = [line(["R", 1]), line(["R", 5])];
-  await page.filterHunks([{ path: "b", side: "R", start: 1, count: 1 }]);
+  await page.filter({ hunks: [{ path: "b", side: "R", start: 1, count: 1 }] });
   assert.deepEqual([a.fileHidden, b.fileHidden, ...b.rows.map((row) => row.hidden), ...a.rows.map((row) => row.hidden)], [true, false, false, true, false, false, false, false]);
 });
 
@@ -1727,23 +1727,23 @@ test("the hunk filter takes the place of the file filter while set, tree rows in
   const { blocks } = fakeDiff(["diff-a", "diff-b", "diff-c"]);
   const tree = fakeTree(["#diff-a", "#diff-b", "#diff-c"]);
   const page = hunkPage({ treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir" });
-  await page.filterFiles(["a", "b"]);
+  await page.filter({ files: ["a", "b"] });
   assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false, true]);
-  await page.filterHunks([{ path: "c", side: "R", start: 1, count: 1 }]);
+  await page.filter({ files: ["a", "b"], hunks: [{ path: "c", side: "R", start: 1, count: 1 }] });
   assert.deepEqual(blocks.map((block) => block.fileHidden), [true, true, false]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [true, true, false]);
-  await page.filterHunks(null);
+  await page.filter({ files: ["a", "b"] });
   assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false, true]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, false, true]);
 });
 
-test("a newer filterHunks call wins over an older one that is still looking up its ids", async () => {
+test("a newer hunk filter call wins over an older one that is still looking up its ids", async () => {
   const { blocks } = fakeDiff(["diff-a", "diff-b"]);
   let release;
   const slow = new Promise((resolve) => (release = resolve));
   const page = hunkPage({ diffId: async (path) => (path === "a" ? (await slow, "diff-a") : "diff-b") });
-  const older = page.filterHunks([{ path: "a", side: "R", start: 1, count: 1 }]);
-  await page.filterHunks([{ path: "b", side: "R", start: 1, count: 1 }]);
+  const older = page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }] });
+  await page.filter({ hunks: [{ path: "b", side: "R", start: 1, count: 1 }] });
   release();
   await older;
   assert.deepEqual(blocks.map((block) => block.fileHidden), [true, false]);
@@ -1754,8 +1754,8 @@ test("a kept diff behind the host's load control is loaded once, and a diff outs
   const loaded = [];
   const page = hunkPage({ loadDiff: (id) => (loaded.push(id), true) });
   const ranges = [{ path: "a", side: "R", start: 1, count: 1 }];
-  await page.filterHunks(ranges);
-  await page.filterHunks(ranges);
+  await page.filter({ hunks: ranges });
+  await page.filter({ hunks: ranges });
   assert.deepEqual(loaded, ["diff-a"]);
   assert.equal(blocks.length, 2);
 });
@@ -1763,7 +1763,7 @@ test("a kept diff behind the host's load control is loaded once, and a diff outs
 function adapterRows(rows, algorithm) {
   const block = { id: `diff-${createHash(algorithm).update("x").digest("hex")}`, classList: { toggle() {} }, querySelectorAll: (selector) => (selector === "tr" ? rows : []) };
   globalThis.document = {
-    querySelectorAll: (selector) => (selector.startsWith("#diff-container") || selector.startsWith("div[id^=") ? [block] : selector === ".prf-hunk-hidden" ? rows.filter((row) => row.hidden) : []),
+    querySelectorAll: (selector) => (selector.startsWith("#diff-container") || selector.startsWith("div[id^=") ? [block] : []),
     querySelector: () => null,
     getElementById: (id) => (id === "prf-forgejo-theme" ? {} : null),
   };
@@ -1795,7 +1795,7 @@ test("GitHub rows give their lines by their line anchors, and a hunk cell's anch
   ];
   adapterRows(rows, "sha256");
   try {
-    await githubPage.filterHunks([{ path: "x", side: "R", start: 1, count: 2 }, { path: "x", side: "L", start: 2, count: 1 }]);
+    await githubPage.filter({ hunks: [{ path: "x", side: "R", start: 1, count: 2 }, { path: "x", side: "L", start: 2, count: 1 }] });
     assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, false, true, true, true, false, false]);
   } finally {
     delete globalThis.document;
@@ -1815,7 +1815,7 @@ test("Forgejo rows give their lines by the rel of their line-number spans, and a
   ];
   adapterRows(rows, "sha1");
   try {
-    await forgejoPage.filterHunks([{ path: "x", side: "R", start: 3, count: 1 }, { path: "x", side: "L", start: 4, count: 1 }]);
+    await forgejoPage.filter({ hunks: [{ path: "x", side: "R", start: 3, count: 1 }, { path: "x", side: "L", start: 4, count: 1 }] });
     assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, true, true]);
   } finally {
     delete globalThis.document;
@@ -2103,33 +2103,33 @@ test("a stop callout's Previous and Next go to the neighbouring stops, and a slo
   }
 });
 
-test("excludeFiles hides the blocks and tree rows of its files, and a directory left with none, whatever the file filter keeps", withBlocks(["diff-a", "diff-b", "diff-c"], async (blocks) => {
+test("filter with exclude hides the blocks and tree rows of its files, and a directory left with none, whatever the file filter keeps", withBlocks(["diff-a", "diff-b", "diff-c"], async (blocks) => {
   const tree = fakeTree(["#diff-a", "#diff-b", "#diff-c"]);
   const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
-  await page.excludeFiles(["b"]);
+  await page.filter({ exclude: ["b"] });
   assert.deepEqual(blocks.map((block) => block.hidden), [false, true, false]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true, false]);
   assert.equal(tree.dir.hidden, false);
-  await page.filterFiles(["a", "b"]);
+  await page.filter({ files: ["a", "b"], exclude: ["b"] });
   assert.deepEqual(blocks.map((block) => block.hidden), [false, true, true]);
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true, true]);
-  await page.excludeFiles(["a", "b", "c"]);
+  await page.filter({ files: ["a", "b"], exclude: ["a", "b", "c"] });
   assert.equal(tree.dir.hidden, true);
-  await page.excludeFiles(null);
+  await page.filter({ files: ["a", "b"] });
   assert.deepEqual(blocks.map((block) => block.hidden), [false, false, true]);
-  await page.filterFiles(null);
+  await page.filter();
   assert.deepEqual([...blocks, ...tree.files, tree.dir].map((item) => item.hidden), new Array(7).fill(false));
 }));
 
-test("excludeFiles is applied again on every call and asks for the ids once per set of paths, and a newer call wins", withBlocks(["diff-a", "diff-b"], async (blocks) => {
+test("filter with exclude is applied again on every call and asks for the ids once per set of paths, and a newer call wins", withBlocks(["diff-a", "diff-b"], async (blocks) => {
   let asked = 0;
   const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => (asked += 1, `diff-${path}`) });
-  await page.excludeFiles(["a"]);
+  await page.filter({ exclude: ["a"] });
   blocks[0].hidden = false;
-  await page.excludeFiles(["a"]);
+  await page.filter({ exclude: ["a"] });
   assert.deepEqual([blocks[0].hidden, asked], [true, 1]);
-  const older = page.excludeFiles(["b"]);
-  await page.excludeFiles(["a"]);
+  const older = page.filter({ exclude: ["b"] });
+  await page.filter({ exclude: ["a"] });
   await older;
   assert.deepEqual(blocks.map((block) => block.hidden), [true, false]);
 }));
@@ -2139,13 +2139,13 @@ test("an excluded block is hidden even when the hunk filter keeps it, and its ro
   blocks[0].rows.push(line(["R", 1]), line(["R", 2]));
   blocks[1].rows.push(line(["R", 1]));
   const page = hunkPage();
-  await page.filterHunks([{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }]);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }] });
   assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false]);
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
-  await page.excludeFiles(["a"]);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }], exclude: ["a"] });
   assert.deepEqual(blocks.map((block) => block.fileHidden), [true, false]);
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, false]);
-  await page.excludeFiles(null);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }] });
   assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false]);
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
   assert.ok(Row);
@@ -2164,4 +2164,226 @@ test("widestWidth is null when there are no cards, and does not measure", () => 
   const measured = [];
   assert.equal(widestWidth([], (card) => measured.push(card)), null);
   assert.deepEqual(measured, []);
+});
+
+function observedDocument() {
+  const watchers = [];
+  const saved = { document: globalThis.document, MutationObserver: globalThis.MutationObserver };
+  globalThis.document = { body: {}, querySelectorAll: () => [] };
+  globalThis.MutationObserver = class {
+    constructor(callback) {
+      this.callback = callback;
+      this.records = [];
+      watchers.push(this);
+    }
+    observe() {}
+    disconnect() {
+      watchers.splice(watchers.indexOf(this), 1);
+    }
+    takeRecords() {
+      const taken = this.records;
+      this.records = [];
+      return taken;
+    }
+  };
+  const restore = () => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete globalThis[name];
+      else globalThis[name] = value;
+    }
+  };
+  return { watchers, restore };
+}
+
+test("quietly hands the callback the changes made before it, drops those fn makes, and returns fn's result", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    const seen = [];
+    page.onChange((records) => seen.push([...records]));
+    dom.watchers[0].records.push("page");
+    const result = page.quietly(() => {
+      dom.watchers[0].records.push("ours");
+      return 7;
+    });
+    assert.equal(result, 7);
+    assert.deepEqual(seen, [["page"]]);
+    assert.deepEqual(dom.watchers[0].records, []);
+    dom.watchers[0].records.push("later");
+    assert.deepEqual(dom.watchers[0].takeRecords(), ["later"]);
+  } finally {
+    dom.restore();
+  }
+});
+
+test("quietly reaches every watcher, and drops the changes of an fn that throws", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    const seen = [];
+    page.onChange((records) => seen.push(["first", ...records]));
+    page.onChange((records) => seen.push(["second", ...records]));
+    dom.watchers[0].records.push("a");
+    dom.watchers[1].records.push("b");
+    assert.throws(() => page.quietly(() => {
+      for (const watcher of dom.watchers) watcher.records.push("ours");
+      throw new Error("boom");
+    }), /boom/);
+    assert.deepEqual(seen, [["first", "a"], ["second", "b"]]);
+    assert.deepEqual(dom.watchers.map((watcher) => watcher.records), [[], []]);
+    page.quietly(() => dom.watchers[0].records.push("again"));
+    assert.deepEqual(dom.watchers[0].records, []);
+  } finally {
+    dom.restore();
+  }
+});
+
+test("a quietly inside a quietly just runs, so only the outer one delivers earlier changes", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    const seen = [];
+    page.onChange((records) => seen.push([...records]));
+    dom.watchers[0].records.push("page");
+    const inner = page.quietly(() => {
+      dom.watchers[0].records.push("outer");
+      return page.quietly(() => (dom.watchers[0].records.push("inner"), "inner result"));
+    });
+    assert.equal(inner, "inner result");
+    assert.deepEqual(seen, [["page"]]);
+    assert.deepEqual(dom.watchers[0].records, []);
+    dom.watchers[0].records.push("after");
+    page.quietly(() => {});
+    assert.deepEqual(seen, [["page"], ["after"]]);
+  } finally {
+    dom.restore();
+  }
+});
+
+test("quietly with no watcher just runs fn, and a stopped watcher is no longer reached", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    assert.equal(page.quietly(() => "ran"), "ran");
+    const stop = page.onChange(() => assert.fail("a stopped watcher is called"));
+    dom.watchers[0].records.push("page");
+    stop();
+    assert.equal(dom.watchers.length, 0);
+    assert.equal(page.quietly(() => "ran"), "ran");
+  } finally {
+    dom.restore();
+  }
+});
+
+function fakeElement(tag, ...inside) {
+  const element = { nodeType: 1, tag, inside };
+  const names = (selector) => selector.split(", ");
+  element.matches = (selector) => names(selector).includes(tag);
+  element.querySelector = (selector) => {
+    for (const child of inside) {
+      if (child.matches(selector)) return child;
+      const found = child.querySelector(selector);
+      if (found) return found;
+    }
+    return null;
+  };
+  return element;
+}
+
+test("isStructural is true for a row, a diff block, a tree row and anything holding one, and false for a toolbar in a cell", () => {
+  const page = filePage({ blockSelector: "block", treeFileSelector: "file", treeDirSelector: "dir" });
+  assert.equal(page.isStructural(fakeElement("tr")), true);
+  assert.equal(page.isStructural(fakeElement("block")), true);
+  assert.equal(page.isStructural(fakeElement("file")), true);
+  assert.equal(page.isStructural(fakeElement("dir")), true);
+  assert.equal(page.isStructural(fakeElement("div", fakeElement("span"), fakeElement("section", fakeElement("tr")))), true);
+  assert.equal(page.isStructural(fakeElement("div", fakeElement("button", fakeElement("svg")))), false);
+  assert.equal(page.isStructural({ nodeType: 3 }), false);
+});
+
+test("a host with no tree directory selector builds its structural selector without it", () => {
+  const page = filePage({ blockSelector: "block", treeFileSelector: "file" });
+  assert.equal(page.isStructural(fakeElement("dir")), false);
+  assert.equal(page.isStructural(fakeElement("file")), true);
+});
+
+test("one filter call with all three filters looks each path up once and applies the filters once", async () => {
+  const { blocks, line } = fakeDiff(["diff-a", "diff-b", "diff-c"]);
+  blocks[0].rows = [line(["R", 1]), line(["R", 9])];
+  const asked = [];
+  let applied = 0;
+  const page = hunkPage({ treeHost: () => (applied += 1, null), diffId: async (path) => (asked.push(path), `diff-${path}`) });
+  await page.filter({ files: ["a", "b"], hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }], exclude: ["b"] });
+  assert.deepEqual([...asked].sort(), ["a", "a", "b", "b", "b"]);
+  assert.equal(applied, 1);
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [false, true, true]);
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
+  await page.filter({ files: ["a", "b"], hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }], exclude: ["b"] });
+  assert.equal(asked.length, 5);
+  assert.equal(applied, 2);
+});
+
+test("filter looks up only the filters whose paths changed", withBlocks(["diff-a", "diff-b"], async (blocks) => {
+  const asked = [];
+  const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => (asked.push(path), `diff-${path}`) });
+  await page.filter({ files: ["a", "b"], exclude: ["b"] });
+  await page.filter({ files: ["a", "b"], exclude: ["a"] });
+  assert.deepEqual(asked, ["a", "b", "b", "a"]);
+  assert.deepEqual(blocks.map((block) => block.hidden), [true, false]);
+}));
+
+test("a newer filter call wins over an older one that is still looking up its ids, whatever each sets", withBlocks(["diff-a", "diff-b"], async (blocks) => {
+  let release;
+  const slow = new Promise((resolve) => (release = resolve));
+  const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => (path === "a" ? (await slow, "diff-a") : `diff-${path}`) });
+  const older = page.filter({ files: ["a"] });
+  await page.filter({ exclude: ["b"] });
+  release();
+  await older;
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, true]);
+}));
+
+test("filter with no arguments shows every file and row again", async () => {
+  const { blocks, line } = fakeDiff(["diff-a", "diff-b"]);
+  blocks[0].rows = [line(["R", 1]), line(["R", 9])];
+  const page = hunkPage();
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }], exclude: ["b"] });
+  assert.deepEqual([blocks[0].rows[1].hidden, blocks[1].fileHidden], [true, true]);
+  await page.filter();
+  assert.deepEqual([blocks[0].rows[1].hidden, blocks[1].fileHidden], [false, false]);
+});
+
+test("blockCount counts the diff blocks, and changedFileCount takes the count it is given", withBlocks(["diff-a", "diff-b", "diff-c"], async () => {
+  const tree = fakeTree(["#diff-a", "#diff-b"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file" });
+  assert.equal(page.blockCount(), 3);
+  assert.equal(page.changedFileCount(), 3);
+  assert.equal(page.changedFileCount(1), 2);
+  assert.equal(page.changedFileCount(7), 7);
+}));
+
+test("focus scans the page's blocks only for a path whose entry is not found by its id, and once per call", async () => {
+  const focus = require("../focus.js");
+  const headers = new Map([["a.js", fakeHeader()], ["b.js", fakeHeader()], ["c.js", fakeHeader()]]);
+  const saved = { page: globalThis.prFocus.page, alive: globalThis.prFocus.alive };
+  let scans = 0;
+  globalThis.prFocus.alive = () => true;
+  globalThis.prFocus.page = {
+    fileBlocks: () => (scans += 1, new Map([["b.js", "b.js"], ["c.js", "c.js"]])),
+    entryFor: async (path) => (path === "a.js" ? path : null),
+    entryOf: (block) => block ?? null,
+    fileHeaderOf: (entry) => headers.get(entry) ?? null,
+  };
+  try {
+    await focus.markBox(["a.js"]);
+    assert.equal(scans, 0);
+    await focus.markBox(["a.js", "b.js", "c.js"]);
+    assert.equal(scans, 1);
+    assert.deepEqual([...headers].filter(([, header]) => header.classes.has("prf-box-active")).map(([path]) => path), ["a.js", "b.js", "c.js"]);
+    focus.clearBox();
+    assert.deepEqual([...headers].filter(([, header]) => header.classes.has("prf-box-active")), []);
+  } finally {
+    globalThis.prFocus.page = saved.page;
+    globalThis.prFocus.alive = saved.alive;
+  }
 });

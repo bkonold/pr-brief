@@ -227,6 +227,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const revealed = [];
   const boxes = [];
   const scrolled = [];
+  const quiet = { depth: 0 };
   const filters = [];
   const hunkFilters = [];
   const excluded = [];
@@ -258,14 +259,22 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       fileBlocks: () => new Map(),
       headSha: () => null,
       restoreLineTarget() {},
-      ownsLine: () => false,
+      ownsLine: (node) => Boolean(node?.owned),
       lineAnchor: async (path, side, line) => `${path}${side}${line}`,
       fileAnchor: async (path) => `diff-${path}`,
       firstInPage: async (paths) => pageOrder.find((path) => paths.includes(path)) ?? paths[0] ?? null,
       showCallouts: (entries) => callouts.push(entries),
-      filterFiles: (paths) => filters.push(paths),
-      filterHunks: (ranges) => hunkFilters.push(ranges),
-      excludeFiles: (paths) => excluded.push(paths),
+      filter: ({ files = null, hunks = null, exclude = null } = {}) => (filters.push(files), hunkFilters.push(hunks), excluded.push(exclude)),
+      blockCount: () => 0,
+      isStructural: (node) => Boolean(node.structural),
+      quietly: (fn) => {
+        quiet.depth += 1;
+        try {
+          return fn();
+        } finally {
+          quiet.depth -= 1;
+        }
+      },
       changedFileCount: () => 9,
       jumpToLine: async (...args) => jumps.push(args),
       jumpToFile: async (...args) => fileJumps.push(args),
@@ -286,7 +295,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       },
     },
     tree: {
-      render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
+      render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers, quiet: quiet.depth > 0 }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
       stopsOf: require("../tree.js").stopsOf,
       chunksOf: require("../tree.js").chunksOf,
@@ -1425,4 +1434,42 @@ test("a mode with no callouts leaves the width as it was", async () => {
   await settle();
   await renders.at(-1).handlers.onMode("review");
   assert.deepEqual(properties, {});
+});
+
+const record = ({ target = {}, added = [], removed = [] } = {}) => ({ target, addedNodes: added, removedNodes: removed });
+const structural = { structural: true };
+const decoration = {};
+
+test("a refresh draws the list inside page.quietly", async () => {
+  const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  assert.equal(renders.length > 0 && renders.every((render) => render.quiet), true);
+});
+
+async function refreshesAfter(records) {
+  const { renders, changes } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  const before = renders.length;
+  changes.at(-1)(records);
+  await wait(250);
+  return renders.length - before;
+}
+
+test("a hover toolbar the host adds or removes inside a cell schedules no refresh", async () => {
+  assert.equal(await refreshesAfter([record({ added: [decoration] }), record({ removed: [decoration] })]), 0);
+});
+
+test("rows, diff blocks or tree rows the host adds or removes schedule one refresh", async () => {
+  assert.equal(await refreshesAfter([record({ added: [decoration] }), record({ added: [structural] })]), 1);
+  assert.equal(await refreshesAfter([record({ removed: [structural] })]), 1);
+});
+
+test("the host dropping one of our panels schedules a refresh, and a change inside our own element does not", async () => {
+  const ours = { owned: true };
+  assert.equal(await refreshesAfter([record({ removed: [ours] })]), 1);
+  assert.equal(await refreshesAfter([record({ target: ours, removed: [ours], added: [structural] })]), 0);
+});
+
+test("structural nodes that are ours schedule no refresh", async () => {
+  assert.equal(await refreshesAfter([record({ added: [{ structural: true, owned: true }] })]), 0);
 });
