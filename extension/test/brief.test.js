@@ -17,12 +17,11 @@ const MARKDOWN = [
   "# Example title",
   "",
   "<!-- pr-agent-generated -->",
-  "### **PR Type**",
   "Enhancement",
   "",
   "___",
   "",
-  "### **Description**",
+  "### Description",
   "- Adds `thing` to the pipeline",
   "  - nested **point**",
   "",
@@ -109,7 +108,7 @@ test("sanitize in svg mode keeps a diagram's style and drops what can run script
 test("renderBody renders the description and leaves the title, the mermaid source and its heading out", () => {
   const { html, caption } = briefText.renderBody(bodyHtml(), FILES_URL);
   assert.doesNotMatch(html, /Example title|mermaid|flowchart|Diagram Walkthrough|pr-agent-generated|Dashed boxes/);
-  assert.match(html, /<h3><strong>PR Type<\/strong><\/h3>/);
+  assert.match(html, /<h3>Description<\/h3>/);
   assert.match(html, /<li>Adds <code>thing<\/code> to the pipeline\n<ul>\n<li>nested <strong>point<\/strong>/);
   assert.equal(caption, "Dashed boxes are unchanged context");
 });
@@ -211,6 +210,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     },
   };
   const navigations = [];
+  const changes = [];
+  const nav = { away: false };
   const built = [];
   const calls = [];
   const lines = [];
@@ -615,7 +616,7 @@ const V22_MARKDOWN = [
   "# T",
   "",
   '<details class="section">',
-  '<summary><strong>Contract</strong> <span class="pill p0"><strong>callers must change</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
+  '<summary><h3>Contract</h3> <span class="pill p0"><strong>callers must change</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
   "",
   '<div class="table-wrap">',
   "",
@@ -631,7 +632,7 @@ const V22_MARKDOWN = [
   "",
   "___",
   "",
-  "### **Data**",
+  "### Data",
   "No database changes",
   "",
   "### Diagram Walkthrough",
@@ -646,7 +647,7 @@ test("a v22 section is one closed details with its name and chips in the summary
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
   assert.equal((html.match(/<details class="section">/g) ?? []).length, 1);
   assert.doesNotMatch(html, /<details class="section" open/);
-  assert.match(html, /<summary><strong>Contract<\/strong> <span class="pill p0"><strong>callers must change<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
+  assert.match(html, /<summary><h3>Contract<\/h3> <span class="pill p0"><strong>callers must change<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
   assert.equal((html.match(/<table>/g) ?? []).length, 1);
   assert.match(html, /<thead><tr><th>Impact<\/th><th>Side<\/th><th>Change<\/th><th>On<\/th><th>↗<\/th><\/tr><\/thead>/);
   assert.match(html, /<td><span class="pill p0"><strong>callers must change<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
@@ -660,8 +661,8 @@ test("a v22 section is one closed details with its name and chips in the summary
 test("a v22 brief keeps the diagram after the Data section", () => {
   const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
-  const contract = html.indexOf("<strong>Contract</strong>");
-  const data = html.indexOf("<h3><strong>Data</strong></h3>");
+  const contract = html.indexOf("<h3>Contract</h3>");
+  const data = html.indexOf("<h3>Data</h3>");
   const diagram = html.indexOf('class="diagram-box"');
   assert.ok(contract !== -1 && data > contract && diagram > data, [contract, data, diagram].join());
   assert.equal(html.slice(contract, data).includes("diagram-box"), false);

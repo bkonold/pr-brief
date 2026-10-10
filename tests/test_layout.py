@@ -58,7 +58,7 @@ class Drawing(unittest.TestCase):
     def test_a_section_is_one_closed_details_with_its_name_and_chips_in_the_summary(self) -> None:
         text = self.draw([line("a", CALLERS), line("b", ADDITIVE), line("c", ADDITIVE)])
         self.assertEqual(text.count("<details"), 1)
-        self.assertTrue(text.startswith('<details class="section">\n<summary><strong>API</strong><br>\n<span class="pill p0">'))
+        self.assertTrue(text.startswith('<details class="section">\n<summary><h3>API</h3><br>\n<span class="pill p0">'))
         self.assertNotIn("open", text.split("\n")[0])
         summary = re.search(r"(?s)<summary>(.*?)</summary>", text).group(1)
         self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API\ncallers must change additive 3 changes")
@@ -69,7 +69,7 @@ class Drawing(unittest.TestCase):
     def test_the_summary_is_the_heading_alone_then_a_break_and_the_chips_and_count(self) -> None:
         text = self.draw([line("a", CALLERS), line("b", ADDITIVE)])
         first, second = re.search(r"(?s)<summary>(.*?)</summary>", text).group(1).split("\n")
-        self.assertEqual(first, "<strong>API</strong><br>")
+        self.assertEqual(first, "<h3>API</h3><br>")
         self.assertEqual(pills(second), ["callers must change", "additive"])
         self.assertTrue(second.endswith('<span class="muted">2 changes</span>'))
 
@@ -89,7 +89,7 @@ class Drawing(unittest.TestCase):
 
     def test_a_data_section_is_headed_data(self) -> None:
         text = self.draw([line("x", DESTRUCTIVE, change="c", on="`t`")], kind="data", levels=DATA_LEVELS)
-        self.assertIn("<summary><strong>Data</strong><br>\n", text)
+        self.assertIn("<summary><h3>Data</h3><br>\n", text)
 
     def test_the_section_has_no_chunk_wording_and_no_per_group_markup(self) -> None:
         text = self.draw(self.lines(3))

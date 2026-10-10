@@ -16,8 +16,8 @@ import post  # noqa: E402
 REPO = "octo/widgets"
 HEAD = "d" * 40
 BODY = (
-    "# Add a widget cache\n\n<!-- pr-agent-generated -->\n### **PR Type**\nEnhancement\n\n\n___\n\n"
-    "### **Description**\n- Cache widgets\n\n\n___\n\n### **API**\nNo API changes\n\n\n### **Data**\nNo database changes\n\n\n"
+    "# Add a widget cache\n\n<!-- pr-agent-generated -->\n"
+    "### Description\n- Cache widgets\n\n\n___\n\n### API\nNo API changes\n\n\n### Data\nNo database changes\n\n\n"
     "### Diagram Walkthrough\n\n\n```mermaid\nflowchart TD\n  a[\"Cache\"] --> b[\"Store\"]\n```\n\nDashed boxes are unchanged context\n\n\n___\n\n")
 
 
@@ -128,7 +128,7 @@ class BodyTest(RunFolderTest):
 
     def test_a_contract_table_in_the_brief_is_kept(self) -> None:
         table = "<details><summary>API</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
-        body = BODY.replace("### **API**\nNo API changes\n", table)
+        body = BODY.replace("### API\nNo API changes\n", table)
         comment = post.build_comment(self.run_dir([stop(1)], body))
         self.assertIn(table, comment)
 

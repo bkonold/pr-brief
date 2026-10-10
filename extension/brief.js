@@ -82,6 +82,7 @@
     .content { padding: 16px; }
     .text > :first-child { margin-top: 0; }
     h1, h2, h3, h4 { margin: 16px 0 8px; font-size: 14px; line-height: 1.25; }
+    h3 { font-size: 18px; font-weight: 600; }
     p, ul, ol, details { margin: 0 0 12px; }
     ul, ol { padding-left: 24px; }
     li > ul { margin: 2px 0; }
@@ -92,7 +93,6 @@
     sub { font-size: 12px; color: var(--muted); }
     summary { cursor: pointer; }
     summary h3 { display: inline; margin: 0; }
-    details.diagram-box > summary { font-weight: 600; }
     .diagram { margin: 8px 0 0; }
     .paper { padding: 8px; overflow: auto; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
     .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
@@ -110,7 +110,6 @@
     .text details > summary .pill { margin: 0 4px; font-size: 11px; line-height: 16px; padding: 0 7px; }
     .text details > ul { margin: 4px 0 8px; padding-left: 20px; }
     .text details li { margin-bottom: 4px; }
-    .text details.section > summary { font-weight: 600; }
     .muted { font-size: 12px; font-weight: 400; color: var(--muted); }
     .text .table-wrap { margin: 4px 0 8px; overflow-x: auto; }
     .text .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -180,7 +179,7 @@
     const { html, caption } = ns.briefText.renderBody(view.bodyHtml, filesUrl);
     const svg = /^\s*<svg[\s>]/.test(view.diagramSvg ?? "") ? ns.briefText.sanitize(view.diagramSvg, "svg") : "";
     const diagram = svg
-      ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${caption ? `<p class="caption">${caption}</p>` : ""}</figure></details>`
+      ? `<details class="diagram-box"><summary><h3>Diagram</h3></summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${caption ? `<p class="caption">${caption}</p>` : ""}</figure></details>`
       : "";
     const stale = isStale(view.runSha, view.pageSha);
     const fresh = view.origin === "comment" ? "from the PR's comment" : "local, not posted";
