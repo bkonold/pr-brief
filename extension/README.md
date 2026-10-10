@@ -54,17 +54,20 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 ## Tests control
 
 `review.json`'s `file_sets.tests` lists the PR's test files, as full paths. When it is not empty, the filter line (under the
-toggle, in "Files" and "Layers" only) ends with the Tests control: a muted label "Tests" followed by three text buttons,
-`all · hidden · only`, 12px, with no border or background. The choices other than the one in effect are in the secondary colour; the
-one in effect is in the default colour, underlined, and has `aria-pressed="true"`. A click picks that mode directly. A brief
+toggle, in "Files" and "Layers" only) ends with the Tests control: a small GitHub-style dropdown button at the line's right
+reading `Tests: All ▾` (the muted label "Tests:", the mode in effect in the default colour, a muted triangle-down icon). It is a styled
+wrapper (24px high, 12px text, a 1px border, 6px radius, the button background and its hover) with a transparent native `<select>`
+(`aria-label="Tests"`) laid over all of it, so a click anywhere opens the browser's own menu and the keyboard works natively;
+the wrapper shows a focus ring when the select is keyboard-focused. Choosing an option picks that mode directly. The line's right
+padding (14px) matches the list's, so the two end at the same place. A brief
 without `file_sets.tests` (an older run, or a PR with no test files) has no control and shows every file. The "Walkthrough"
 has no Tests control and no test behaviour: it shows the files its file set chooses, whatever the stored mode.
 
-| Choice | Mode | Shows |
+| Option | Value | Shows |
 | --- | --- | --- |
-| all | `all` | every file |
-| hidden | `hide` | every file but the tests |
-| only | `only` | the test files only |
+| All | `all` | every file |
+| Hidden | `hide` | every file but the tests |
+| Only | `only` | the test files only |
 
 - **Diff and tree.** In "Files", in "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
   with none, whatever the chip or the layer keeps (`page.excludeFiles`, a third filter that only subtracts). In "only" the

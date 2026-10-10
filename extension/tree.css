@@ -81,7 +81,8 @@
   flex: none;
 }
 
-/* The filter line under the toggle: what narrows the pane at its left, the Tests control at its right. */
+/* The filter line under the toggle: what narrows the pane at its left, the Tests dropdown at its right. Its right padding
+   matches `.prf-groups`, so the line ends where the list does. */
 .prf-filters {
   display: flex;
   flex: none;
@@ -89,6 +90,131 @@
   gap: 8px;
   align-items: center;
   margin: 0 0 8px;
+  padding-right: 14px;
+  font-size: 12px;
+}
+
+.prf-filters .prf-lede {
+  margin: 0;
+}
+
+.prf-tests {
+  position: relative;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--fgColor-default, #1f2328);
+  background: var(--button-default-bgColor-rest, #f6f8fa);
+  border: 1px solid var(--button-default-borderColor-rest, var(--borderColor-default, #d1d9e0));
+  border-radius: 6px;
+}
+
+.prf-tests:hover {
+  background: var(--button-default-bgColor-hover, #eff2f5);
+}
+
+.prf-tests:has(.prf-tests-select:focus-visible) {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: -2px;
+}
+
+.prf-tests-label,
+.prf-tests-caret {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-tests-caret {
+  flex: none;
+  margin-right: -4px;
+}
+
+.prf-tests-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.prf-banner {
+  box-sizing: border-box;
+  background: var(--bgColor-muted, #f6f8fa);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border: 1px solid color-mix(in srgb, var(--borderColor-accent-emphasis, #0969da) 22%, var(--borderColor-default, #d0d7de));
+  border-radius: 8px;
+}
+
+.prf-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.prf-modes {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--controlTrack-bgColor-rest, #eff2f5);
+  border: 1px solid var(--controlTrack-borderColor-rest, transparent);
+  border-radius: 8px;
+}
+
+.prf-mode,
+.prf-head-main {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Both segments share one box; only the selected one changes its background and border. */
+.prf-mode {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--fgColor-default, #1f2328);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.prf-mode:hover {
+  background: var(--controlTrack-bgColor-hover, #e6eaef);
+}
+
+.prf-mode[aria-pressed="true"],
+.prf-mode[aria-pressed="true"]:hover {
+  background: var(--controlKnob-bgColor-rest, #ffffff);
+  border-color: var(--controlKnob-borderColor-rest, #818b98);
+}
+
+.prf-mode-icon {
+  flex: none;
+}
+
+/* The filter line under the toggle: what narrows the pane at its left, the Tests dropdown at its right. Its right padding
+   matches `.prf-groups`, so the line ends where the list does. */
+.prf-filters {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px;
+  padding-right: 14px;
   font-size: 12px;
 }
 

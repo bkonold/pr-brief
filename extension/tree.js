@@ -181,7 +181,9 @@
   }
 
   const TESTS_MODES = ["all", "hide", "only"];
-  const TESTS_CHOICES = [["all", "all"], ["hide", "hidden"], ["only", "only"]];
+  const TESTS_CHOICES = [["all", "All"], ["hide", "Hidden"], ["only", "Only"]];
+  // Octicons' triangle-down, 16-unit filled.
+  const TRIANGLE_DOWN_ICON = "m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z";
 
   // Whether the Tests control keeps `path` out of view: a test file while tests are hidden, any other file while only
   // tests are shown.
@@ -191,18 +193,29 @@
     return false;
   }
 
-  // The label "Tests" and one choice per mode, all, hidden or only, of which files the page shows: all of them, all but
-  // the test files, or only the test files. The choice in effect is pressed; a click picks its mode directly.
+  // A small dropdown button reading "Tests: All", "Tests: Hidden" or "Tests: Only", for which files the page shows: all of
+  // them, all but the test files, or only the test files. A transparent native select covers the whole button, so a
+  // click anywhere opens the browser's own menu and the keyboard works as on any select; choosing an option picks its
+  // mode directly.
   function testsControl(state, handlers) {
     const mode = TESTS_MODES.includes(state.testsMode) ? state.testsMode : "all";
+    const select = make("select", "prf-tests-select");
+    select.setAttribute("aria-label", "Tests");
+    for (const [value, label] of TESTS_CHOICES) {
+      const option = make("option", undefined, label);
+      option.value = value;
+      select.append(option);
+    }
+    select.value = mode;
+    select.addEventListener("change", () => handlers.onTestsMode(select.value));
+    const current = TESTS_CHOICES.find(([value]) => value === mode)[1];
     const control = make("span", "prf-tests");
-    control.append(make("span", "prf-tests-label", "Tests"));
-    TESTS_CHOICES.forEach(([value, label], index) => {
-      const choice = button("prf-tests-choice", label, () => handlers.onTestsMode(value));
-      choice.setAttribute("aria-pressed", String(mode === value));
-      if (index > 0) control.append(make("span", "prf-tests-sep", "\u00b7"));
-      control.append(choice);
-    });
+    control.append(
+      make("span", "prf-tests-label", "Tests:"),
+      make("span", "prf-tests-value", current),
+      filledIcon(TRIANGLE_DOWN_ICON, 16, "prf-tests-caret"),
+      select,
+    );
     return control;
   }
 

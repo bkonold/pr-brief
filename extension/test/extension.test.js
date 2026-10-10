@@ -1896,25 +1896,37 @@ test("the Tests control is drawn only when the review has test files, in Files a
   assert.deepEqual(testsControlOf({ mode: "review", tests: ["a.test.js"] }), []);
 });
 
-test("the Tests control reads Tests all · hidden · only and presses the choice matching the mode, all when there is none", () => {
+test("the Tests control reads Tests: All, Hidden or Only and selects the option matching the mode, All when there is none", () => {
   const view = (testsMode) => {
     const [control] = testsControlOf({ mode: "github", tests: ["a.test.js"], testsMode });
-    const choices = byClass(control, "prf-tests-choice");
-    return { text: control.textContent, label: byClass(control, "prf-tests-label")[0].textContent, choices: choices.map((choice) => choice.textContent), pressed: choices.map((choice) => choice.attributes["aria-pressed"]) };
+    const [select] = byClass(control, "prf-tests-select");
+    return { label: byClass(control, "prf-tests-label")[0].textContent, value: byClass(control, "prf-tests-value")[0].textContent, selected: select.value };
   };
-  const text = "Testsall·hidden·only";
-  const choices = ["all", "hidden", "only"];
-  assert.deepEqual(view("all"), { text, label: "Tests", choices, pressed: ["true", "false", "false"] });
-  assert.deepEqual(view("hide"), { text, label: "Tests", choices, pressed: ["false", "true", "false"] });
-  assert.deepEqual(view("only"), { text, label: "Tests", choices, pressed: ["false", "false", "true"] });
-  assert.deepEqual(view(undefined).pressed, ["true", "false", "false"]);
+  assert.deepEqual(view("all"), { label: "Tests:", value: "All", selected: "all" });
+  assert.deepEqual(view("hide"), { label: "Tests:", value: "Hidden", selected: "hide" });
+  assert.deepEqual(view("only"), { label: "Tests:", value: "Only", selected: "only" });
+  assert.deepEqual(view("bogus"), { label: "Tests:", value: "All", selected: "all" });
+  assert.deepEqual(view(undefined), { label: "Tests:", value: "All", selected: "all" });
 });
 
-test("clicking a Tests choice sends that mode, whichever is in effect", () => {
+test("the Tests select is labelled Tests and offers All, Hidden and Only with the values all, hide and only", () => {
+  const [control] = testsControlOf({ mode: "github", tests: ["a.test.js"] });
+  const [select] = byClass(control, "prf-tests-select");
+  assert.equal(select.tag, "select");
+  assert.equal(select.attributes["aria-label"], "Tests");
+  const options = select.children;
+  assert.deepEqual(options.map((option) => [option.tag, option.textContent, option.value]), [["option", "All", "all"], ["option", "Hidden", "hide"], ["option", "Only", "only"]]);
+});
+
+test("changing the Tests select sends its value as the mode", () => {
   const asked = [];
   const [control] = testsControlOf({ mode: "chunks", chunks: CHUNKS, tests: ["a.test.js"], testsMode: "hide" }, { onTestsMode: (mode) => asked.push(mode) });
-  for (const choice of byClass(control, "prf-tests-choice")) choice.listeners.click();
-  assert.deepEqual(asked, ["all", "hide", "only"]);
+  const [select] = byClass(control, "prf-tests-select");
+  for (const value of ["all", "only", "hide"]) {
+    select.value = value;
+    select.listeners.change();
+  }
+  assert.deepEqual(asked, ["all", "only", "hide"]);
 });
 
 test("a stop row is not dimmed by the Tests mode", () => {
