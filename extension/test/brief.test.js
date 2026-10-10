@@ -248,7 +248,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       lineAnchor: async (path, side, line) => `${path}${side}${line}`,
       fileAnchor: async (path) => `diff-${path}`,
       showCallouts: (entries) => callouts.push(entries),
-      filterTree: (paths) => filters.push(paths),
+      filterFiles: (paths) => filters.push(paths),
       changedFileCount: () => 9,
       jumpToLine: async (...args) => jumps.push(args),
       jumpToFile: async (...args) => fileJumps.push(args),
@@ -950,4 +950,16 @@ test("switching the mode keeps the chip and its filter", async () => {
   await renders.at(-1).handlers.onMode("github");
   assert.equal(renders.at(-1).state.fileSet.id, "contract");
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
+});
+
+test("selecting a stop in a file the chip hides puts the chip back on All, and a stop in the set keeps it", async () => {
+  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  await settle();
+  await renders.at(-1).handlers.onFileSet("contract");
+  await renders.at(-1).handlers.onSelectStop(4);
+  assert.equal(renders.at(-1).state.fileSet.id, "contract");
+  assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
+  await renders.at(-1).handlers.onSelectStop(1);
+  assert.equal(renders.at(-1).state.fileSet, null);
+  assert.equal(filters.at(-1), null);
 });

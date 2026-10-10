@@ -44,10 +44,10 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 - In "Walkthrough" mode the list is the stops whose file is in the set, in walkthrough order, each with its file's name
   under its title. A set whose files have no stop says so.
-- In "Files" mode the host's own tree hides the files that are not in the set, and a directory left with no visible file.
-  The host re-renders its tree, so the hiding is applied again on every refresh, as the callouts are. A tree row is
-  matched to a file by the `#diff-…` link it holds.
-- Every diff stays in the page, whichever chip is chosen.
+- In both modes the diff shows only the set's files. In "Files" mode the host's own tree hides the others too, and a
+  directory left with no visible file. The host re-renders its tree and loads diffs as the page scrolls, so the hiding is
+  applied again on every refresh, as the callouts are. A tree row is matched to a file by the `#diff-…` link it holds.
+- A click on a diagram box, or on a stop, in a file outside the set puts the chip back on "All" first, so the file shows.
 
 ## The walkthrough
 

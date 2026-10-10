@@ -570,17 +570,21 @@
       return at < 0 ? null : href.slice(at + 1);
     }
 
-    // The diff ids of the files the tree is narrowed to, keyed by the paths they came from; null for the whole tree.
-    let treeFilter = null;
+    // The diff ids of the files the page is narrowed to, keyed by the paths they came from; null for every file.
+    let fileFilter = null;
     let filterToken = 0;
 
-    // Hides the tree's file rows whose diff is not in the filter, and the directory rows left with no visible file. A row
-    // with no diff link is left alone, as is a directory whose files are not in the page (collapsed). The host re-renders
-    // its tree, so this runs again on every refresh.
-    function applyTreeFilter() {
+    // Hides the diff blocks whose id is not in the filter and the tree's file rows whose diff is not, then the directory
+    // rows left with no visible file. A row with no diff link is left alone, as is a directory whose files are not in the
+    // page (collapsed). The host re-renders its tree and loads diffs as the page scrolls, so this runs again on every
+    // refresh.
+    function applyFileFilter() {
+      const ids = fileFilter?.ids;
+      for (const block of document.querySelectorAll(spec.blockSelector)) {
+        block.classList.toggle(FILE_HIDDEN, Boolean(ids) && !ids.has(block.id));
+      }
       const host = spec.treeHost();
       if (!host) return;
-      const ids = treeFilter?.ids;
       const files = [...host.querySelectorAll(spec.treeFileSelector)];
       for (const row of files) {
         const id = ids ? treeRowId(row) : null;
@@ -593,19 +597,19 @@
       }
     }
 
-    // Narrows the host's own tree to the files at `paths`; null shows it whole. Calling again with the same paths only
-    // re-applies the filter.
-    async function filterTree(paths) {
+    // Narrows the host's tree and the diff to the files at `paths`; null shows every file. Calling again with the same
+    // paths only re-applies the filter, which hides diffs the host loaded since.
+    async function filterFiles(paths) {
       const mine = ++filterToken;
       const key = paths ? paths.join("\n") : null;
-      if (key !== null && treeFilter?.key !== key) {
+      if (key !== null && fileFilter?.key !== key) {
         const ids = new Set(await Promise.all(paths.map((path) => spec.diffId(path))));
         if (mine !== filterToken) return;
-        treeFilter = { key, ids };
+        fileFilter = { key, ids };
       } else if (key === null) {
-        treeFilter = null;
+        fileFilter = null;
       }
-      applyTreeFilter();
+      applyFileFilter();
     }
 
     // How many files the page lists as changed: the tree's rows, or the diffs loaded when the tree is not showing.
@@ -665,7 +669,7 @@
       clearLineTarget,
       restoreLineTarget,
       showCallouts,
-      filterTree,
+      filterFiles,
       changedFileCount,
       ownsLine,
       cancelJump,
