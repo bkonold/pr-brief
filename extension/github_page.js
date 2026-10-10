@@ -12,6 +12,8 @@
   // Primer's tree: a directory's row carries aria-expanded and a file's does not.
   const TREE_FILE = 'li[role="treeitem"]:not([aria-expanded])';
   const TREE_DIR = 'li[role="treeitem"][aria-expanded]';
+  const LOAD_BUTTON = 'button[data-component="Button"]';
+  const LOAD_LABEL = "load diff";
   const LINE_CELL = "[data-line-anchor]";
   const DIFF_CONTAINER = "#diff-comparison-viewer-container";
   const DIFF_CONTENT = `${DIFF_CONTAINER} [class*="prc-PageLayout-ContentWrapper"]`;
@@ -69,6 +71,17 @@
     return document.querySelector(`${LINE_CELL}[data-line-anchor="${anchor}"]`)?.closest("tr") ?? null;
   }
 
+  // A diff GitHub does not render by default (a large diff, a generated file) is a block with no rows and a "Load Diff"
+  // button. Clicking it fetches the diff, and the block is then replaced by a new element with the same id.
+  function loadDiff(id) {
+    const button = [...(document.getElementById(id)?.querySelectorAll(LOAD_BUTTON) ?? [])].find(
+      (candidate) => candidate.textContent.trim().toLowerCase() === LOAD_LABEL,
+    );
+    if (!button) return false;
+    button.click();
+    return true;
+  }
+
   // GitHub's page layout is a flex row of the file tree pane and the diffs' column. The diagram panel is the
   // row's leftmost item: it is inserted right before the pane, with the pane's own computed `order`, so DOM order
   // puts it ahead of the pane whatever values GitHub's CSS gives them, and no GitHub element is restyled. It sticks
@@ -107,6 +120,7 @@
     entryOf: (block) => block.closest(DIFF_ENTRY) ?? block,
     diffId,
     findRow,
+    loadDiff,
     fileHeaderSelector: FILE_HEADER,
     stickySkip: STICKY_SKIP,
     containerSelector: DIFF_CONTAINER,

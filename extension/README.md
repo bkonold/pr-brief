@@ -70,7 +70,9 @@ variant) is not shown: see "Older runs".
   ResizeObserver on the diffs, until the user scrolls or clicks or another jump starts. The diagram follows the stop: its box takes the halo and the
   canvas centres on it. GitHub renders a diff's rows only once the diff is near the window, so the jump scrolls to the
   file's diff, waits up to 10 seconds for the row, then scrolls its callout into place, measuring again after each scroll and
-  nudging until it sits there; on a timeout the view stays at the file's header. Opening the files page on a link to
+  nudging until it sits there; on a timeout the view stays at the file's header. A diff the host does not render by
+  default (GitHub's "Load Diff" button for a large or generated file) has no rows to wait for, so the jump clicks the
+  button first and waits up to 30 seconds, since the host fetches the diff. Opening the files page on a link to
   a stop's line or file (the PR brief card's links) goes to that stop.
 - Every stop that has loaded gets a callout above its line (above the file's header for a stop with no line), as soon as
   the review shows and as GitHub or Forgejo load more of the diff, in both unified and split views. It is a full-width
@@ -300,7 +302,7 @@ The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
 `prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `conversationUrl(pr)`, `isConversationPage(pr?)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
 `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
-`restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`. A new host is a
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)
@@ -317,6 +319,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Tree host | `#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]`: GitHub's tree with its "File tree" heading. `#pr-file-tree` also holds the "Filter files" box as its first child, so the list is inserted before the host and the host is hidden with a class |
 | Tree rows | `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory; a file row is matched to its diff by the `a[href*="#diff-"]` it holds (the diff's id). A directory row is hidden only when it has file rows in the page and all of them are hidden |
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed, and its callout row is scrolled to the stop place. |
+| Load Diff control | A diff GitHub does not render by default (observed 2026-10-09 on the `/changes` page: "Large diffs are not rendered by default.", "Some generated files are not rendered by default.") is the same diff block with no `tr` and no `[data-line-anchor]`, holding a `button[data-component="Button"]` whose trimmed text is "Load Diff" (inner `span[data-component="text"]`) beside a `span.fgColor-muted` with the sentence. `loadDiff(id)` clicks that button, found by its text and not by the sentence. A second later (1 to 9 s) the block is replaced by a new node with the same id (the old one is detached), so the jump looks the block up by id again after the wait; the entry wrapper stays |
 | Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
 | Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, on the files page and (observed 2026-10-09) on the conversation page; trusted only for the PR the page was first opened on. For any other page the PR's conversation page is fetched and read the same way (`readHeadSha(doc)`), and only then a set run server is asked |
 | Brief data (conversation page) | `.markdown-body details` (a comment's body is `div.comment-body.markdown-body.js-comment-body`; the block renders as `details > summary` + `pre.notranslate > code`, observed 2026-10-09 through GitHub's markdown API) whose `summary` text is exactly `Brief data`, and the text of the `pre` inside it; the earliest in document order wins. The files page fetches `/{owner}/{repo}/pull/{n}` and reads the parsed document the same way |
@@ -344,6 +347,7 @@ All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
 | Head SHA | `/src/commit/<sha>/` in the `href` of the first `#diff-container .diff-file-box a[href*="/src/commit/"]` ("View file"), trusted only for the PR the page was first opened on. The conversation page (observed 2026-10-09) links only the commits of force-push events, so it is no source: `GET /api/v1/repos/{owner}/{repo}/pulls/{n}` from the page's own origin and session gives `head.sha`, with no run server involved |
 | Brief data (conversation page) | `.render-content.markup details` (a comment's body is `div.render-content.markup`, observed 2026-10-09) whose `summary` text is exactly `Brief data`, and the text of the `pre` inside it; the earliest in document order wins. Forgejo's own `details.collapsible` ("View command line instructions") is outside `.markup` and ignored |
 | Colours | the Primer custom properties the CSS uses are pointed at Forgejo's `--color-*` variables by a `<style id="prf-forgejo-theme">` added to the page |
+| Load diff control | A file Forgejo holds back on a very large change renders its box with no table: `.diff-file-body.binary` with a "Load diff" link `a.diff-load-button` (its `data-href` is `?file-only=true&files=…`). Read from Forgejo's `templates/repo/diff/box.tmpl` and `web_src/js/features/repo-diff.js` on 2026-10-09; not seen in the PRs observed on the local instance. `loadDiff(id)` clicks it. The handler replaces the link's container with the fetched rows inside the same box, so the box stays |
 
-Not covered: a file collapsed with "Viewed", and a diff Forgejo holds back behind a load button on a very large
-change (neither occurred in the PRs observed), so a jump into such a file times out and stays at its header.
+Not covered: a file collapsed with "Viewed" or folded by Forgejo (`data-folded`), whose rows are in the page but
+hidden, so a jump into it lands on rows the reader cannot see.

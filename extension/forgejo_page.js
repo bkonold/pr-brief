@@ -23,6 +23,7 @@
   const FILE_HEADER = ".diff-file-header";
   // Line numbers sit in td.lines-num cells; each holds an empty <span rel="diff-<sha1>R<n>"> (L<n> for the old
   // file) that is the line's anchor. The row is the span's tr.
+  const LOAD_BUTTON = "a.diff-load-button";
   const LINE_REL = ".lines-num [rel]";
   // The header's "view file" links point at /src/commit/<head sha>/<path>.
   const HEAD_LINK = `${DIFF_BLOCK} a[href*="/src/commit/"]`;
@@ -94,6 +95,15 @@
     return document.querySelector(`${LINE_REL}[rel="${anchor}"]`)?.closest("tr") ?? null;
   }
 
+  // A file Forgejo holds back (a very large diff) shows a "Load diff" link in its box. Clicking it fetches the file's
+  // rows, which replace the link's container inside the box; the box itself stays.
+  function loadDiff(id) {
+    const button = document.getElementById(id)?.querySelector(LOAD_BUTTON);
+    if (!button) return false;
+    button.click();
+    return true;
+  }
+
   // The conversation page names no head commit (its timeline links only the commits of force pushes), so it is asked of
   // the instance's read-only API, from the page's own origin and session; no run server is involved.
   async function fetchHeadSha(pr) {
@@ -140,6 +150,7 @@
     entryOf: (block) => block,
     diffId,
     findRow,
+    loadDiff,
     fileHeaderSelector: FILE_HEADER,
     stickySkip: STICKY_SKIP,
     containerSelector: DIFF_CONTAINER,
