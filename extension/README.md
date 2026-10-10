@@ -32,7 +32,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   and page-down work across the whole change.
 - Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
-  (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, and clicking one never
+  (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, switching the toggle resets it to "All", and clicking one never
   moves the diagram. See "File sets" below.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
   diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout. A muted line above
@@ -43,11 +43,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 "API" and "Data" narrow the pane to the files that make up the PR's API contract change and its data change.
 
 - In "Walkthrough" mode the list is the stops whose file is in the set, in walkthrough order, each with its file's name
-  under its title, then a "no stop" row for every file of the set that has no stop, which jumps to the file's header.
-  Under them is the set's table: each contract or data line with its impact, and links that jump to a line in the diff.
-  A contract line links to the code that declares it (`Customer.java:18`, from the line's `source`) and, beside it, to
-  its place in the spec; one with no source links to the spec alone. A data line links to its entity and, beside it, to
-  the migration, or to the migration alone when it has no entity. A line whose place is not in the PR has no link.
+  under its title. A set whose files have no stop says so.
 - In "Files" mode the host's own tree hides the files that are not in the set, and a directory left with no visible file.
   The host re-renders its tree, so the hiding is applied again on every refresh, as the callouts are. A tree row is
   matched to a file by the `#diff-…` link it holds.
