@@ -34,7 +34,7 @@ config.use_config_flag(sys.argv)
 from config import ROOT, load_local  # noqa: E402
 import layout  # noqa: E402
 from diff_lines import file_diff_lines  # noqa: E402
-from context_pack import BlobReader, has_commit  # noqa: E402
+from context_pack import BlobReader, has_commit, is_test_file  # noqa: E402
 from contract_lines import CONTRACT_LEVELS, Line, Source, contract_lines  # noqa: E402
 from data_lines import DATA_LEVELS, data_lines  # noqa: E402
 from hosts import get_host  # noqa: E402
@@ -515,14 +515,16 @@ def locate_sources(pr: dict[str, Any], api: list[Line], data: list[Line], diff_t
 
 
 def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Line], data: list[Line]) -> dict[str, list[str]]:
-    """The files that make up the PR's contract change and its data change, each sorted without repeats. The contract
-    is the spec when the PR changes it and the source of every contract line; the data is the migration files and the
-    source of every data line."""
+    """The files that make up the PR's contract change, its data change and its tests, each sorted without repeats. The
+    contract is the spec when the PR changes it and the source of every contract line; the data is the migration files
+    and the source of every data line; the tests are the changed files `is_test_file` recognises, which the Contract
+    and Data sections never list."""
     paths: list[str] = [f["path"] for f in pr["files"]]
     spec: str | None = (contract or {}).get("path") or load_local().get("openapi_path")
     migrations: set[str] = {p for p in paths if matches(MIGRATION_GLOBS, p)}
     return {"contract": sorted({s.path for line in api for s in line.sources} | ({spec} if spec in paths else set())),
-            "data": sorted(migrations | {s.path for line in data for s in line.sources})}
+            "data": sorted(migrations | {s.path for line in data for s in line.sources}),
+            "tests": sorted({p for p in paths if is_test_file(p)})}
 
 
 def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str],
@@ -578,7 +580,7 @@ class Brief:
     stops: list[dict[str, Any]]
     contract: list[Line]
     data: list[Line]
-    file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": []})
+    file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": [], "tests": []})
     chunks: list[dict[str, Any]] | None = None
     hunks: list[Hunk] = field(default_factory=list)
 

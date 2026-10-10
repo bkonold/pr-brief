@@ -130,7 +130,7 @@ class ReviewJson(unittest.TestCase):
         data = review_json(self.RUN, Brief("", (0, 0), nodes, stops, [], []), True)
         self.assertEqual(data, {"schema": 4, "repo": "acme/widgets", "pr": 7, "head_sha": "a" * 40, "variant": "v", "model": None,
                                 "diagram": "diagram.svg", "nodes": nodes, "walkthrough": stops, "contract": [], "data": [],
-                                "file_sets": {"contract": [], "data": []}})
+                                "file_sets": {"contract": [], "data": [], "tests": []}})
 
     def test_a_run_with_no_diagram_has_no_diagram_key(self) -> None:
         self.assertNotIn("diagram", review_json(self.RUN, Brief("", (0, 0), {}, [], [], []), False))

@@ -156,9 +156,10 @@ re-run it instead.
   A line that stands for several schemas or operations has the source of its first match in `source`, and every source,
   Java first and then the client, in `sources`; the table row links the first one.
 
-  `file_sets` is `{"contract": [paths], "data": [paths]}`, each sorted without repeats and empty when the PR has none.
-  Contract is the spec when the PR changes it and the source of every contract line, so a changed file that no line
-  traces to is not in it; data is the migration files and the source of every data line.
+  `file_sets` is `{"contract": [paths], "data": [paths], "tests": [paths]}`, each sorted without repeats and empty when
+  the PR has none. Contract is the spec when the PR changes it and the source of every contract line, so a changed file that no line
+  traces to is not in it; data is the migration files and the source of every data line; tests is the PR's test files,
+  by the repo's `test_dirs` and the fixed conventions (`/src/test/`, `.test.`, `Test.java`), for the extension's Tests switch.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,
   `files` the paths it covers and `stops` the numbers of the stops that land on it), `walkthrough: [{i, title, why, path,

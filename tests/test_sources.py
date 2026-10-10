@@ -470,10 +470,23 @@ class FileSets(unittest.TestCase):
         for paths in self.brief().file_sets.values():
             self.assertEqual(paths, sorted(set(paths)))
 
-    def test_a_pr_with_no_such_files_has_two_empty_sets(self) -> None:
+    def test_the_tests_set_is_the_changed_test_files_and_only_them(self) -> None:
+        tests = ["api/src/test/java/FooService.java", "web/Foo.test.ts", "api/FooTest.java"]
+        brief = self.brief(paths=[CUSTOMER, MIGRATION, ENTITY, CONTROLLER, "web/Page.tsx", *tests])
+        self.assertEqual(brief.file_sets["tests"], sorted(tests))
+        self.assertEqual(self.brief().file_sets["tests"], [])
+
+    def test_the_tests_set_does_not_change_the_contract_and_data_sets(self) -> None:
+        plain = self.brief(paths=[CUSTOMER, MIGRATION, ENTITY, CONTROLLER])
+        with_tests = self.brief(paths=[CUSTOMER, MIGRATION, ENTITY, CONTROLLER, "web/Foo.test.ts"])
+        self.assertEqual(with_tests.file_sets["contract"], plain.file_sets["contract"])
+        self.assertEqual(with_tests.file_sets["data"], plain.file_sets["data"])
+        self.assertNotIn("web/Foo.test.ts", with_tests.body)
+
+    def test_a_pr_with_no_such_files_has_three_empty_sets(self) -> None:
         brief = render.build_body(RUN, {**PR, "files": [PR["files"][6]]}, {**ANSWER, "node_files": {}, "walkthrough": [
             {"file": "web/Page.tsx", "title": "t", "why": "w"}]}, {}, [], None, "")
-        self.assertEqual(brief.file_sets, {"contract": [], "data": []})
+        self.assertEqual(brief.file_sets, {"contract": [], "data": [], "tests": []})
 
     def test_the_spec_is_in_the_set_only_when_the_pr_changes_it(self) -> None:
         brief = self.brief(paths=[CUSTOMER, MIGRATION, ENTITY, CONTROLLER])
@@ -482,6 +495,7 @@ class FileSets(unittest.TestCase):
     def test_review_json_has_the_sets_and_each_line_a_source_or_null(self) -> None:
         data = render.review_json(RUN, self.brief(), True)
         self.assertEqual(data["file_sets"], self.brief().file_sets)
+        self.assertEqual(sorted(data["file_sets"]), ["contract", "data", "tests"])
         sources = {line["on"]: line["source"] for line in data["contract"]}
         self.assertEqual(sources["`Customer`"], {"path": CUSTOMER, "side": "R", "line": 5})
         listed = {line["on"]: line["sources"] for line in data["contract"]}
