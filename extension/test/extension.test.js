@@ -1400,7 +1400,7 @@ test("the chunk list opens with a count of the chunks and how many are judged, s
   }
 });
 
-test("a chunk row shows the number, title, risk, hunk count and a tick when judged, and marks the current chunk", () => {
+test("a chunk row shows the number, title, risk and a tick when judged, and marks the current chunk", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
@@ -1408,8 +1408,8 @@ test("a chunk row shows the number, title, risk, hunk count and a tick when judg
     const list = chunkList({ chunks: CHUNKS, selectedChunk: 2, judged: new Set([1]) }, { onSelectChunk: (i) => picked.push(i) });
     const rows = byClass(list, "prf-chunk");
     assert.deepEqual(
-      rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-risk")[0].textContent, byClass(row, "prf-file")[0].textContent]),
-      [["1", "Entities take identity", "low", "1 hunk"], ["2", "Callers follow", "high", "2 hunks"], ["3", "Tests", "medium", "0 hunks"]],
+      rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-risk")[0].textContent, byClass(row, "prf-file").length]),
+      [["1", "Entities take identity", "low", 0], ["2", "Callers follow", "high", 0], ["3", "Tests", "medium", 0]],
     );
     assert.deepEqual(rows.map((row) => byClass(row, "prf-risk")[0].className), ["prf-risk prf-risk-low", "prf-risk prf-risk-high", "prf-risk prf-risk-medium"]);
     assert.deepEqual(rows.map((row) => byClass(row, "prf-judged-tick").length), [1, 0, 0]);

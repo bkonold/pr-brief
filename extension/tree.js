@@ -222,11 +222,6 @@
     return make("span", `prf-risk prf-risk-${risk}`, risk);
   }
 
-  function hunkCount(chunk) {
-    const count = chunk.hunks.length;
-    return `${count} ${count === 1 ? "hunk" : "hunks"}`;
-  }
-
   // The files a chunk touches, each with its hunks in the chunk's order, listed in the order of each file's first hunk.
   function filesOf(chunk) {
     const files = new Map();
@@ -249,7 +244,7 @@
     return list;
   }
 
-  // One row per chunk: its number and title, then its risk, its hunk count and a tick once it is judged. The current
+  // One row per chunk: its number and title, then its risk and a tick once it is judged. The current
   // chunk is marked and, as the only one, lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
@@ -257,7 +252,6 @@
     if (current) main.setAttribute("aria-current", "step");
     const meta = make("span", "prf-chunk-meta");
     if (chunk.risk) meta.append(riskPill(chunk.risk));
-    meta.append(make("span", "prf-file", hunkCount(chunk)));
     if (state.judged?.has(chunk.i)) {
       const tick = make("span", "prf-judged-tick", "\u2713");
       tick.title = "Judged";

@@ -110,7 +110,7 @@ numbers of the chunks this one builds on, and each hunk `{id, path, change, old:
 A brief with no `chunks` (an older run; `schema` is still 4) has no "Chunks" entry in the toggle.
 
 - The list has a muted line, `6 chunks · 1 judged`, then one row per chunk: its number, its title, a risk pill (green,
-  amber or red for low, medium and high), its hunk count, and a tick once it is judged. The selected row is marked as a
+  amber or red for low, medium and high), and a tick once it is judged. The selected row is marked as a
   stop's is, and scrolled into view when a chunk is opened from its callout.
 - The selected row, and only it, lists the files its chunk touches under its title: one button per file, in the order of
   each file's first hunk, with the file's name and its full path as the tooltip. A click
