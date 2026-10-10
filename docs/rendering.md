@@ -105,34 +105,47 @@ re-run it instead.
 
   The same statement on one table is one line with its count; one column added or dropped on 3 or more tables is one line.
 - **Sources and file sets.** The spec is generated from the Java code, so a contract line can say where the code
-  declares what changed (`sources.py`). springdoc names a schema after the simple name of its record or class and an
-  operation's `operationId` after the controller method (an overload's `_1` suffix is dropped). Among the PR's changed
-  files, and never a test file, the renderer finds, in the diff at the head commit:
+  declares what changed (`sources.py`). springdoc names a schema after the simple name of its record, class or enum and
+  an operation's `operationId` after the controller method (an overload's `_1` suffix is dropped). Among the PR's
+  changed files, and never a test file, the renderer finds, in the diff at the head commit:
 
   | Line | Source |
   | --- | --- |
-  | property added, removed, changed or deprecated | the line declaring it as a record component or field, in the changed model file named `<Schema>.java` (or, for a nested record, the only changed model file that declares it) |
-  | schema added or removed | that file's `record <Schema>` or `class <Schema>` line |
-  | enum value added or removed | the line of the constant, in the schema's file, else a file named for the property that holds the enum (`Status` for `status`), else the only model file that declares it |
-  | operation added, removed, changed or moved, or a parameter change | the controller method whose name is the operationId, or the `@...Mapping` annotation above it when the diff shows that |
+  | property added, removed, changed or deprecated | the line declaring it as a record component or field, in the changed Java file named `<Schema>.java` (or, for a nested record, the only changed Java file that declares it) |
+  | schema added or removed | that file's `record <Schema>`, `class <Schema>` or `enum <Schema>` line |
+  | enum value added or removed | the line of the constant, in the schema's file, else a file named for the property that holds the enum (`Status` for `status`), else the only changed Java file that declares it |
+  | operation added, removed, changed or moved, or a parameter change | the method whose name is the operationId, in a changed Java file that is a controller, or the `@...Mapping` annotation above it when the diff shows that |
   | data line with a table | the changed Java file whose `@Table(name = "<table>")` names it, at that annotation; when the diff does not show the annotation, the file at the head commit is read from the mirror |
 
-  A model file is a path containing one of `model_dirs` (default `models/frontend/`) and a controller one containing
-  one of `controller_dirs` (default `controllers/`); both are keys of `local.example.toml`. A line the PR's files do not
-  settle has no source (a removed endpoint whose controller the PR does not touch, for one). A line that stands for
-  several schemas or operations has the source of its first match in `source`, and every match in the file set.
+  A controller is a Java file with `@RestController` or `@Controller`, in the file at the head commit or else in its
+  diff. No directory settings are involved: every changed non-test Java file is searched.
+
+  The generated TypeScript client under `sdk_dir` declares the same things, so a contract line also has a source in each
+  changed non-test `.ts` file there that declares it, found in the diff first and then in the file at the head commit:
+
+  | Line | Source |
+  | --- | --- |
+  | schema | the `export interface`, `export type` or `export const` line of its name |
+  | property | the `name:` row of that interface or type, between its `export` line and the next declaration |
+  | enum value | the `VALUE: "VALUE"` row of the `export const` object of the enum |
+  | operation | the `operationId: (` member of the client's operations |
+
+  A line the PR's files do not settle has no source (a removed endpoint whose controller the PR does not touch, for one).
+  A line that stands for several schemas or operations has the source of its first match in `source`, and every source,
+  Java first and then the client, in `sources`; the table row links the first one.
 
   `file_sets` is `{"contract": [paths], "data": [paths]}`, each sorted without repeats and empty when the PR has none.
-  Contract is the spec when the PR changes it, the source of every contract line and every changed file under a
-  `model_dirs` path; data is the migration files and the source of every data line.
+  Contract is the spec when the PR changes it and the source of every contract line, so a changed file that no line
+  traces to is not in it; data is the migration files and the source of every data line.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,
   `files` the paths it covers and `stops` the numbers of the stops that land on it), `walkthrough: [{i, title, why, path,
   side, line, node}]`, the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
-  line, source}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell;
+  line, source, sources}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell;
   `impact` is null for a line with no impact, `side` and `line` are null when the diff does not settle the line, and
-  `source` is `{path, side, line}` in the PR's own code or null (`side` is `L` for a removed line); and `file_sets`.
-  A run made before `source` and `file_sets` existed has neither.
+  `source` is `{path, side, line}` in the PR's own code or null (`side` is `L` for a removed line) and `sources` is every
+  such location in a list; and `file_sets`. A run made before `source` and `file_sets` existed has neither, and one made
+  before `sources` existed has no `sources`.
 
 ## Run folder
 

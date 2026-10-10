@@ -59,11 +59,10 @@ workspace_root = "web"
 # "/src/test/", ".test." and "Test.java". Test files are never listed as callers.
 test_dirs = ["/src/integrationTest/"]
 
-# Where a contract line finds its source in the PR. The OpenAPI document is generated from these Java files: a schema is
-# the record or class of that name under a model_dirs path, and an operation is the controller method whose name is its
-# operationId under a controller_dirs path. Each is a list of path fragments; these are the defaults.
-model_dirs = ["models/frontend/"]
-controller_dirs = ["controllers/"]
+# Where a contract line finds its source in the PR needs no setting. The OpenAPI document is generated from the Java code:
+# a schema is a changed non-test Java file's record, class or enum of that name, and an operation is the method of that
+# name in a changed non-test Java file that is a controller (@RestController or @Controller). The generated client under
+# sdk_dir (above) is searched the same way, so a line also traces to its declaration in a changed .ts file there.
 
 # Pathspec globs (git grep syntax without the leading ":!") excluded from the callers search when a
 # variant sets callers_code_only, in addition to markdown, lock and similar files.

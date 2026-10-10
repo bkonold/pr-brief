@@ -38,7 +38,7 @@ from contract_lines import CONTRACT_LEVELS, Line, Source, contract_lines  # noqa
 from data_lines import DATA_LEVELS, data_lines  # noqa: E402
 from hosts import get_host  # noqa: E402
 from hosts.github import GitHub  # noqa: E402
-from sources import CONTROLLER_DIRS, MODEL_DIRS, SourceFinder  # noqa: E402
+from sources import SourceFinder  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: E402
@@ -53,8 +53,6 @@ CONTEXT_CAPTION = "Dashed boxes are unchanged context"
 # Section headings whose name is not the key's own word.
 HEADINGS: dict[str, str] = {"type": "PR Type", "contract": "API"}
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
-MODEL_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("model_dirs", MODEL_DIRS))
-CONTROLLER_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("controller_dirs", CONTROLLER_DIRS))
 
 
 class AnswerError(Exception):
@@ -415,8 +413,8 @@ def locate_sources(pr: dict[str, Any], api: list[Line], data: list[Line], diff_t
                    read_file: Callable[[str], str | None] | None = None) -> None:
     """Gives each contract and data line the sources in the PR that declare what it is about (see sources.py);
     `read_file` reads a changed file at the head commit, for what the diff does not show."""
-    finder: SourceFinder = SourceFinder(diff_text, [f["path"] for f in pr["files"]], MODEL_DIR_MARKERS, CONTROLLER_DIR_MARKERS,
-                                        read_file or (lambda path: None))
+    finder: SourceFinder = SourceFinder(diff_text, [f["path"] for f in pr["files"]], read_file or (lambda path: None),
+                                        sdk_dir=load_local().get("sdk_dir"))
     for line in api:
         line.sources = finder.contract(line)
     for line in data:
@@ -425,13 +423,12 @@ def locate_sources(pr: dict[str, Any], api: list[Line], data: list[Line], diff_t
 
 def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Line], data: list[Line]) -> dict[str, list[str]]:
     """The files that make up the PR's contract change and its data change, each sorted without repeats. The contract
-    is the spec when the PR changes it, the source of every contract line and every changed file under a model
-    directory; the data is the migration files and the source of every data line."""
+    is the spec when the PR changes it and the source of every contract line; the data is the migration files and the
+    source of every data line."""
     paths: list[str] = [f["path"] for f in pr["files"]]
     spec: str | None = (contract or {}).get("path") or load_local().get("openapi_path")
-    models: set[str] = {p for p in paths if any(marker in p for marker in MODEL_DIR_MARKERS)}
     migrations: set[str] = {p for p in paths if matches(MIGRATION_GLOBS, p)}
-    return {"contract": sorted(models | {s.path for line in api for s in line.sources} | ({spec} if spec in paths else set())),
+    return {"contract": sorted({s.path for line in api for s in line.sources} | ({spec} if spec in paths else set())),
             "data": sorted(migrations | {s.path for line in data for s in line.sources})}
 
 
@@ -540,13 +537,15 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
 
 def line_json(line: Line) -> dict[str, Any]:
     """A contract or data line for review.json: its level (null when it has none), text, the parts of that text (what
-    changed, on what, and for a contract line the side it reaches), where its diff line is in the spec or migration, and
-    `source`, where the PR's own code declares it (null when the PR has none)."""
+    changed, on what, and for a contract line the side it reaches), where its diff line is in the spec or migration,
+    `sources`, every place the PR's own code declares it (empty when the PR has none), and `source`, the first of them
+    (null when there is none)."""
     side, number = line.loc if line.loc else (None, None)
     source: Source | None = line.sources[0] if line.sources else None
     return {"impact": line.impact, "text": line.text, "change": line.change, "on": line.on, "reaches": line.side,
             "path": line.path, "side": side, "line": number,
-            "source": {"path": source.path, "side": source.side, "line": source.line} if source else None}
+            "source": {"path": source.path, "side": source.side, "line": source.line} if source else None,
+            "sources": [{"path": s.path, "side": s.side, "line": s.line} for s in line.sources]}
 
 
 def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[str, Any]:

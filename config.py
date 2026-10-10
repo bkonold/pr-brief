@@ -28,7 +28,7 @@ KEYS: frozenset[str] = frozenset({
     "repo", "source_checkout", "github_url", "mirror_name",
     "openapi_path", "migration_dirs", "migration_globs",
     "sdk_dir", "sdk_specifier", "workspace_alias", "workspace_root",
-    "test_dirs", "callers_exclude_globs", "model_dirs", "controller_dirs",
+    "test_dirs", "callers_exclude_globs",
     "host", "forgejo_url", "forgejo_token_file",
     "default_variant", "serve_repos",
     "chrome", "model",
