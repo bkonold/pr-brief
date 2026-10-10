@@ -247,7 +247,7 @@
 .prf-callout {
   box-sizing: border-box;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px 24px;
   align-items: flex-start;
   width: fit-content;
@@ -271,7 +271,7 @@
 }
 
 .prf-callout-main {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
