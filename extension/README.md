@@ -35,7 +35,8 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, and clicking one never
   moves the diagram. See "File sets" below.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
-  diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout.
+  diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout. A muted line above
+  the stops says what the list is for; a run with no stops has none.
 
 ## File sets
 

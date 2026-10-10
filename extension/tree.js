@@ -228,6 +228,9 @@
     return table;
   }
 
+  // The line above the stops that says what the list is for.
+  const LEDE = "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.";
+
   // With a file set selected the list is the stops on its files, in walkthrough order, then the set's files that have no
   // stop, then the set's lines.
   function stopList(state, handlers) {
@@ -235,6 +238,7 @@
     const files = state.fileSet ? new Set(state.fileSet.paths) : null;
     const stops = files ? state.stops.filter((stop) => files.has(stop.path)) : state.stops;
     if (!files && stops.length === 0) list.append(make("p", "prf-banner", "This run has no stops to walk through."));
+    if (stops.length > 0) list.append(make("p", "prf-lede", LEDE));
     for (const stop of stops) list.append(stopRow(stop, state, handlers));
     if (files) {
       const stopped = new Set(state.stops.map((stop) => stop.path));

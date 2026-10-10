@@ -125,6 +125,13 @@
   border-radius: 6px;
 }
 
+.prf-lede {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fgColor-muted, #59636e);
+}
+
 .prf-groups {
   flex: 1 1 auto;
   min-height: 0;
