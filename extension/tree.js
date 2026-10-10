@@ -10,6 +10,8 @@
   const DIRECTORY_ICON =
     "M0 2.75C0 1.784.784 1 1.75 1H5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 0 0 .2.1h6.75c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 0 0-.2-.1Z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
+  // Octicons' check, 16-unit filled.
+  const CHECK_ICON = "M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z";
   // Three stacked layers, filled.
   const LAYERS_ICON = "M8 1 15 4.5 8 8 1 4.5ZM1 7.4 8 10.9 15 7.4V8.9L8 12.4 1 8.9ZM1 10.4 8 13.9 15 10.4V11.9L8 15.4 1 11.9Z";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
@@ -199,8 +201,14 @@
     return element;
   }
 
-  // The line above the stops that says what the list is for.
-  const LEDE = "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.";
+  // The line above the stops, counting them; its tooltip says what the list is for.
+  const LEDE_HELP = "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.";
+
+  function ledeOf(count) {
+    const lede = make("p", "prf-lede", `${count} ${count === 1 ? "stop" : "stops"}, in reading order`);
+    lede.title = LEDE_HELP;
+    return lede;
+  }
 
   // The stops in walkthrough order, under the lede. With a file set selected, only the stops whose file is in the set;
   // a set with no such stop says so in place of the list.
@@ -212,7 +220,7 @@
       const message = files ? `No stops on ${FILE_SET_LABELS[state.fileSet.id]} files.` : "This run has no stops to walk through.";
       list.append(make("p", "prf-banner", message));
     } else {
-      list.append(make("p", "prf-lede", LEDE));
+      list.append(ledeOf(stops.length));
     }
     for (const stop of stops) list.append(stopRow(stop, state, handlers));
     return list;
@@ -244,8 +252,8 @@
     return list;
   }
 
-  // One row per chunk: its number and title, then its risk and a tick once it is judged. The current
-  // chunk is marked and, as the only one, lists the files it touches under its title.
+  // One row per chunk, on one line: its number and title, then at the end its risk and a tick once it is judged. The
+  // current chunk is marked and, as the only one, lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
@@ -253,13 +261,12 @@
     const meta = make("span", "prf-chunk-meta");
     if (chunk.risk) meta.append(riskPill(chunk.risk));
     if (state.judged?.has(chunk.i)) {
-      const tick = make("span", "prf-judged-tick", "\u2713");
+      const tick = make("span", "prf-judged-tick");
       tick.title = "Judged";
+      tick.append(filledIcon(CHECK_ICON, 16, "prf-judged-icon"));
       meta.append(tick);
     }
-    const title = make("span", "prf-title");
-    title.append(make("span", "prf-name", chunk.title), meta);
-    main.append(make("span", "prf-num", String(chunk.i)), title);
+    main.append(make("span", "prf-num", String(chunk.i)), make("span", "prf-name", chunk.title), meta);
     const header = make("div", "prf-head");
     header.append(main);
     const element = make("section", "prf-group prf-chunk");
@@ -280,15 +287,20 @@
   }
 
   // The card shown above a chunk's first line in the diff: which chunk of how many this is and its title, its risk and
-  // why, what it summarises, the chunks it builds on (each a button that opens that chunk), a Judged checkbox, and, in
-  // a column beside them, buttons to the previous and the next chunk, each in a slot that is kept, hidden, when there
-  // is no such chunk. `onGo(i)` opens a chunk by its number, `onJudged(i, checked)` records the checkbox, and `judged`
+  // why, what it summarises, the chunks it builds on (each a button that opens that chunk), and, in a column beside
+  // them, buttons to the previous and the next chunk, each in a slot that is kept, hidden, when there is no such
+  // chunk, with a Judged checkbox under them. `onGo(i)` opens a chunk by its number, `onJudged(i, checked)` records the checkbox, and `judged`
   // is whether the chunk is judged already.
   function chunkCallout(chunk, chunks, onGo, onJudged, judged = false) {
     const card = make("div", "prf-callout");
     const main = make("div", "prf-callout-main");
     const head = make("div", "prf-callout-head");
-    head.append(outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"), make("strong", "prf-callout-where", `Chunk ${chunk.i} of ${chunks.length} \u00b7 ${chunk.title}`));
+    head.append(
+      outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"),
+      make("strong", "prf-callout-where", `Chunk ${chunk.i} of ${chunks.length}`),
+      outlineIcon(CHEVRON_ICON, 14, "prf-callout-sep"),
+      make("span", "prf-callout-name", chunk.title),
+    );
     main.append(head);
     if (chunk.risk) {
       const risk = make("div", "prf-callout-risk");
@@ -320,7 +332,6 @@
     box.checked = judged;
     box.addEventListener("change", () => onJudged(chunk.i, box.checked));
     label.append(box, make("span", undefined, "Judged"));
-    main.append(label);
     card.append(main);
 
     const nav = make("div", "prf-callout-nav");
@@ -333,7 +344,7 @@
     const next = button(following ? "prf-callout-next" : "prf-callout-next prf-callout-empty", "Next \u2193", () => following && onGo(following.i));
     if (following) next.title = following.title;
     else inertSlot(next);
-    nav.append(back, next);
+    nav.append(back, next, label);
     card.append(nav);
     return card;
   }

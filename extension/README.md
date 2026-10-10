@@ -27,7 +27,7 @@ earliest block in the page.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
-- A toggle, "Walkthrough" / "Chunks" / "Files". The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
+- A toggle, "Walkthrough" / "Chunks" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
   swaps in the stop list, "Chunks" (only for a brief that has chunks, see "Chunks tab") the chunk list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a chunk, which narrows the page to its hunks: otherwise every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
 - Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
@@ -36,7 +36,8 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   moves the diagram. See "File sets" below.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
   diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout. A muted line above
-  the stops says what the list is for; a run with no stops has none.
+  the stops counts them, `6 stops, in reading order` (`1 stop`; with a file set, the stops listed), and says in its tooltip what the list is for; a run with no stops has none.
+  The selected row, in this list and in the chunk list, has an inset 2px bar and a faint tint of the guide purple (the callout's), and every row's number sits in a fixed two-digit column so titles line up.
 
 ## File sets
 
@@ -109,10 +110,10 @@ hunks}`: the change cut into pieces to judge one at a time. `risk` is `"low"`, `
 numbers of the chunks this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count]}`.
 A brief with no `chunks` (an older run; `schema` is still 4) has no "Chunks" entry in the toggle.
 
-- The list has a muted line, `6 chunks · 1 judged`, then one row per chunk: its number, its title, a risk pill (green,
-  amber or red for low, medium and high), and a tick once it is judged. The selected row is marked as a
+- The list has a muted line, `6 chunks · 1 judged`, then one row per chunk, on one line: its number and its title, and
+  at the end a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
   stop's is, and scrolled into view when a chunk is opened from its callout.
-- The selected row, and only it, lists the files its chunk touches under its title: one button per file, in the order of
+- The selected row, and only it, lists the files its chunk touches, their names starting under its title: one button per file, in the order of
   each file's first hunk, with the file's name and its full path as the tooltip. A click
   jumps to that file's first hunk of the chunk, at the line the chunk's own jump would use, and stays in the tab: the
   selection and the page filter do not change. A click on a file of a chunk that is not selected opens that chunk first.
@@ -124,10 +125,10 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Chunks" ent
   lines), the way a stop does, and the selection clears any stop, box or chip. Selecting a stop, a box or a file leaves the
   tab and shows the whole diff again; opening the tab with a chunk already selected narrows to it again, and with none
   selects nothing and filters nothing.
-- The chunk's callout sits above that first line. Its header reads `Chunk 2 of 6 · <title>`; under it are the risk pill
-  and `risk_reason` when there is one, the summary, `Needs 1, 3` with a button per number that opens that chunk, and a
-  "Judged" checkbox. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening the neighbouring chunk
-  without the pulse. Only the selected chunk's callout is shown, and none in the other tabs.
+- The chunk's callout sits above that first line. Its header is shaped like a stop's: `Chunk 2 of 6` in bold, a small muted chevron, then the title in
+  normal weight; under it are the risk pill and `risk_reason` (muted) when there is one, the summary, and `Needs 1, 3` with a
+  button per number that opens that chunk. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening
+  the neighbouring chunk without the pulse, with the "Judged" checkbox under them. Only the selected chunk's callout is shown, and none in the other tabs.
 - "Judged" is the reader's own mark, kept in this browser's `localStorage` under `prf-judged:<host>/<owner>/<repo>#<pr>@<head_sha>`
   as a JSON array of chunk numbers, so it is per PR head and comes back on reload; a new head starts empty. It is read and
   written in a try/catch, and without storage the marks last until the page is left. Nothing else about chunks is remembered.

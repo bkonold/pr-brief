@@ -694,10 +694,9 @@ test("the walkthrough list opens with a line saying what the stops are for", () 
   try {
     const list = stopList({ stops: WALK_STOPS, selectedStop: null }, {});
     assert.equal(list.children[0].className, "prf-lede");
-    assert.equal(
-      list.children[0].textContent,
-      "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.",
-    );
+    assert.equal(list.children[0].textContent, `${WALK_STOPS.length} stops, in reading order`);
+    assert.equal(list.children[0].title, "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.");
+    assert.equal(stopList({ stops: WALK_STOPS.slice(0, 1), selectedStop: null }, {}).children[0].textContent, "1 stop, in reading order");
   } finally {
     delete globalThis.document;
   }
@@ -1413,6 +1412,10 @@ test("a chunk row shows the number, title, risk and a tick when judged, and mark
     );
     assert.deepEqual(rows.map((row) => byClass(row, "prf-risk")[0].className), ["prf-risk prf-risk-low", "prf-risk prf-risk-high", "prf-risk prf-risk-medium"]);
     assert.deepEqual(rows.map((row) => byClass(row, "prf-judged-tick").length), [1, 0, 0]);
+    const tick = byClass(rows[0], "prf-judged-tick")[0];
+    assert.deepEqual([tick.title, tick.textContent, tick.children.map((child) => [child.tag, child.className, child.attributes.width])], ["Judged", "", [["svg", "prf-judged-icon", "16"]]]);
+    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-name", "prf-chunk-meta"]);
+    assert.deepEqual(byClass(rows[1], "prf-chunk-meta")[0].children.map((child) => child.className), ["prf-risk prf-risk-high"]);
     assert.deepEqual(rows.map((row) => row.className.split(" ").includes("prf-selected")), [false, true, false]);
     assert.deepEqual(rows.map((row) => byClass(row, "prf-head-main")[0].attributes["aria-current"] ?? null), [null, "step", null]);
     assert.deepEqual(rows.map((row) => row.dataset.chunk), ["1", "2", "3"]);
@@ -1465,7 +1468,9 @@ test("a chunk callout names the chunk, its risk and why, its summary and what it
   try {
     const went = [];
     const card = chunkCallout(CHUNKS[1], CHUNKS, (i) => went.push(i), () => {});
-    assert.equal(byClass(card, "prf-callout-where")[0].textContent, "Chunk 2 of 3 · Callers follow");
+    const head = byClass(card, "prf-callout-head")[0];
+    assert.deepEqual(head.children.map((child) => child.className), ["prf-callout-icon", "prf-callout-where", "prf-callout-sep", "prf-callout-name"]);
+    assert.deepEqual([head.children[1].tag, head.children[1].textContent, head.children[3].textContent], ["strong", "Chunk 2 of 3", "Callers follow"]);
     const risk = byClass(card, "prf-callout-risk")[0];
     assert.deepEqual([byClass(risk, "prf-risk")[0].textContent, byClass(risk, "prf-callout-reason-text")[0].textContent, byClass(risk, "code").length], ["high", "Touches the upload path.", 0]);
     assert.equal(walk(risk).filter((element) => element.tag === "code")[0].textContent, "upload");
@@ -1527,7 +1532,10 @@ test("a chunk callout's Judged checkbox starts as the chunk is and reports each 
     live.checked = false;
     live.listeners.change();
     assert.deepEqual(reported, [[1, true], [1, false]]);
-    assert.equal(byClass(chunkCallout(CHUNKS[0], CHUNKS, () => {}, () => {}), "prf-callout-judged")[0].textContent, "Judged");
+    const card = chunkCallout(CHUNKS[0], CHUNKS, () => {}, () => {});
+    assert.equal(byClass(card, "prf-callout-judged")[0].textContent, "Judged");
+    assert.deepEqual(byClass(card, "prf-callout-nav")[0].children.map((child) => child.className), ["prf-callout-prev prf-callout-empty", "prf-callout-next", "prf-callout-judged"]);
+    assert.deepEqual(byClass(byClass(card, "prf-callout-main")[0], "prf-callout-judged"), []);
   } finally {
     delete globalThis.document;
   }
