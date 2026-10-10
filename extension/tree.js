@@ -113,7 +113,11 @@
       make("span", "prf-callout-name", stop.title),
     );
     main.append(head);
-    if (stop.why) main.append(make("div", "prf-callout-label", "Why stop here"), make("div", "prf-callout-reason", stop.why));
+    if (stop.why) {
+      const reason = make("div", "prf-callout-reason");
+      reason.append(...messageNodes(stop.why));
+      main.append(make("div", "prf-callout-label", "Why stop here"), reason);
+    }
     card.append(main);
 
     const nav = make("div", "prf-callout-nav");
@@ -123,11 +127,9 @@
     const back = button(previous ? "prf-callout-prev" : "prf-callout-prev prf-callout-empty", "↑ Previous", () => previous && onGo(previous));
     if (previous) back.title = previous.title;
     else inertSlot(back);
-    const next = make("div", following ? "prf-callout-next" : "prf-callout-next prf-callout-empty");
-    const buttons = make("div", "prf-callout-targets");
-    buttons.append(button("prf-callout-go", following ? `${following.title} ↓` : "↓", () => following && onGo(following)));
-    next.append(make("span", "prf-callout-nav-label", "Next"), buttons);
-    if (!following) inertSlot(next, buttons.children[0]);
+    const next = button(following ? "prf-callout-next" : "prf-callout-next prf-callout-empty", "Next \u2193", () => following && onGo(following));
+    if (following) next.title = following.title;
+    else inertSlot(next);
     nav.append(back, next);
     card.append(nav);
     return card;
