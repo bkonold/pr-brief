@@ -6,10 +6,10 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
+from hunks import parse_hunks
+
 HTTP_METHODS: frozenset[str] = frozenset({"get", "put", "post", "delete", "options", "head", "patch", "trace"})
 
-DIFF_HEADER = re.compile(r"diff --git a/(.*) b/(.*)$")
-HUNK_HEADER = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 KEY_LINE = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*:\s*(.*?)\s*$')
 
 
@@ -35,33 +35,22 @@ def file_diff_lines(diff: str, path: str) -> list[DiffLine]:
     """The lines of one file's diff, in order, each with its side and number, whether it was added, removed or
     kept, its indentation and the hunk it is in."""
     lines: list[DiffLine] = []
-    active: bool = False
-    in_hunk: bool = False
-    old: int = 0
-    new: int = 0
-    hunk: int = -1
-    for line in diff.split("\n"):
-        header: re.Match[str] | None = DIFF_HEADER.match(line)
-        if header:
-            active, in_hunk = header.group(2) == path, False
-            continue
-        if not active:
-            continue
-        start: re.Match[str] | None = HUNK_HEADER.match(line)
-        if start:
-            old, new, in_hunk, hunk = int(start.group(1)), int(start.group(2)), True, hunk + 1
-        elif not in_hunk or line.startswith("\\"):
-            continue
-        elif line.startswith("+"):
-            lines.append(DiffLine("R", new, "+", line[1:].rstrip(), hunk))
-            new += 1
-        elif line.startswith("-"):
-            lines.append(DiffLine("L", old, "-", line[1:].rstrip(), hunk))
-            old += 1
-        else:
-            lines.append(DiffLine("R", new, " ", line[1:].rstrip(), hunk))
-            old += 1
-            new += 1
+    for number, hunk in enumerate(h for h in parse_hunks(diff) if h.path == path):
+        old: int = hunk.old_start
+        new: int = hunk.new_start
+        for line in hunk.lines:
+            if line.startswith("\\"):
+                continue
+            if line.startswith("+"):
+                lines.append(DiffLine("R", new, "+", line[1:].rstrip(), number))
+                new += 1
+            elif line.startswith("-"):
+                lines.append(DiffLine("L", old, "-", line[1:].rstrip(), number))
+                old += 1
+            else:
+                lines.append(DiffLine("R", new, " ", line[1:].rstrip(), number))
+                old += 1
+                new += 1
     return lines
 
 

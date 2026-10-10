@@ -1,0 +1,44 @@
+description = "The diff's hunks grouped into an ordered stack of chunks, each one idea a reviewer can judge on its own"
+context = ["callers", "reach", "contract", "migrations"]
+hunk_ids = true
+diagram = false
+extra_instructions = """
+For chunks:
+- Give a top-level `chunks`: the diff's hunks grouped into an ordered stack of chunks. A chunk is a set of hunks that tells one coherent story a reviewer can judge on its own. A file may contribute hunks to several chunks.
+- Every hunk ID in the diff (`[hNN]` at the end of each `@@` line) goes in exactly one chunk. Never invent an ID. You only assign IDs to chunks; never copy code.
+- One idea per chunk; if its title needs "and", consider splitting it.
+- Tests go with the code they test. Generated code (an SDK, the OpenAPI spec) goes with its source.
+- Hunks listed together under "Hunks that belong together" in the Repository context stay in one chunk.
+- Renames, formatting and import cleanup go in a final chunk titled "Also in this PR", unless something in an earlier chunk depends on them.
+- Order the chunks so each depends only on earlier ones: applying chunks 1 to k on top of the base should ideally compile and pass its tests, for every k.
+- Prefer 2 to 7 chunks. A small, single-purpose PR may be one chunk.
+- Each chunk has a `title` (at most 8 words, phrased as what the reviewer is judging), a `summary` (one sentence), `hunks` (the IDs), `depends_on` (the numbers of earlier chunks it needs, counting from 1; empty when it needs none) and a `risk` (low, medium or high) with, for medium or high, a one-line `risk_reason`.
+- Do not draw a diagram and do not write a walkthrough.
+
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you rate each chunk's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
+"""
+schema_additions = """
+    chunks: List[dict] = Field(description="the diff's hunks grouped into an ordered stack of chunks, 2 to 7 of them (one for a small single-purpose PR). Every hunk ID in the diff goes in exactly one chunk; never invent an ID. Each chunk is an object with the keys: title (str: at most 8 words, phrased as what the reviewer is judging); summary (str: one sentence); hunks (list of str: the hunk IDs, such as h03); depends_on (list of int: the numbers of earlier chunks it needs, counting from 1; may be empty); risk (str: low, medium or high); risk_reason (str: one line, only for medium or high risk).")
+"""
+example_additions = """
+chunks:
+- title: |
+    ...
+  summary: |
+    ...
+  hunks:
+  - h01
+  - h02
+  depends_on: []
+  risk: |
+    low
+  risk_reason: |
+    ...
+"""
+
+[context_options]
+callers_code_only = true
+callers_skip_new_files = true
+callers_require_owner = true
+callers_skip_fields = true
+callers_mode = "precise"

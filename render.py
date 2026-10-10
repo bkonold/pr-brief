@@ -8,7 +8,8 @@ usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 Reads answer.yaml, run.json and pr.json from the run dir.
 Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.
 The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
-diagram's boxes, the walkthrough stops and the contract and data lines go to review.json.
+diagram's boxes, the walkthrough stops, the chunks and the contract and data lines go to review.json. An answer with `chunks` also gets
+a Chunks section after the Data section.
 """
 import argparse
 import html
@@ -38,6 +39,7 @@ from contract_lines import CONTRACT_LEVELS, Line, Source, contract_lines  # noqa
 from data_lines import DATA_LEVELS, data_lines  # noqa: E402
 from hosts import get_host  # noqa: E402
 from hosts.github import GitHub  # noqa: E402
+from hunks import Hunk, ReadDiff, hunk_json, parse_hunks, read_diff  # noqa: E402
 from sources import SourceFinder  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "vendor"))
@@ -177,7 +179,6 @@ def matches(globs: list[str], path: str) -> bool:
 
 # ---------------------------------------------------------------- diff lines and walkthrough stops
 
-HUNK_HEADER = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 DIFF_START = "The PR Git Diff:\n=====\n"
 DIFF_END = "\n=====\n\nNote that lines in the diff body"
 
@@ -194,32 +195,25 @@ def diff_from_prompt(prompt: str) -> str:
 
 
 def diff_lines_by_path(diff: str) -> dict[str, list[DiffLine]]:
-    lines_by_path: dict[str, list[DiffLine]] = {}
-    current: list[DiffLine] | None = None
-    old: int = 0
-    new: int = 0
-    in_hunk: bool = False
-    for line in diff.split("\n"):
-        header: re.Match[str] | None = re.match(r"diff --git a/(.*) b/(.*)$", line)
-        if header:
-            current = lines_by_path.setdefault(header.group(2), [])
-            in_hunk = False
-            continue
-        hunk: re.Match[str] | None = HUNK_HEADER.match(line)
-        if hunk:
-            old, new, in_hunk = int(hunk.group(1)), int(hunk.group(2)), True
-        elif current is None or not in_hunk or line.startswith("\\"):
-            continue
-        elif line.startswith("+"):
-            current.append(("R", new, line[1:].strip()))
-            new += 1
-        elif line.startswith("-"):
-            current.append(("L", old, line[1:].strip()))
-            old += 1
-        else:
-            current.append(("R", new, line[1:].strip()))
-            old += 1
-            new += 1
+    read: ReadDiff = read_diff(diff)
+    lines_by_path: dict[str, list[DiffLine]] = {path: [] for path in read.paths}
+    for hunk in read.hunks:
+        target: list[DiffLine] = lines_by_path.setdefault(hunk.path, [])
+        old: int = hunk.old_start
+        new: int = hunk.new_start
+        for line in hunk.lines:
+            if line.startswith("\\"):
+                continue
+            if line.startswith("+"):
+                target.append(("R", new, line[1:].strip()))
+                new += 1
+            elif line.startswith("-"):
+                target.append(("L", old, line[1:].strip()))
+                old += 1
+            else:
+                target.append(("R", new, line[1:].strip()))
+                old += 1
+                new += 1
     return lines_by_path
 
 
@@ -306,6 +300,105 @@ def resolve_stops(raw: Any, files: list[str], diff_lines: dict[str, list[DiffLin
     if not low <= len(stops) <= high:
         notes.append(f"{len(stops)} stops, expected {low} to {high}")
     return stops, notes
+
+
+CHUNK_TITLE_MAX_WORDS = 8
+CHUNKS_RANGE = (1, 7)
+CHUNK_RISKS: tuple[str, ...] = ("low", "medium", "high")
+UNASSIGNED_TITLE = "Unassigned"
+UNASSIGNED_SUMMARY = "Hunks the model left out."
+
+
+def chunk_depends_on(raw: Any, position: int, total: int, kept: dict[int, int], label: str, notes: list[str]) -> list[int]:
+    """The chunk numbers `raw` names, as the numbers the kept chunks now have. `position` is the chunk's place in the model's
+    list and `total` the length of that list; `kept` maps the places of the chunks that were kept to their new numbers. An entry
+    that is not a whole number, or that names the chunk itself, a later chunk, a chunk past the end or a chunk that was
+    dropped, is dropped with a note."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        notes.append(f"{label}: depends_on is not a list")
+        return []
+    found: set[int] = set()
+    for entry in raw:
+        if not isinstance(entry, int) or isinstance(entry, bool):
+            notes.append(f"{label}: depends_on {entry!r} dropped, it is not a chunk number")
+        elif entry == position:
+            notes.append(f"{label}: depends_on {entry} dropped, a chunk cannot depend on itself")
+        elif entry > total or entry < 1:
+            notes.append(f"{label}: depends_on {entry} dropped, there is no chunk {entry}")
+        elif entry > position:
+            notes.append(f"{label}: depends_on {entry} dropped, it is a later chunk")
+        elif entry not in kept:
+            notes.append(f"{label}: depends_on {entry} dropped, that chunk was dropped")
+        else:
+            found.add(kept[entry])
+    return sorted(found)
+
+
+def resolve_chunks(raw: Any, hunks: list[Hunk]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The chunks, numbered from 1 in the model's order, and the notes about what was fixed.
+
+    A chunk is `{i, title, summary, risk, risk_reason, depends_on, hunks}`. A hunk the diff does not have is dropped, and so is
+    a hunk an earlier chunk already has (the first assignment wins). A chunk left with no hunk is dropped and the rest are
+    renumbered, `depends_on` with them. The hunks no chunk has end up in a last chunk, `Unassigned`. Notes name a chunk by its
+    place in the model's list."""
+    if not isinstance(raw, list):
+        return [], ["no chunks"]
+    notes: list[str] = []
+    known: set[str] = {hunk.id for hunk in hunks}
+    owner: dict[str, int] = {}
+    chunks: list[dict[str, Any]] = []
+    places: list[int] = []
+    for position, item in enumerate(raw, 1):
+        label: str = f"chunk {position}"
+        if not isinstance(item, dict):
+            notes.append(f"{label}: dropped, it is not an object")
+            continue
+        listed: Any = item.get("hunks")
+        mine: list[str] = []
+        for entry in listed if isinstance(listed, list) else []:
+            name: str = str(entry).strip().strip("`'\"[]").lower()
+            if name not in known:
+                notes.append(f"{label}: unknown hunk {name} dropped")
+            elif name in owner:
+                notes.append(f"{label}: {name} dropped, it is already in chunk {owner[name]}" if owner[name] != position
+                             else f"{label}: {name} dropped, it is listed twice")
+            else:
+                owner[name] = position
+                mine.append(name)
+        if not mine:
+            notes.append(f"{label}: dropped, no hunks left")
+            continue
+        number: int = len(chunks) + 1
+        title: str = " ".join(str(item.get("title") or "").split())
+        if not title:
+            title = f"Chunk {number}"
+            notes.append(f"{label}: no title, using {title}")
+        elif len(title.split()) > CHUNK_TITLE_MAX_WORDS:
+            notes.append(f"{label}: title is longer than {CHUNK_TITLE_MAX_WORDS} words")
+        summary: str = " ".join(str(item.get("summary") or "").split())
+        if not summary:
+            notes.append(f"{label}: no summary")
+        risk: str = str(item.get("risk") or "").strip().lower()
+        if risk not in CHUNK_RISKS:
+            notes.append(f"{label}: no risk, using low" if not risk else f"{label}: risk {risk!r} is not low, medium or high, using low")
+            risk = "low"
+        chunks.append({"i": number, "title": title, "summary": summary, "risk": risk,
+                       "risk_reason": " ".join(str(item.get("risk_reason") or "").split()), "depends_on": [], "hunks": mine})
+        places.append(position)
+    kept: dict[int, int] = {place: chunk["i"] for place, chunk in zip(places, chunks)}
+    for place, chunk in zip(places, chunks):
+        chunk["depends_on"] = chunk_depends_on(raw[place - 1].get("depends_on"), place, len(raw), kept, f"chunk {place}", notes)
+    left: list[str] = [hunk.id for hunk in hunks if hunk.id not in owner]
+    if left:
+        chunks.append({"i": len(chunks) + 1, "title": UNASSIGNED_TITLE, "summary": UNASSIGNED_SUMMARY, "risk": "low",
+                       "risk_reason": "", "depends_on": [], "hunks": left})
+        notes.append(f"unassigned hunks gathered into the last chunk: {', '.join(left)}")
+    low, high = CHUNKS_RANGE
+    if not low <= len(chunks) <= high:
+        notes.append(f"{len(chunks)} chunks, expected {low} to {high}")
+    return chunks, notes
 
 
 NODE_DECLARATION = re.compile(r'(?<![\w-])(?P<id>[A-Za-z0-9_][A-Za-z0-9_-]*)(?P<open>\s*\[")(?:\d+\s*·\s*|\d+[.:)]\s+)?')
@@ -458,6 +551,21 @@ def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: 
             draw("database", "No database changes", DATA_LEVELS, "data", data))
 
 
+def chunks_markdown(run: dict[str, Any], paths: list[str], chunks: list[dict[str, Any]], hunks: list[Hunk]) -> str:
+    """The Chunks section of a body. The files of the PR that have no hunk, which no chunk can hold, are listed after the
+    chunks."""
+    repo: str = run["repo"]
+    number: str = str(run["pr"])
+
+    def link_of(hunk: Hunk) -> str:
+        side, start, _ = layout.hunk_target(hunk)
+        return line_link(repo, number, {"path": hunk.path, "side": side, "line": start})
+
+    with_hunks: set[str] = {hunk.path for hunk in hunks}
+    return layout.chunks_section(chunks, {hunk.id: hunk for hunk in hunks}, link_of,
+                                 [(path, diff_link(repo, number, path)) for path in paths if path not in with_hunks])
+
+
 # ---------------------------------------------------------------- body
 
 @dataclass
@@ -471,6 +579,8 @@ class Brief:
     contract: list[Line]
     data: list[Line]
     file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": []})
+    chunks: list[dict[str, Any]] | None = None
+    hunks: list[Hunk] = field(default_factory=list)
 
 
 def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
@@ -489,19 +599,28 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
     locate_sources(pr, api, rows, diff_text, read_file)
     sets: dict[str, list[str]] = file_sets(pr, contract, api, rows)
     ordered["contract"], ordered["data"] = sections(run, api, rows, unchecked_sides(run, contract), sets)
+    hunks: list[Hunk] = parse_hunks(diff_text)
+    chunks: list[dict[str, Any]] | None = None
+    chunk_notes: list[str] = []
+    if "chunks" in data:
+        chunks, chunk_notes = resolve_chunks(data["chunks"], hunks)
+        if chunks:
+            ordered["chunks"] = chunks_markdown(run, paths, chunks, hunks)
     diagram: str = render_diagram(data.get("changes_diagram"))
     node_files: dict[str, list[str]] = {}
     titles: dict[str, str] = {}
     if diagram:
         node_files = clean_node_files(data.get("node_files"), declaration_positions(diagram.split("\n")), paths, notes)
         titles = node_titles(diagram)
-    else:
+    elif chunks is None or "changes_diagram" in data:
         notes.append("no changes_diagram")
     stops, stop_notes = resolve_stops(data.get("walkthrough"), paths, diff_lines, node_files)
-    notes.extend(stop_notes)
-    if not stops:
+    if chunks is not None and "walkthrough" not in data:
+        stop_notes = []
+    notes.extend(stop_notes + chunk_notes)
+    if not stops and not chunks:
         raise AnswerError("The walkthrough has no stop left, so there is nothing to guide a reviewer through:\n"
-                          + "\n".join(f"- {note}" for note in stop_notes))
+                          + "\n".join(f"- {note}" for note in stop_notes + chunk_notes))
     stops_on: dict[str, list[int]] = {node: [stop["i"] for stop in stops if stop["node"] == node] for node in node_files}
     nodes: dict[str, dict[str, Any]] = {node: {"title": titles.get(node, node), "files": files, "stops": stops_on[node]}
                                         for node, files in node_files.items()}
@@ -517,7 +636,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key == "changes_diagram":
             body += f"### Diagram Walkthrough\n\n{value}\n\n{caption + chr(10) * 2 if caption else ''}"
             continue
-        if key in ("contract", "data") and value.startswith("<details"):
+        if key == "chunks" or (key in ("contract", "data") and value.startswith("<details")):
             body += f"{value}\n"
         else:
             body += f"### {HEADINGS.get(key) or key.replace('_', ' ').capitalize()}\n"
@@ -527,9 +646,9 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
                 value = value.replace("\n-", "\n\n-").strip()
             body += f"{value}\n"
         if idx < len(ordered) - 1:
-            body += "\n\n" if key in ("contract", "data") else "\n\n___\n\n"
+            body += "\n\n" if key in ("contract", "data", "chunks") else "\n\n___\n\n"
     body += "\n\n___\n\n"
-    return Brief(f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", count_diagram_edges(diagram), nodes, stops, api, rows, sets)
+    return Brief(f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", count_diagram_edges(diagram), nodes, stops, api, rows, sets, chunks, hunks)
 
 
 # ---------------------------------------------------------------- review.json
@@ -547,9 +666,15 @@ def line_json(line: Line) -> dict[str, Any]:
             "sources": [{"path": s.path, "side": s.side, "line": s.line} for s in line.sources]}
 
 
+def chunks_json(brief: Brief) -> list[dict[str, Any]]:
+    """The chunks of review.json: each chunk as resolved, with its hunks as `hunk_json` objects."""
+    by_id: dict[str, Hunk] = {hunk.id: hunk for hunk in brief.hunks}
+    return [{**chunk, "hunks": [hunk_json(by_id[name]) for name in chunk["hunks"]]} for chunk in brief.chunks or []]
+
+
 def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[str, Any]:
     """What the browser extension reads: the diagram's boxes with the stops that land on each, the walkthrough's stops
-    in reading order, and the contract and data lines of the tables."""
+    in reading order, the chunks when the answer has them, and the contract and data lines of the tables."""
     return {
         "schema": 4,
         "repo": run["repo"],
@@ -560,6 +685,7 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
         **({"diagram": DIAGRAM_SVG} if has_diagram else {}),
         "nodes": brief.nodes,
         "walkthrough": brief.stops,
+        **({"chunks": chunks_json(brief)} if brief.chunks is not None else {}),
         "contract": [line_json(line) for line in brief.contract],
         "data": [line_json(line) for line in brief.data],
         "file_sets": brief.file_sets,

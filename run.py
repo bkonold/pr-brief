@@ -40,6 +40,8 @@ config.use_config_flag(sys.argv)
 from config import DEFAULT_VARIANT, HOME, ROOT, load_local, variant_file  # noqa: E402
 from context_pack import Pack, build, ensure_commits  # noqa: E402
 from hosts import get_host, host_names, run_key  # noqa: E402
+from hunks import parse_hunks, pins, pins_markdown, tag_headers  # noqa: E402
+from render import build_lines, head_reader, locate_sources  # noqa: E402
 from runners import CLAUDE, COPILOT, RUNNERS, clean_answer, command_line, invocation, resolve_model  # noqa: E402
 from run_status import CANCELED, DONE, FAILED, RUNNING, begin_status, last_line, read_status, write_status  # noqa: E402
 
@@ -85,12 +87,21 @@ def build_prompts(variant: dict[str, Any], pr: dict[str, Any], diff: str, with_b
         "enable_custom_labels": False,
         "custom_labels_class": "",
         "enable_semantic_files_types": False,
-        "enable_pr_diagram": True,
+        "enable_pr_diagram": variant.get("diagram", True),
         "enable_pr_description": True,
         "duplicate_prompt_examples": False,
     }
     env = Environment()
     return env.from_string(system_template).render(**values), env.from_string(prompt["user"]).render(**values)
+
+
+def pin_groups(pr: dict[str, Any], pack: Pack | None, diff: str) -> list[list[str]]:
+    """The groups of hunks of `diff` that hold one contract or data line (see hunks.py), from the PR's contract change and its
+    migrations; there are none without a pack, which is where the contract comes from."""
+    contract: dict[str, Any] | None = pack.contract if pack else None
+    api, data = build_lines(pr, contract, diff)
+    locate_sources(pr, api, data, diff, head_reader(pr["headRefOid"], pr))
+    return pins(api, data, parse_hunks(diff))
 
 
 def now() -> datetime:
@@ -178,7 +189,12 @@ def execute(progress: Progress) -> int:
         ensure_commits([pr["baseRefOid"], pr["headRefOid"]], a.host)
         pack = build(pr, diff, variant["context"], options=variant.get("context_options"))
     context_md: str = pack.markdown() if pack else ""
-    system, user = build_prompts(variant, pr, diff, a.with_body, context_md)
+    shown_diff: str = diff
+    if variant.get("hunk_ids"):
+        shown_diff = tag_headers(diff)
+        pinned: str = pins_markdown(pin_groups(pr, pack, diff))
+        context_md = "\n\n".join(part for part in (context_md, pinned) if part)
+    system, user = build_prompts(variant, pr, shown_diff, a.with_body, context_md)
     prompt_text: str = f"{system}\n\n=====USER=====\n\n{user}"
 
     if a.prompt_only:
