@@ -94,8 +94,14 @@
     summary h3 { display: inline; margin: 0; }
     details.diagram-box > summary { font-weight: 600; }
     .diagram { margin: 8px 0 0; }
-    .paper { padding: 8px; overflow: auto; color: #1f2328; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; }
+    .paper { padding: 8px; overflow: auto; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
     .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
+    .paper svg .nodeLabel, .paper svg .node .label div { color: var(--fg) !important; }
+    .paper svg .nodeLabel .t { color: inherit !important; }
+    .paper svg .nodeLabel .s, .paper svg .context .nodeLabel, .paper svg .context .label div { color: var(--muted) !important; }
+    .paper svg .cluster rect { stroke: var(--borderColor-muted, var(--border)) !important; }
+    .paper svg .cluster-label * { color: var(--muted) !important; }
+    .paper svg .edgeLabel, .paper svg .edgeLabel p, .paper svg .edgeLabel span, .paper svg .labelBkg { text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface), 0 0 3px var(--surface) !important; }
     .caption { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
     .pill.p0 { font-weight: 600; color: var(--surface); background: var(--fg); border-color: var(--fg); }
     .pill.p1 { font-weight: 600; color: var(--fg); border-color: var(--fg); }

@@ -26,7 +26,10 @@ re-run it instead.
   reaches but does not edit, and a line under the diagram says "Dashed boxes are unchanged context" when there is one.
   Each box that stops land on starts with their numbers as a badge (`2 · 5`), and a box with no stop has none. Diagrams
   in `body.html` and `diagram.svg` share one minimal-outline theme (`DIAGRAM_STYLE` in `render.py`): rounded outlines,
-  open-chevron arrowheads, hairline subgraphs. `body.md` carries the badge as the label's leading numbers.
+  open-chevron arrowheads, hairline subgraphs. `body.md` carries the badge as the label's leading numbers. The text,
+  outline and halo colours follow the host's light or dark theme through Primer's `--fgColor-*`, `--bgColor-*` and
+  `--borderColor-*` variables (Forgejo's are mapped to them by the extension) and, where the page defines none, the
+  system's `prefers-color-scheme`; the purple accents are the same in both.
 - **Walkthrough.** The answer's `walkthrough` is 3 to 10 stops, `{node, file, title, why, line_text?}`, in the order a
   reader should follow the change; stops may return to a file or a box already visited. The renderer finds a stop's line
   in the diff the model was shown (embedded in `prompt.txt`), comparing it with every added, removed and context line of
