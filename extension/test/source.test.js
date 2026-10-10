@@ -66,7 +66,7 @@ test("the review is read from the PR's comment, fetched from the conversation pa
 
 test("the brief from the comment names its origin, variant, sha, page and diagram", async () => {
   await scenario({ pages: { [CONVERSATION]: posted() } }, async ({ asked }) => {
-    assert.deepEqual(await source.loadBrief("acme", "widgets", 7), { variant: "brief", bodyHtml: "<p>brief</p>", diagramSvg: "<svg/>", headSha: "a".repeat(40), origin: "comment" });
+    assert.deepEqual(await source.loadBrief("acme", "widgets", 7), { variant: "brief", model: null, bodyHtml: "<p>brief</p>", diagramSvg: "<svg/>", headSha: "a".repeat(40), origin: "comment" });
     assert.deepEqual(asked, []);
   });
 });
