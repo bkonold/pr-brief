@@ -6,9 +6,9 @@ usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 --config names a TOML to read in place of local.toml (see config.py); run.py passes its own on.
 
 Reads answer.yaml, run.json and pr.json from the run dir.
-Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.
+Writes body.md and body.html, review.json and the diagram's SVG. On broken YAML it writes error.txt and an error page and exits 1.
 The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
-diagram's boxes, the walkthrough stops, the layers (the key `chunks`) and the contract and data lines go to review.json. An answer with `chunks` also gets
+diagram's boxes, the walkthrough stops, the layers (the key `chunks`) and the file sets go to review.json. An answer with `chunks` also gets
 a Layers section after the Data section.
 """
 import argparse
@@ -77,62 +77,7 @@ def render_diagram(raw: Any) -> str:
     return "\n".join(lines)
 
 
-LINK_TOKEN = re.compile(r'"[^"]*"|\|[^|]*\||(?P<link><?[-=.~]{2,}[->ox]?)|(?P<id>[A-Za-z0-9_]+)|&')
-NODE_SHAPE = re.compile(r'(?<=\w)(?:\[+[^\]]*\]+|\(+[^)]*\)+|\{+[^}]*\}+)')
 NON_EDGE_LINE = re.compile(r"\s*(?:%%|classDef\b|class\b|style\b|linkStyle\b|subgraph\b|click\b|direction\b)")
-# A two-character connector opens a label written between two connectors: `A -- text --> B`.
-LABEL_OPENERS = ("--", "==", "-.")
-
-
-@dataclass(frozen=True)
-class DiagramEdge:
-    source: str
-    target: str
-    labelled: bool
-    link: str  # the connector as written (the opening one of a `A -- text --> B` label): `-->`, `-.->`, `<-->`, `~~~`
-
-
-def parse_diagram_edges(diagram: str) -> list[DiagramEdge]:
-    """Every arrow of a mermaid flowchart, one per source and target pair: chained links (`a --> b --> c`) give one
-    edge per link and `A & B --> C` one per pair. A label is `-- x -->`, `-->|x|`, `-. x .->` or `== x ==>`."""
-    edges: list[DiagramEdge] = []
-    for raw_line in diagram.split("\n"):
-        if NON_EDGE_LINE.match(raw_line):
-            continue
-        line: str = re.sub(r":::\w+", "", NODE_SHAPE.sub("", re.sub(r"(?<=\w)\s*[\[({]+\"(?:[^\"\\]|\\.)*\"[\])}]+", "", raw_line)))
-        groups: list[list[str]] = []
-        link_labelled: list[bool] = []
-        links: list[str] = []
-        current: list[str] = []
-        in_label: bool = False
-        for token in LINK_TOKEN.finditer(line):
-            text: str = token.group(0)
-            if token.group("link"):
-                if in_label:
-                    in_label = False
-                    continue
-                groups.append(current)
-                current = []
-                in_label = text in LABEL_OPENERS
-                link_labelled.append(in_label)
-                links.append(text)
-            elif text.startswith('"') or text.startswith("|"):
-                if link_labelled and not current and len(groups) == len(link_labelled):
-                    link_labelled[-1] = True
-            elif token.group("id") and not in_label:
-                current.append(text)
-        groups.append(current)
-        for index, is_labelled in enumerate(link_labelled):
-            if index + 1 < len(groups):
-                edges.extend(DiagramEdge(source, target, is_labelled, links[index])
-                             for source in groups[index] for target in groups[index + 1])
-    return edges
-
-
-def count_diagram_edges(diagram: str) -> tuple[int, int]:
-    """(labelled, total) arrows of a mermaid flowchart."""
-    edges: list[DiagramEdge] = parse_diagram_edges(diagram)
-    return sum(edge.labelled for edge in edges), len(edges)
 
 
 # ---------------------------------------------------------------- file links
@@ -572,14 +517,12 @@ def chunks_markdown(run: dict[str, Any], paths: list[str], chunks: list[dict[str
 
 @dataclass
 class Brief:
-    """What a run's answer renders to: the body, the diagram's arrow counts, its boxes by id (`title`, `files` and the
-    numbers of the `stops` that land on it, in diagram order), the walkthrough's stops, and the contract and data lines."""
+    """What a run's answer renders to: the body, the diagram's boxes by id (`title`, `files` and the
+    numbers of the `stops` that land on it, in diagram order), the walkthrough's stops, the file sets, and the layers
+    with the hunks they group."""
     body: str
-    edges: tuple[int, int]
     nodes: dict[str, dict[str, Any]]
     stops: list[dict[str, Any]]
-    contract: list[Line]
-    data: list[Line]
     file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": [], "tests": []})
     chunks: list[dict[str, Any]] | None = None
     hunks: list[Hunk] = field(default_factory=list)
@@ -648,23 +591,10 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if idx < len(ordered) - 1:
             body += "\n\n" if key in ("contract", "data", "chunks") else "\n\n___\n\n"
     body += "\n\n___\n\n"
-    return Brief(f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", count_diagram_edges(diagram), nodes, stops, api, rows, sets, chunks, hunks)
+    return Brief(f"# {pr['title']}\n\n{body}", nodes, stops, sets, chunks, hunks)
 
 
 # ---------------------------------------------------------------- review.json
-
-def line_json(line: Line) -> dict[str, Any]:
-    """A contract or data line for review.json: its level (null when it has none), text, the parts of that text (what
-    changed, on what, and for a contract line the side it reaches), where its diff line is in the spec or migration,
-    `sources`, every place the PR's own code declares it (empty when the PR has none), and `source`, the first of them
-    (null when there is none)."""
-    side, number = line.loc if line.loc else (None, None)
-    source: Source | None = line.sources[0] if line.sources else None
-    return {"impact": line.impact, "text": line.text, "change": line.change, "on": line.on, "reaches": line.side,
-            "path": line.path, "side": side, "line": number,
-            "source": {"path": source.path, "side": source.side, "line": source.line} if source else None,
-            "sources": [{"path": s.path, "side": s.side, "line": s.line} for s in line.sources]}
-
 
 def chunks_json(brief: Brief) -> list[dict[str, Any]]:
     """The layers of review.json, under the key `chunks`: each layer as resolved, with its hunks as `hunk_json` objects."""
@@ -674,7 +604,7 @@ def chunks_json(brief: Brief) -> list[dict[str, Any]]:
 
 def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[str, Any]:
     """What the browser extension reads: the diagram's boxes with the stops that land on each, the walkthrough's stops
-    in reading order, the layers (`chunks`) when the answer has them, and the contract and data lines of the tables."""
+    in reading order, the layers (`chunks`) when the answer has them, and the file sets."""
     return {
         "schema": 4,
         "repo": run["repo"],
@@ -686,8 +616,6 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
         "nodes": brief.nodes,
         "walkthrough": brief.stops,
         **({"chunks": chunks_json(brief)} if brief.chunks is not None else {}),
-        "contract": [line_json(line) for line in brief.contract],
-        "data": [line_json(line) for line in brief.data],
         "file_sets": brief.file_sets,
     }
 
@@ -963,8 +891,6 @@ def main() -> int:
         print(f"{run_dir}: {e}", file=sys.stderr)
         return 1
 
-    labelled, total = brief.edges
-    run["diagram_edges"] = {"labelled": labelled, "total": total}
     if mermaid is not None:
         run["mermaid"] = mermaid
     (run_dir / "run.json").write_text(json.dumps(run, indent=2) + "\n")

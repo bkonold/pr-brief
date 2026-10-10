@@ -164,18 +164,13 @@ re-run it instead.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,
   `files` the paths it covers and `stops` the numbers of the stops that land on it), `walkthrough: [{i, title, why, path,
-  side, line, node}]`, `chunks` (see Layers, only when the answer has them), the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
-  line, source, sources}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell;
-  `impact` is null for a line with no impact, `side` and `line` are null when the diff does not settle the line, and
-  `source` is `{path, side, line}` in the PR's own code or null (`side` is `L` for a removed line) and `sources` is every
-  such location in a list; and `file_sets`. A run made before `source` and `file_sets` existed has neither, and one made
-  before `sources` existed has no `sources`.
+  side, line, node}]`, `chunks` (see Layers, only when the answer has them) and `file_sets`.
 
 ## Run folder
 
 Each run writes `runs/<key>/<variant>/`, where `<key>` is the PR number on GitHub and `fj-<number>` on
 Forgejo, so the two hosts' numbers cannot collide: `prompt.txt`, `answer.yaml` (raw model output), `pr.json` (the PR
-data the run used), `run.json` (including `diagram_edges`, the labelled and total arrows of the diagram),
+data the run used), `run.json`,
 `body.md`, `body.html`, `diagram.svg`, `review.json` (the extension reads it, from the PR comment's "Brief data" block or from the local server; `post.py` packs `review.json`, `diagram.svg` and `body.html` into that block),
 `context.md` and `contract.json` (when the variant has a context pack with a contract section) and `error.txt` on failure or when the renderer
 dropped something. Open any `.html` straight from disk. `runs/<key>/status.json` (beside the variant folders) says how far the latest run has got. A rerun of the same PR and variant overwrites its

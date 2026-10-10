@@ -1,6 +1,8 @@
 """Tests for post.py: the comment built from a run folder, the anchors in it, the size fallbacks and the upsert through a
 fake `gh`. Nothing is posted. All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's
 folder."""
+import base64
+import gzip
 import hashlib
 import json
 import subprocess
@@ -16,9 +18,14 @@ import post  # noqa: E402
 REPO = "octo/widgets"
 HEAD = "d" * 40
 BODY = (
-    "# Add a widget cache\n\n<!-- pr-agent-generated -->\n"
+    "# Add a widget cache\n\n"
     "### Description\n- Cache widgets\n\n\n___\n\n### API\nNo API changes\n\n\n### Data\nNo database changes\n\n\n"
     "### Diagram Walkthrough\n\n\n```mermaid\nflowchart TD\n  a[\"Cache\"] --> b[\"Store\"]\n```\n\nDashed boxes are unchanged context\n\n\n___\n\n")
+
+
+def unpack(comment: str) -> dict | None:
+    block = post.DATA_BLOCK.search(comment)
+    return json.loads(gzip.decompress(base64.b64decode("".join(block["data"].split())))) if block else None
 
 
 def stop(i: int, path: str = "src/Cache.java", line: int | None = 10, why: str = "Start here.") -> dict:
@@ -26,7 +33,7 @@ def stop(i: int, path: str = "src/Cache.java", line: int | None = 10, why: str =
 
 
 def review(stops: list[dict]) -> dict:
-    return {"schema": 4, "repo": REPO, "pr": 7, "head_sha": HEAD, "variant": "v", "nodes": {}, "walkthrough": stops, "contract": [], "data": []}
+    return {"schema": 4, "repo": REPO, "pr": 7, "head_sha": HEAD, "variant": "v", "nodes": {}, "walkthrough": stops}
 
 
 class RunFolderTest(unittest.TestCase):
@@ -85,10 +92,9 @@ class BodyTest(RunFolderTest):
         self.assertRegex(match["data"], r"^[A-Za-z0-9+/=]+$")
         self.assertNotIn("<details open", comment)
 
-    def test_the_title_and_the_tool_marker_of_body_md_are_left_out(self) -> None:
+    def test_the_title_of_body_md_is_left_out(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1)]))
         self.assertNotIn("# Add a widget cache", comment)
-        self.assertNotIn("pr-agent-generated", comment)
 
     def test_each_stop_links_its_line_and_a_stop_without_a_line_links_its_file(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1, line=10), stop(2, "src/Store.java", None)]))
@@ -104,27 +110,15 @@ class BodyTest(RunFolderTest):
     def test_the_data_block_holds_review_json_the_diagram_and_the_body_page(self) -> None:
         stops = [stop(1), stop(2, why="Ünïcode — ok")]
         comment = post.build_comment(self.run_dir(stops, svg="<svg><text>Ünï</text></svg>", html="<html>a ``` fence</html>"))
-        self.assertEqual(post.unpack(comment), {**review(stops), "diagram_svg": "<svg><text>Ünï</text></svg>", "body_html": "<html>a ``` fence</html>"})
+        self.assertEqual(unpack(comment), {**review(stops), "diagram_svg": "<svg><text>Ünï</text></svg>", "body_html": "<html>a ``` fence</html>"})
 
     def test_a_run_without_a_diagram_or_body_page_has_null_for_each(self) -> None:
-        payload = post.unpack(post.build_comment(self.run_dir([stop(1)])))
+        payload = unpack(post.build_comment(self.run_dir([stop(1)])))
         assert payload is not None
         self.assertEqual((payload["diagram_svg"], payload["body_html"]), (None, None))
 
     def test_the_payload_is_the_same_text_every_time(self) -> None:
         self.assertEqual(post.payload(review([stop(1)]), "<svg/>", "<p/>"), post.payload(review([stop(1)]), "<svg/>", "<p/>"))
-
-    def test_a_payload_inside_the_old_marker_still_unpacks(self) -> None:
-        old = f"## PR Brief\n\ntext\n\n{post.MARKER} {post.payload(review([stop(1)]))} -->\n"
-        payload = post.unpack(old)
-        assert payload is not None
-        self.assertEqual(payload["walkthrough"], [stop(1)])
-
-    def test_the_data_block_wins_over_a_payload_in_the_marker(self) -> None:
-        mixed = f"{post.MARKER} {post.payload(review([stop(1)]))} -->\n\n{post.data_block(post.payload(review([stop(1), stop(2)])))}\n"
-        payload = post.unpack(mixed)
-        assert payload is not None
-        self.assertEqual(len(payload["walkthrough"]), 2)
 
     def test_a_contract_table_in_the_brief_is_kept(self) -> None:
         table = "<details><summary>API</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
@@ -132,18 +126,13 @@ class BodyTest(RunFolderTest):
         comment = post.build_comment(self.run_dir([stop(1)], body))
         self.assertIn(table, comment)
 
-    def test_unpack_of_a_comment_without_a_payload_or_marker_is_none(self) -> None:
-        self.assertIsNone(post.unpack("just a comment"))
-        self.assertIsNone(post.unpack(f"text\n{post.MARKER} -->"))
-        self.assertIsNone(post.unpack(f"text\n{post.MARKER} -->\n\n<details><summary>Brief data</summary>\n\n```\n\n```\n\n</details>"))
-
 
 class SizeTest(RunFolderTest):
     def test_a_comment_within_the_limit_is_whole(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1)]))
         self.assertLessEqual(len(comment), post.COMMENT_LIMIT)
         self.assertNotIn("size limit", comment)
-        self.assertIsNotNone(post.unpack(comment))
+        self.assertIsNotNone(post.DATA_BLOCK.search(comment))
 
     def test_over_the_limit_the_data_block_goes_first_with_a_note_and_the_walkthrough_stays_whole(self) -> None:
         stops = [stop(i, why="x" * 200) for i in range(1, 6)]
@@ -153,7 +142,7 @@ class SizeTest(RunFolderTest):
         comment = post.build_comment(run_dir, limit=limit)
         self.assertLessEqual(len(comment), limit)
         self.assertIn(post.PAYLOAD_DROPPED, comment)
-        self.assertIsNone(post.unpack(comment))
+        self.assertIsNone(post.DATA_BLOCK.search(comment))
         self.assertNotIn("Brief data", comment)
         self.assertIn(f"{post.MARKER} -->", comment)
         for i in range(1, 6):

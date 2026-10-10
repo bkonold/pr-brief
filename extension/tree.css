@@ -230,24 +230,6 @@
   color: var(--fgColor-muted, #59636e);
 }
 
-.prf-tests-choice {
-  padding: 0;
-  font: inherit;
-  color: var(--fgColor-muted, #59636e);
-  cursor: pointer;
-  background: none;
-  border: 0;
-}
-
-.prf-tests-choice:hover {
-  text-decoration: underline;
-}
-
-.prf-tests-choice[aria-pressed="true"] {
-  color: var(--fgColor-default, #1f2328);
-  text-decoration: underline;
-}
-
 .prf-banner {
   flex: none;
   margin: 0 0 10px;

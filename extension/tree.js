@@ -96,11 +96,10 @@
     return review.file_sets?.tests ?? [];
   }
 
-  // The file set a chip selects: { id, paths, lines } with the review's contract or data lines of that set; null for "All"
-  // and for a set the review does not have.
+  // The file set a chip selects: { id, paths }; null for "All" and for a set the review does not have.
   function fileSetOf(review, id) {
     const paths = Object.hasOwn(FILE_SET_LABELS, id) ? review.file_sets?.[id] : null;
-    return paths?.length ? { id, paths, lines: review[id] ?? [] } : null;
+    return paths?.length ? { id, paths } : null;
   }
 
   function baseName(path) {
@@ -646,7 +645,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, bar, filters, stopList, chunkRow, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, bar, filters, stopList, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

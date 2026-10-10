@@ -1185,35 +1185,6 @@ test("a newer markBox wins over an older one that is still looking for its heade
   }
 });
 
-test("loading the diagram script removes the width an earlier version saved and stores nothing", async () => {
-  const path = require.resolve("../diagram.js");
-  const calls = [];
-  const originalChrome = globalThis.chrome;
-  const originalPrFocus = globalThis.prFocus;
-  const cached = require.cache[path];
-  delete require.cache[path];
-  globalThis.prFocus = { alive: () => true };
-  globalThis.chrome = {
-    storage: {
-      local: {
-        get: async (...args) => (calls.push(["get", ...args]), {}),
-        set: async (...args) => (calls.push(["set", ...args]), undefined),
-        remove: async (...args) => (calls.push(["remove", ...args]), undefined),
-      },
-    },
-  };
-  try {
-    require("../diagram.js");
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(calls, [["remove", "diagramWidth"]]);
-  } finally {
-    delete require.cache[path];
-    if (cached) require.cache[path] = cached;
-    globalThis.chrome = originalChrome;
-    globalThis.prFocus = originalPrFocus;
-  }
-});
-
 const SETS = { contract: ["a.js", "api.json"], data: [] };
 
 test("fileChips counts all changed files and each set that has files, and shows no chip for an empty set", () => {
@@ -1233,11 +1204,10 @@ test("fileChips gives no chips to a run without a non-empty set, and All never c
   assert.equal(fileChips({ file_sets: SETS }, 0)[0].count, 2);
 });
 
-test("fileSetOf is the chosen set with its lines, and nothing for All, an empty set or an unknown name", () => {
+test("fileSetOf is the chosen set with its paths, and nothing for All, an empty set or an unknown name", () => {
   const { fileSetOf } = require("../tree.js");
-  const contract = [{ text: "x" }];
-  const review = { file_sets: { contract: ["a.js"], data: [] }, contract, data: [] };
-  assert.deepEqual(fileSetOf(review, "contract"), { id: "contract", paths: ["a.js"], lines: contract });
+  const review = { file_sets: { contract: ["a.js"], data: [] } };
+  assert.deepEqual(fileSetOf(review, "contract"), { id: "contract", paths: ["a.js"] });
   assert.equal(fileSetOf(review, "all"), null);
   assert.equal(fileSetOf(review, "data"), null);
   assert.equal(fileSetOf(review, "toString"), null);
@@ -1271,7 +1241,7 @@ test("with a set chosen the list is the lede and only the stops on its files, in
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const fileSet = { id: "contract", paths: ["c.md", "b.js", "api.json"], lines: [] };
+    const fileSet = { id: "contract", paths: ["c.md", "b.js", "api.json"] };
     const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet }, { onSelectStop() {} });
     const rows = byClass(list, "prf-stop");
     assert.deepEqual(

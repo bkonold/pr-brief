@@ -34,8 +34,6 @@ KEYS: frozenset[str] = frozenset({
     "chrome", "model",
     "reach",
 })
-# Tables that earlier versions read; a file that still has one is accepted and the table is not used.
-RETIRED_KEYS: frozenset[str] = frozenset({"archetypes"})
 
 
 def use_config_flag(argv: Sequence[str]) -> None:
@@ -65,7 +63,7 @@ def load_local() -> dict[str, Any]:
             raise SystemExit(f"the config file {path} does not exist")
         return {}
     settings: dict[str, Any] = tomllib.loads(path.read_text())
-    unknown: list[str] = sorted(set(settings) - KEYS - RETIRED_KEYS)
+    unknown: list[str] = sorted(set(settings) - KEYS)
     if unknown:
         raise SystemExit(f"{path.name} has unknown keys: {', '.join(unknown)}")
     return settings

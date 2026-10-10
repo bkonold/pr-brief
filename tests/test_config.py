@@ -78,10 +78,6 @@ class ConfigFileTest(unittest.TestCase):
         os.environ[config.CONFIG_ENV] = str(self.write("c.toml", 'repo = "o/r"\n[[reach.app]]\nname = "web"\nglobs = ["web/**"]\n'))
         self.assertEqual(config.config_section("reach"), {"app": [{"name": "web", "globs": ["web/**"]}]})
 
-    def test_a_retired_archetypes_table_is_accepted_and_ignored(self) -> None:
-        os.environ[config.CONFIG_ENV] = str(self.write("c.toml", 'repo = "o/r"\n[archetypes]\norder = ["A"]\n'))
-        self.assertEqual(config.load_local()["repo"], "o/r")
-
     def test_a_section_without_a_table_falls_back_to_its_own_file_under_home_and_then_to_none(self) -> None:
         os.environ[config.CONFIG_ENV] = str(self.write("c.toml", 'repo = "o/r"\n'))
         self.assertIsNone(config.config_section("reach"))

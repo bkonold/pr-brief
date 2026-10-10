@@ -80,8 +80,7 @@ class Sections(unittest.TestCase):
 
     def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
         brief, _ = render_body()
-        text, lineset = brief.body, brief
-        contract = self.section_of(text, "API")
+        contract = self.section_of(brief.body, "API")
         summary = re.search(r"(?s)<summary>(.*?)</summary>", contract).group(1)
         self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API\ncallers must change consumers may break 3 changes")
         rows = [re.sub(r"<[^>]+>", "", row) for row in contract.splitlines() if row.startswith("| <span")]
@@ -89,7 +88,6 @@ class Sections(unittest.TestCase):
                          ["| callers must change | request | + owner required | ItemRequest",
                           "| callers must change |  | removed | GET /gone",
                           "| consumers may break |  | − b | Widget"])
-        self.assertEqual(len(lineset.contract), 3)
         for gone in ("chunk", "Not in any", "group-row", "<strong><code>"):
             self.assertNotIn(gone, contract)
 
@@ -104,20 +102,13 @@ class Sections(unittest.TestCase):
         self.assertIn("| <code>− old</code> | <code>legacy</code> |", data)
         self.assertNotIn("Items table", data)
 
-    def test_review_json_lists_the_boxes_the_stops_and_every_line(self) -> None:
+    def test_review_json_lists_the_boxes_and_the_stops(self) -> None:
         brief, _ = render_body()
         data = review_json(RUN, brief, True)
         self.assertEqual(data["schema"], 4)
         self.assertEqual(data["model"], RUN.get("model"))
         self.assertNotIn("chunks", data)
         self.assertNotIn("unchunked", data)
-        first = next(line for line in data["contract"] if line["on"] == "`ItemRequest`")
-        self.assertEqual(set(first), {"impact", "text", "change", "on", "reaches", "path", "side", "line", "source", "sources"})
-        self.assertEqual((first["change"], first["on"], first["reaches"]), ("`+ owner` required", "`ItemRequest`", "request"))
-        self.assertEqual((first["impact"], first["path"], first["side"]), ("callers must change", SPEC, "R"))
-        self.assertIsInstance(first["line"], int)
-        self.assertEqual(len(data["contract"]), 3)
-        self.assertEqual([l["impact"] for l in data["data"]], ["destructive", "additive"])
         self.assertEqual(data["nodes"], {
             "Items": {"title": "Item endpoints", "files": [CONTROLLER, MODEL], "stops": [1, 2]},
             "Tbl": {"title": "Items table", "files": [MIGRATION], "stops": [3]},

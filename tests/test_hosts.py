@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from hosts import get_host, parse_run_key, run_key, run_label, run_order  # noqa: E402
+from hosts import get_host, parse_run_key, run_key  # noqa: E402
 from hosts.forgejo import PAGE_SIZE, Forgejo  # noqa: E402
 
 TOKEN = "invented-token"
@@ -169,14 +169,6 @@ class RunKeyTest(unittest.TestCase):
         self.assertEqual(parse_run_key("42"), ("github", 42))
         self.assertEqual(parse_run_key("fj-42"), ("forgejo", 42))
         self.assertIsNone(parse_run_key("index.html"))
-
-    def test_github_numbers_sort_before_forgejo_ones_and_numerically(self) -> None:
-        names = ["fj-3", "100", "9", "fj-12"]
-        self.assertEqual(sorted(names, key=run_order), ["9", "100", "fj-3", "fj-12"])
-
-    def test_labels(self) -> None:
-        self.assertEqual(run_label("42"), "PR 42")
-        self.assertEqual(run_label("fj-42"), "Forgejo PR 42")
 
 
 if __name__ == "__main__":

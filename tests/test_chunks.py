@@ -308,7 +308,7 @@ class ReviewJsonChunks(unittest.TestCase):
 
     def test_the_chunks_are_listed_with_their_hunks_as_objects(self) -> None:
         chunks, _ = resolve([chunk("A", ["h01", "h02"], risk="high", risk_reason="Why."), chunk("B", ["h03", "h04"], depends_on=[1])])
-        data = review_json(self.RUN, Brief("", (0, 0), {}, [], [], [], chunks=chunks, hunks=HUNKS), False)
+        data = review_json(self.RUN, Brief("", {}, [], chunks=chunks, hunks=HUNKS), False)
         self.assertEqual(data["schema"], 4)
         self.assertEqual(data["chunks"], [
             {"i": 1, "title": "A", "summary": "What it does.", "risk": "high", "risk_reason": "Why.", "depends_on": [],
@@ -329,8 +329,8 @@ class ReviewJsonChunks(unittest.TestCase):
         self.assertEqual([(hunk["added"], hunk["removed"]) for hunk in map(hunk_json, parse_hunks(diff))], [(1, 1), (0, 2)])
 
     def test_a_brief_with_no_chunks_has_no_chunks_key_and_an_empty_list_is_kept(self) -> None:
-        self.assertNotIn("chunks", review_json(self.RUN, Brief("", (0, 0), {}, [], [], []), False))
-        self.assertEqual(review_json(self.RUN, Brief("", (0, 0), {}, [], [], [], chunks=[]), False)["chunks"], [])
+        self.assertNotIn("chunks", review_json(self.RUN, Brief("", {}, []), False))
+        self.assertEqual(review_json(self.RUN, Brief("", {}, [], chunks=[]), False)["chunks"], [])
 
 
 if __name__ == "__main__":

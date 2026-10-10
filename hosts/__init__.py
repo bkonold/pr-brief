@@ -44,17 +44,3 @@ def parse_run_key(key: str) -> tuple[str, int] | None:
     if forgejo:
         return "forgejo", int(forgejo.group(1))
     return ("github", int(key)) if key.isdigit() else None
-
-
-def run_order(key: str) -> tuple[int, int]:
-    """Sort key for run folders: GitHub numbers first, then Forgejo's, each by number."""
-    parsed = parse_run_key(key)
-    if parsed is None:
-        raise ValueError(f"not a run folder name: {key!r}")
-    return (1 if parsed[0] == "forgejo" else 0, parsed[1])
-
-
-def run_label(key: str) -> str:
-    """How a run folder is named on the comparison pages."""
-    parsed = parse_run_key(key)
-    return f"Forgejo PR {parsed[1]}" if parsed and parsed[0] == "forgejo" else f"PR {key}"

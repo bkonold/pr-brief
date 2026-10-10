@@ -10,8 +10,7 @@ Source: https://github.com/qodo-ai/pr-agent, MIT license (`LICENSE` in this fold
 `pr_description_prompts.toml` is byte-identical to upstream at that commit.
 
 `pr_agent_helpers.py` holds the module-level helpers at the end of `pr_description.py`
-(`sanitize_diagram`, `apply_diagram_direction` with its edge parsing, `insert_br_after_x_chars`,
-`replace_code_tags`), copied verbatim. Only its import block and a `get_logger` stand-in are new.
+(`sanitize_diagram`, `apply_diagram_direction` with its edge parsing), copied verbatim. Only its import block and a `get_logger` stand-in are new.
 
 `render.py` re-implements `_prepare_data`, `_prepare_pr_answer` and `process_pr_files_prediction`
 from the same upstream file with PR-Agent's default settings.

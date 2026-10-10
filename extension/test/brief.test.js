@@ -16,7 +16,6 @@ const FILES_URL = "http://forge.example/acme/widgets/pulls/7/files";
 const MARKDOWN = [
   "# Example title",
   "",
-  "<!-- pr-agent-generated -->",
   "Enhancement",
   "",
   "___",
@@ -107,7 +106,7 @@ test("sanitize in svg mode keeps a diagram's style and drops what can run script
 
 test("renderBody renders the description and leaves the title, the mermaid source and its heading out", () => {
   const { html, caption } = briefText.renderBody(bodyHtml(), FILES_URL);
-  assert.doesNotMatch(html, /Example title|mermaid|flowchart|Diagram Walkthrough|pr-agent-generated|Dashed boxes/);
+  assert.doesNotMatch(html, /Example title|mermaid|flowchart|Diagram Walkthrough|Dashed boxes/);
   assert.match(html, /<h3>Description<\/h3>/);
   assert.match(html, /<li>Adds <code>thing<\/code> to the pipeline\n<ul>\n<li>nested <strong>point<\/strong>/);
   assert.equal(caption, "Dashed boxes are unchanged context");
@@ -306,7 +305,6 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     diagram: {
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
-      titleOf: (nodeId) => `title of ${nodeId}`,
       centerOn: (nodeIds, options) => (centered.push(nodeIds), centeredWith.push(options)),
       remove() {},
       owns: () => false,
@@ -975,8 +973,6 @@ test("the sidebar's state and handlers are the stops and the mode", async () => 
 const SET_REVIEW = {
   ...WALK_REVIEW,
   file_sets: { contract: ["src/api.js", "api.json"], data: [] },
-  contract: [{ impact: "additive", text: "x", path: "api.json", side: "R", line: 5, source: { path: "src/api.js", side: "R", line: 12 } }],
-  data: [],
 };
 
 test("the chips are All with the page's changed-file count and each non-empty set, and the whole tree shows until one is chosen", async () => {
@@ -997,7 +993,7 @@ test("choosing a chip narrows the pane and the tree to the set without moving th
   centered.length = 0;
   jumps.length = 0;
   await renders.at(-1).handlers.onFileSet("contract");
-  assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"], lines: SET_REVIEW.contract });
+  assert.deepEqual(plain(renders.at(-1).state.fileSet), { id: "contract", paths: ["src/api.js", "api.json"] });
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
   assert.deepEqual([centered, jumps, fileJumps, renders.at(-1).state.selectedStop], [[], [], [], 1]);
   await renders.at(-1).handlers.onFileSet("all");

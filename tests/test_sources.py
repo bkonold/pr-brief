@@ -492,21 +492,10 @@ class FileSets(unittest.TestCase):
         brief = self.brief(paths=[CUSTOMER, MIGRATION, ENTITY, CONTROLLER])
         self.assertNotIn(SPEC, brief.file_sets["contract"])
 
-    def test_review_json_has_the_sets_and_each_line_a_source_or_null(self) -> None:
+    def test_review_json_has_the_sets(self) -> None:
         data = render.review_json(RUN, self.brief(), True)
         self.assertEqual(data["file_sets"], self.brief().file_sets)
         self.assertEqual(sorted(data["file_sets"]), ["contract", "data", "tests"])
-        sources = {line["on"]: line["source"] for line in data["contract"]}
-        self.assertEqual(sources["`Customer`"], {"path": CUSTOMER, "side": "R", "line": 5})
-        listed = {line["on"]: line["sources"] for line in data["contract"]}
-        self.assertEqual(listed["`Customer`"], [{"path": CUSTOMER, "side": "R", "line": 5}])
-        self.assertEqual([line["sources"] for line in data["data"]], [[{"path": ENTITY, "side": "R", "line": 2}]])
-        self.assertEqual([line["source"] for line in data["data"]], [{"path": ENTITY, "side": "R", "line": 2}])
-
-    def test_a_line_nothing_in_the_pr_matches_has_a_null_source(self) -> None:
-        data = render.review_json(RUN, self.brief(paths=[SPEC, MIGRATION]), True)
-        self.assertEqual({line["source"] for line in data["contract"]} | {line["source"] for line in data["data"]}, {None})
-        self.assertEqual([line["sources"] for line in data["contract"] + data["data"]], [[]] * len(data["contract"] + data["data"]))
 
     def test_the_comment_links_a_source_with_the_spec_second_and_lists_the_files(self) -> None:
         text = self.brief().body
