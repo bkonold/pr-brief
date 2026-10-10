@@ -82,6 +82,7 @@
     .content { padding: 16px; }
     .text > :first-child { margin-top: 0; }
     h1, h2, h3, h4 { margin: 16px 0 8px; font-size: 14px; line-height: 1.25; }
+    h3 { font-size: 18px; font-weight: 600; }
     p, ul, ol, details { margin: 0 0 12px; }
     ul, ol { padding-left: 24px; }
     li > ul { margin: 2px 0; }
@@ -92,10 +93,15 @@
     sub { font-size: 12px; color: var(--muted); }
     summary { cursor: pointer; }
     summary h3 { display: inline; margin: 0; }
-    details.diagram-box > summary { font-weight: 600; }
     .diagram { margin: 8px 0 0; }
-    .paper { padding: 8px; overflow: auto; color: #1f2328; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; }
+    .paper { padding: 8px; overflow: auto; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
     .paper svg { display: block; width: 100%; max-width: 100%; height: auto; }
+    .paper svg .nodeLabel, .paper svg .node .label div { color: var(--fg) !important; }
+    .paper svg .nodeLabel .t { color: inherit !important; }
+    .paper svg .nodeLabel .s, .paper svg .context .nodeLabel, .paper svg .context .label div { color: var(--muted) !important; }
+    .paper svg .cluster rect { stroke: var(--borderColor-muted, var(--border)) !important; }
+    .paper svg .cluster-label * { color: var(--muted) !important; }
+    .paper svg .edgeLabel, .paper svg .edgeLabel p, .paper svg .edgeLabel span, .paper svg .labelBkg { text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface), 0 0 3px var(--surface) !important; }
     .caption { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
     .pill.p0 { font-weight: 600; color: var(--surface); background: var(--fg); border-color: var(--fg); }
     .pill.p1 { font-weight: 600; color: var(--fg); border-color: var(--fg); }
@@ -104,7 +110,6 @@
     .text details > summary .pill { margin: 0 4px; font-size: 11px; line-height: 16px; padding: 0 7px; }
     .text details > ul { margin: 4px 0 8px; padding-left: 20px; }
     .text details li { margin-bottom: 4px; }
-    .text details.section > summary { font-weight: 600; }
     .muted { font-size: 12px; font-weight: 400; color: var(--muted); }
     .text .table-wrap { margin: 4px 0 8px; overflow-x: auto; }
     .text .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -136,12 +141,13 @@
     return Boolean(runSha && pageSha && String(runSha).toLowerCase() !== String(pageSha).toLowerCase());
   }
 
-  function badge(key, variant, label) {
+  // The badge names where the brief came from and, for a run that records it, the model that wrote it.
+  function badge(key, variant, label, model = null) {
     const where = variant ? `Run ${escapeHtml(key)}, variant ${escapeHtml(variant)}` : "No run yet";
-    return `<span class="badge" title="${where}">${escapeHtml(label)}</span>`;
+    return `<span class="badge" title="${where}">${escapeHtml(model ? `${label} · ${model}` : label)}</span>`;
   }
 
-  const TITLE = '<span class="title">PR brief</span>';
+  const TITLE = '<span class="title" title="Written by an AI from the diff; check it before trusting it.">PR Brief · AI-generated</span>';
 
   function bar(inner) {
     return `<div class="brief"><div class="bar">${TITLE}${inner}</div>`;
@@ -151,7 +157,7 @@
   //   { kind: "none", canGenerate }                         no run yet
   //   { kind: "running", stage, elapsed }                   a run is going
   //   { kind: "error", message }                            the call or the run failed
-  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate, origin }   a run, closed; `origin` is
+  //   { kind: "brief", variant, model, bodyHtml, diagramSvg, runSha, pageSha, canGenerate, origin }   a run, closed; `origin` is
   //                                                         "comment" for a brief read from the PR's comment, else "server".
   //                                                         A comment's brief offers Regenerate only when `canGenerate`
   //                                                         is true, which is when a run server is set
@@ -174,7 +180,7 @@
     const { html, caption } = ns.briefText.renderBody(view.bodyHtml, filesUrl);
     const svg = /^\s*<svg[\s>]/.test(view.diagramSvg ?? "") ? ns.briefText.sanitize(view.diagramSvg, "svg") : "";
     const diagram = svg
-      ? `<details class="diagram-box"><summary>Diagram</summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${caption ? `<p class="caption">${caption}</p>` : ""}</figure></details>`
+      ? `<details class="diagram-box"><summary><h3>Diagram</h3></summary><figure class="diagram"><div class="paper" role="img" aria-label="Change diagram">${svg}</div>${caption ? `<p class="caption">${caption}</p>` : ""}</figure></details>`
       : "";
     const stale = isStale(view.runSha, view.pageSha);
     const fresh = view.origin === "comment" ? "from the PR's comment" : "local, not posted";
@@ -188,7 +194,7 @@
           : '<button class="link quiet" type="button" data-action="generate">Regenerate</button>';
     return (
       '<details class="brief">' +
-      `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label)}${regenerate}` +
+      `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label, view.model)}${regenerate}` +
       `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
       `<div class="content"><div class="text">${html}</div>${diagram}</div></details>`
     );

@@ -1,19 +1,27 @@
 """Where the PR's own source declares what a contract or data line is about.
 
 The OpenAPI document is generated from the Java code, so a contract line can point at the code that caused it: a schema
-is named after the simple name of its record or class, a property after the field or record component, an enum value
-after the constant, and an operation's operationId is the controller method's name (springdoc adds a `_1`-style suffix
-to an overload; it is dropped here). A data line can point at the entity whose `@Table(name = "...")` names its table.
+is named after the simple name of its record, class or enum, a property after the field or record component, an enum
+value after the constant, and an operation's operationId is the controller method's name (springdoc adds a `_1`-style
+suffix to an overload; it is dropped here). A data line can point at the entity whose `@Table(name = "...")` names its
+table. The generated TypeScript client declares the same things, so a contract line also points at the line that
+declares it in a changed file under `sdk_dir`.
 
-`SourceFinder` looks only at the files the PR changes, never at a test file. It reads their lines from the PR's diff and, for an entity whose
-`@Table` annotation the diff does not show, from the file at the head commit through `read`. A line it cannot place has no
+`SourceFinder` looks only at the files the PR changes, never at a test file. It searches every changed Java file for a
+schema, a property or an enum value, and the changed Java files that are controllers (a `@RestController` or
+`@Controller` annotation, in the file at the head commit or else in its diff) for an operation. It reads their lines
+from the PR's diff and, for what the diff does not show (a controller's annotation, an entity's `@Table` annotation, a
+declaration in the generated client), from the file at the head commit through `read`. A line it cannot place has no
 source. A location is a `Source`: the file, the side of the diff and the line number, so a removed line links to the
 old file.
 
-Which files can hold a schema or a controller is configuration: a path that contains one of `model_dirs` is a model
-file, and one that contains one of `controller_dirs` is a controller.
+In the generated client a schema is an `export interface`, `export type` or `export const` of its name, a property is a
+`name:` row of its interface, an enum value is a `VALUE: "VALUE"` row of the `export const` object of the enum, and an
+operation is the `operationId: (` member of the client's operations. `contract` lists a line's Java sources first, then
+its client sources.
 """
 import re
+from itertools import groupby
 from pathlib import PurePosixPath
 from typing import Callable
 
@@ -21,12 +29,12 @@ from context_pack import is_test_file
 from contract_lines import Line, Member, Source
 from diff_lines import DiffLine, file_diff_lines
 
-MODEL_DIRS: tuple[str, ...] = ("models/frontend/",)
-CONTROLLER_DIRS: tuple[str, ...] = ("controllers/",)
-
 OVERLOAD_SUFFIX = re.compile(r"_\d+$")
 MAPPING_ANNOTATION = re.compile(r"^@\w*Mapping\b")
 NOT_A_DECLARATION = re.compile(r"^\s*(?:return|throw|new|else|import|package)\b|^\s*(?://|\*|/\*)")
+CONTROLLER_ANNOTATION = re.compile(r"@(?:Rest)?Controller\b")
+# A line at column 0 that ends the generated client's declaration above it: the next `export` or a closing brace.
+SDK_CLOSE = re.compile(r"^(?:export\s|\})")
 TABLE_ANNOTATION = re.compile(r"@Table\s*\([^)]*?\bname\s*=\s*\"([^\"]+)\"", re.S)
 # How many lines above a method's declaration its annotations are searched for the `@...Mapping` line.
 ANNOTATION_REACH = 12
@@ -44,6 +52,23 @@ def kinds_for(change_kind: str) -> str:
     return "+" if change_kind in ADDED_KINDS else "+- "
 
 
+def rows_inside(texts: list[str], opens: re.Pattern[str] | None, target: re.Pattern[str]) -> list[int]:
+    """The indexes of the `texts` that match `target`. With `opens`, only those after a line that matches it and before the
+    next line that ends a declaration (`SDK_CLOSE`)."""
+    hits: list[int] = []
+    inside: bool = opens is None
+    for index, text in enumerate(texts):
+        if opens is not None:
+            if opens.match(text):
+                inside = True
+                continue
+            if SDK_CLOSE.match(text):
+                inside = False
+        if inside and target.match(text):
+            hits.append(index)
+    return hits
+
+
 def table_name(raw: str) -> str:
     """A table as a migration names it, lower case, without its schema or quotes: `"public"."Items"` is `items`."""
     return raw.strip().strip('"`').rsplit(".", 1)[-1].strip('"`').lower()
@@ -52,15 +77,15 @@ def table_name(raw: str) -> str:
 class SourceFinder:
     """Finds contract and data lines' sources among the changed `paths`, whose diffs come from `diff`."""
 
-    def __init__(self, diff: str, paths: list[str], model_dirs: tuple[str, ...] = MODEL_DIRS,
-                 controller_dirs: tuple[str, ...] = CONTROLLER_DIRS,
-                 read: Callable[[str], str | None] = lambda path: None) -> None:
+    def __init__(self, diff: str, paths: list[str], read: Callable[[str], str | None] = lambda path: None,
+                 sdk_dir: str | None = None) -> None:
         self.diff: str = diff
         self.paths: list[str] = sorted(paths)
-        self.model_dirs: tuple[str, ...] = model_dirs
-        self.controller_dirs: tuple[str, ...] = controller_dirs
         self.read: Callable[[str], str | None] = read
+        self.sdk_dir: str | None = sdk_dir
         self._lines: dict[str, list[DiffLine]] = {}
+        self._controllers: dict[str, bool] = {}
+        self._head: dict[str, list[str]] = {}
 
     def lines(self, path: str) -> list[DiffLine]:
         if path not in self._lines:
@@ -70,13 +95,25 @@ class SourceFinder:
     def java_files(self) -> list[str]:
         return [p for p in self.paths if p.endswith(".java") and not is_test_file(p)]
 
-    def java_in(self, dirs: tuple[str, ...]) -> list[str]:
-        return [p for p in self.java_files() if any(d in p for d in dirs)]
+    def sdk_files(self) -> list[str]:
+        """The changed TypeScript files of the generated client, other than tests."""
+        if not self.sdk_dir:
+            return []
+        return [p for p in self.paths if p.startswith(self.sdk_dir) and p.endswith(".ts") and not p.endswith(".test.ts")
+                and not is_test_file(p)]
+
+    def is_controller(self, path: str) -> bool:
+        """Whether the Java file carries `@RestController` or `@Controller`, in the file at the head commit or else in its diff."""
+        if path not in self._controllers:
+            head: str | None = self.read(path)
+            self._controllers[path] = bool(CONTROLLER_ANNOTATION.search(head)) if head else any(
+                CONTROLLER_ANNOTATION.search(line.text) for line in self.lines(path))
+        return self._controllers[path]
 
     def model_file(self, schema: str) -> str | None:
-        """The model file that declares the schema's type: the one named for it, else the only one that declares it as a
-        nested record or class, in its diff or at the head commit."""
-        models: list[str] = self.java_in(self.model_dirs)
+        """The changed Java file that declares the schema's type: the one named for it, else the only one that declares it
+        as a record, class, interface or enum, in its diff or at the head commit."""
+        models: list[str] = self.java_files()
         named: list[str] = [p for p in models if PurePosixPath(p).stem == schema]
         if named:
             return named[0]
@@ -88,12 +125,14 @@ class SourceFinder:
     # ------------------------------------------------------------ contract
 
     def contract(self, line: Line) -> list[Source]:
-        """The sources of a contract line's members, in order and without repeats."""
+        """The sources of a contract line's members, in order and without repeats: those in Java, then those in the
+        generated client."""
         found: list[Source] = []
-        for member in line.members:
-            source: Source | None = self.member(member)
-            if source is not None and source not in found:
-                found.append(source)
+        for finder in (self.member, self.sdk_member):
+            for member in line.members:
+                source: Source | None = finder(member)
+                if source is not None and source not in found:
+                    found.append(source)
         return found
 
     def member(self, member: Member) -> Source | None:
@@ -143,10 +182,10 @@ class SourceFinder:
 
     def enum_value(self, schema: str, prop: str | None, value: str, removed: bool) -> Source | None:
         """The line of the enum constant. The enum is in the schema's own file, in a file named for the property that
-        holds it (`Status` for `status`), or else the only model file that declares the constant."""
+        holds it (`Status` for `status`), or else the only changed Java file that declares the constant."""
         pattern: re.Pattern[str] = re.compile(rf"^{re.escape(value)}\s*(?:\(.*)?[,;]?$")
         kinds: str = "-" if removed else "+"
-        models: list[str] = self.java_in(self.model_dirs)
+        models: list[str] = self.java_files()
         own: list[str] = [p for p in models if PurePosixPath(p).stem == schema]
         named: list[str] = [p for p in models if prop and PurePosixPath(p).stem.lower().endswith(prop.lower()) and p not in own]
         elsewhere: list[str] = [p for p in models if p not in own and p not in named]
@@ -163,14 +202,14 @@ class SourceFinder:
         return None
 
     def operation(self, operation_id: str | None, change_kind: str) -> Source | None:
-        """The controller method's declaration, or the `@...Mapping` annotation above it when the diff shows that."""
+        """The declaration of the method of a changed controller, or the `@...Mapping` annotation above it when the diff shows that."""
         if not operation_id:
             return None
         name: str = OVERLOAD_SUFFIX.sub("", operation_id)
         pattern: re.Pattern[str] = re.compile(
             rf"^\s*(?:(?:public|protected|private|static|final|default|abstract|synchronized)\s+)*[\w<>\[\],.?][\w<>\[\],.? ]*\s+{re.escape(name)}\s*\(")
         kinds: str = kinds_for(change_kind)
-        for path in self.java_in(self.controller_dirs):
+        for path in [p for p in self.java_files() if self.is_controller(p)]:
             index: int | None = self.first(path, kinds, lambda line: not NOT_A_DECLARATION.match(line.text) and bool(pattern.match(line.text)))
             if index is not None:
                 return self.at(path, self.mapping_above(path, index) or index)
@@ -191,6 +230,56 @@ class SourceFinder:
             if MAPPING_ANNOTATION.match(text):
                 return above
         return None
+
+    # ------------------------------------------------------------ generated client
+
+    def sdk_member(self, member: Member) -> Source | None:
+        """The line of a changed file of the generated client that declares what the member is about: found in the diff
+        first, then in the file at the head commit."""
+        pattern: tuple[re.Pattern[str] | None, re.Pattern[str]] | None = self.sdk_pattern(member)
+        if pattern is None:
+            return None
+        opens, target = pattern
+        change_kind: str = member.kind or ""
+        for path in self.sdk_files():
+            lines: list[DiffLine] = self.lines(path)
+            hits: list[int] = []
+            for _, group in groupby(enumerate(lines), key=lambda pair: pair[1].hunk):
+                numbered: list[tuple[int, DiffLine]] = list(group)
+                hits += [numbered[at][0] for at in rows_inside([line.text for _, line in numbered], opens, target)]
+            for kind in kinds_for(change_kind):
+                for index in hits:
+                    if lines[index].kind == kind:
+                        return self.at(path, index)
+        if change_kind in REMOVED_KINDS:
+            return None
+        for path in self.sdk_files():
+            if path not in self._head:
+                self._head[path] = (self.read(path) or "").split("\n")
+            hits = rows_inside(self._head[path], opens, target)
+            if hits:
+                return Source(path, "R", hits[0] + 1)
+        return None
+
+    def sdk_pattern(self, member: Member) -> tuple[re.Pattern[str] | None, re.Pattern[str]] | None:
+        """The pattern of the line that declares the member in the generated client, and the pattern of the line that opens
+        the declaration it must be inside (None when it need not be inside one)."""
+        kind: str = member.kind or ""
+        if member.operation:
+            if not member.operation_id:
+                return None
+            return None, re.compile(rf"^\s*{re.escape(OVERLOAD_SUFFIX.sub('', member.operation_id))}:\s*\(")
+        if member.schema is None:
+            return None
+        schema: str = re.escape(member.schema)
+        if kind.startswith("enum_"):
+            if not member.value:
+                return None
+            value: str = re.escape(member.value)
+            return re.compile(rf"^export const {schema} = \{{"), re.compile(rf'^\s*{value}:\s*"{value}",?$')
+        if member.name and kind not in ("schema_added", "schema_removed"):
+            return re.compile(rf"^export (?:interface|type) {schema}\b"), re.compile(rf"^\s*{re.escape(member.name)}\??:")
+        return None, re.compile(rf"^export (?:interface|type|const) {schema}\b")
 
     # ------------------------------------------------------------ data
 

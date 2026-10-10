@@ -8,15 +8,17 @@
   flex-direction: column;
   min-height: 0;
   color: var(--fgColor-default, #1f2328);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
+  /* Where a row's title starts: the row's left padding (6px), the button's (4px), the number column (2ch) and its gap
+     (8px). The files listed under a layer start here too. */
+  --prf-gutter: calc(6px + 4px + 2ch + 8px);
 }
 
 .prf-tree.prf-review {
   flex: 1 1 auto;
 }
 
-.prf-bar,
 .prf-banner {
   box-sizing: border-box;
   background: var(--bgColor-muted, #f6f8fa);
@@ -33,7 +35,6 @@
   justify-content: space-between;
   gap: 8px;
   margin: 0 0 10px;
-  padding: 8px;
 }
 
 .prf-modes {
@@ -80,6 +81,158 @@
   flex: none;
 }
 
+/* The filter line under the toggle: what narrows the pane at its left, the Tests dropdown at its right. Its right padding
+   matches `.prf-groups`, so the line ends where the list does. */
+.prf-filters {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px;
+  padding-right: 14px;
+  font-size: 12px;
+}
+
+.prf-filters .prf-lede {
+  position: static;
+  margin: 0;
+}
+
+.prf-tests {
+  position: relative;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--fgColor-default, #1f2328);
+  background: var(--button-default-bgColor-rest, #f6f8fa);
+  border: 1px solid var(--button-default-borderColor-rest, var(--borderColor-default, #d1d9e0));
+  border-radius: 6px;
+}
+
+.prf-tests:hover {
+  background: var(--button-default-bgColor-hover, #eff2f5);
+}
+
+.prf-tests:has(.prf-tests-select:focus-visible) {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: -2px;
+}
+
+.prf-tests-label,
+.prf-tests-caret {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-tests-caret {
+  flex: none;
+  margin-right: -4px;
+}
+
+.prf-tests-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.prf-banner {
+  box-sizing: border-box;
+  background: var(--bgColor-muted, #f6f8fa);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border: 1px solid color-mix(in srgb, var(--borderColor-accent-emphasis, #0969da) 22%, var(--borderColor-default, #d0d7de));
+  border-radius: 8px;
+}
+
+.prf-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.prf-modes {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--controlTrack-bgColor-rest, #eff2f5);
+  border: 1px solid var(--controlTrack-borderColor-rest, transparent);
+  border-radius: 8px;
+}
+
+.prf-mode,
+.prf-head-main {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Both segments share one box; only the selected one changes its background and border. */
+.prf-mode {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--fgColor-default, #1f2328);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.prf-mode:hover {
+  background: var(--controlTrack-bgColor-hover, #e6eaef);
+}
+
+.prf-mode[aria-pressed="true"],
+.prf-mode[aria-pressed="true"]:hover {
+  background: var(--controlKnob-bgColor-rest, #ffffff);
+  border-color: var(--controlKnob-borderColor-rest, #818b98);
+}
+
+.prf-mode-icon {
+  flex: none;
+}
+
+/* The filter line under the toggle: what narrows the pane at its left, the Tests dropdown at its right. Its right padding
+   matches `.prf-groups`, so the line ends where the list does. */
+.prf-filters {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px;
+  padding-right: 14px;
+  font-size: 12px;
+}
+
+.prf-filters .prf-lede {
+  position: static;
+  margin: 0;
+}
+
+.prf-tests {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+  color: var(--fgColor-muted, #59636e);
+}
+
 .prf-banner {
   flex: none;
   margin: 0 0 10px;
@@ -109,6 +262,7 @@
   min-width: 0;
 }
 
+.prf-callout-reason code,
 .prf-generate code {
   padding: 0 4px;
   background: var(--bgColor-neutral-muted, #818b981f);
@@ -125,6 +279,69 @@
   border-radius: 6px;
 }
 
+.prf-lede {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-info-button {
+  display: inline-flex;
+  flex: none;
+  padding: 0;
+  color: var(--fgColor-muted, #59636e);
+  cursor: help;
+  background: none;
+  border: 0;
+}
+
+.prf-info-button:hover,
+.prf-info-button:focus-visible {
+  color: var(--fgColor-default, #1f2328);
+}
+
+.prf-info-button:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: 1px;
+  border-radius: 50%;
+}
+
+/* Overlays what follows the lede, spanning the lede's width. */
+.prf-tip {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 10;
+  display: none;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--fgColor-default, #1f2328);
+  white-space: normal;
+  background: var(--overlay-bgColor, var(--bgColor-default, #ffffff));
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 6px;
+  box-shadow: var(--shadow-floating-small, 0 1px 3px rgba(0, 0, 0, 0.12));
+}
+
+/* In the filter line the lede is only as wide as its text, so the tooltip spans the line instead, inside its right padding. */
+.prf-filters .prf-tip {
+  right: 14px;
+}
+
+.prf-info:hover .prf-tip,
+.prf-info:focus-within .prf-tip {
+  display: block;
+}
+
 .prf-groups {
   flex: 1 1 auto;
   min-height: 0;
@@ -138,9 +355,8 @@
 }
 
 .prf-selected {
-  background: var(--bgColor-accent-muted, #ddf4ff);
-  background: color-mix(in srgb, var(--bgColor-accent-muted, #ddf4ff) 60%, transparent);
-  box-shadow: inset 2px 0 0 var(--borderColor-accent-emphasis, #0969da);
+  background: color-mix(in srgb, var(--prf-guide) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--prf-guide);
 }
 
 .prf-head {
@@ -168,16 +384,19 @@
 }
 
 .prf-num {
+  position: relative;
   flex: none;
-  min-width: 1.4ch;
+  width: 2ch;
   color: var(--fgColor-default, #1f2328);
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   text-align: right;
 }
 
+/* The separator sits in the gap after the number column, so it takes no width from it. */
 .prf-num::after {
-  margin-left: 0.5ch;
+  position: absolute;
+  left: calc(100% + 2px);
   font-weight: 400;
   color: var(--fgColor-muted, #59636e);
   content: "\00b7";
@@ -193,38 +412,36 @@
 
 .prf-name {
   min-width: 0;
-  font-weight: 600;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
 .prf-callout {
   box-sizing: border-box;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px 24px;
   align-items: flex-start;
-  width: fit-content;
-  max-width: 100%;
-  padding: 14px 18px;
+  width: min(100%, max(480px, var(--prf-callout-width, 640px)));
+  padding: 12px 16px;
   font-family: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.45;
   color: var(--fgColor-default, #1f2328);
   overflow-wrap: anywhere;
   background: var(--bgColor-muted, #f6f8fa);
   border: 1px solid var(--prf-guide-soft);
   border-radius: 8px;
-  box-shadow: 0 0 0 var(--prf-pulse) var(--prf-guide);
 }
 
 .prf-callout-row:has(+ .prf-line-target) .prf-callout,
 .prf-callout-file.prf-line-target .prf-callout {
   border-color: var(--prf-guide);
-  box-shadow: 0 0 0 calc(1px + var(--prf-pulse)) var(--prf-guide);
+  box-shadow: 0 0 0 1px var(--prf-guide);
 }
 
 .prf-callout-main {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -256,13 +473,14 @@
 }
 
 .prf-callout-label {
-  margin-top: 10px;
+  margin-top: 6px;
   font-size: 12px;
   color: var(--fgColor-muted, #59636e);
 }
 
 .prf-callout-reason {
   margin-top: 2px;
+  /* The summary wraps to the card's fixed width rather than widening it. */
   contain: inline-size;
 }
 
@@ -276,31 +494,13 @@
   margin-left: auto;
 }
 
-.prf-callout-next {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.prf-callout-targets {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-end;
-}
-
 .prf-callout-empty {
   visibility: hidden;
 }
 
-.prf-callout-nav-label {
-  color: var(--fgColor-muted, #59636e);
-}
-
-.prf-callout-go,
+.prf-callout-next,
 .prf-callout-prev {
-  padding: 4px 12px;
+  padding: 3px 10px;
   font: inherit;
   cursor: pointer;
   border-radius: 6px;
@@ -309,7 +509,7 @@
   border: 1px solid var(--borderColor-default, #d0d7de);
 }
 
-.prf-callout-go:hover,
+.prf-callout-next:hover,
 .prf-callout-prev:hover {
   background: var(--bgColor-neutral-muted, #818b981f);
 }
@@ -321,7 +521,6 @@
 .prf-chips {
   display: flex;
   flex-wrap: wrap;
-  flex: 1 0 100%;
   gap: 6px;
 }
 
@@ -340,6 +539,8 @@
 }
 
 .prf-chip-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: var(--fgColor-muted, #59636e);
 }
 
@@ -355,48 +556,224 @@
   color: var(--fgColor-muted, #59636e);
 }
 
-.prf-nostop .prf-name {
-  color: var(--fgColor-muted, #59636e);
+.prf-hunk-hidden {
+  display: none;
 }
 
-.prf-lines {
-  margin-top: 12px;
-  border-top: 1px solid var(--borderColor-muted, #d1d9e0);
-}
-
-.prf-lines-title {
-  padding: 8px 8px 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fgColor-muted, #59636e);
-}
-
-.prf-line {
-  padding: 6px 8px;
-  font-size: 13px;
-}
-
-.prf-line-impact {
-  color: var(--fgColor-muted, #59636e);
-}
-
-.prf-line-links {
+/* The risk pill and judged tick, with the layer's line counts right-aligned on the line under them. */
+.prf-chunk-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 2px;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  align-self: flex-start;
+  margin-left: auto;
 }
 
-.prf-line-link {
-  padding: 0;
+.prf-chunk-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* A folder line and a file button both have 4px of their own left padding, so a folder's icon lines up under the
+   title. A file is indented by an icon and its gap, so its icon sits under the folder label's first character. A file
+   button spans the list's width to its right edge, so its hover background runs from 4px before the icon to 4px past the counts. */
+.prf-chunk-files {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 6px calc(var(--prf-gutter) - 4px);
+}
+
+.prf-chunk-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.prf-chunk-group + .prf-chunk-group {
+  margin-top: 4px;
+}
+
+.prf-chunk-folder,
+.prf-chunk-file {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 1px 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.prf-chunk-folder {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-chunk-icon {
+  flex: none;
+  color: var(--treeViewItem-leadingVisual-iconColor-rest, var(--fgColor-muted, #59636e));
+}
+
+.prf-chunk-folder-label,
+.prf-chunk-file-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.prf-chunk-folder.prf-dimmed .prf-chunk-folder-label,
+.prf-chunk-file.prf-dimmed .prf-chunk-file-name {
+  text-decoration: line-through;
+}
+
+.prf-chunk-folder.prf-dimmed .prf-chunk-icon,
+.prf-chunk-file.prf-dimmed .prf-chunk-icon {
+  opacity: 0.5;
+}
+
+.prf-chunk-group .prf-chunk-file {
+  margin-left: 22px;
+}
+
+.prf-diffstat {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.prf-chunk-file .prf-diffstat {
+  margin-left: auto;
+}
+
+.prf-stat-added {
+  color: var(--fgColor-success, #1a7f37);
+}
+
+.prf-stat-removed {
+  color: var(--fgColor-danger, #cf222e);
+}
+
+.prf-chunk-file.prf-dimmed .prf-diffstat {
+  opacity: 0.5;
+}
+
+.prf-chunk-file {
   font: inherit;
   font-size: 12px;
-  color: var(--fgColor-accent, #0969da);
+  line-height: 16px;
+  color: var(--fgColor-default, #1f2328);
+  text-align: left;
   cursor: pointer;
   background: none;
   border: 0;
+  border-radius: 6px;
 }
 
-.prf-line-link:hover {
-  text-decoration: underline;
+.prf-chunk-group .prf-chunk-file {
+  padding: 2px 4px;
+}
+
+.prf-chunk-file:hover {
+  background: var(--control-transparent-bgColor-hover, rgba(208, 215, 222, 0.32));
+}
+
+.prf-chunk-file:active {
+  background: var(--control-transparent-bgColor-active, rgba(208, 215, 222, 0.48));
+}
+
+.prf-chunk-file:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: -2px;
+}
+
+.prf-chunk-file.prf-dimmed {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-risk {
+  display: inline-block;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--prf-risk, var(--fgColor-muted, #59636e));
+  background: color-mix(in srgb, var(--prf-risk, #59636e) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--prf-risk, #59636e) 45%, transparent);
+  border-radius: 999px;
+}
+
+.prf-risk-low {
+  --prf-risk: var(--fgColor-success, #1a7f37);
+}
+
+.prf-risk-medium {
+  --prf-risk: var(--fgColor-attention, #9a6700);
+}
+
+.prf-risk-high {
+  --prf-risk: var(--fgColor-danger, #cf222e);
+}
+
+.prf-judged-tick {
+  display: inline-flex;
+  color: var(--fgColor-success, #1a7f37);
+}
+
+.prf-judged-icon {
+  vertical-align: middle;
+}
+
+.prf-callout-reason-text {
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-callout-risk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.prf-callout-risk code,
+.prf-callout-reason-text code {
+  padding: 0 4px;
+  background: var(--bgColor-neutral-muted, #818b981f);
+  border-radius: 4px;
+}
+
+.prf-callout-risk + .prf-callout-reason,
+.prf-callout-needs {
+  margin-top: 8px;
+}
+
+.prf-callout-needs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.prf-callout-need {
+  padding: 0 8px;
+  font: inherit;
+  cursor: pointer;
+  color: var(--fgColor-default, #1f2328);
+  background: var(--bgColor-default, #ffffff);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 6px;
+}
+
+.prf-callout-need:hover {
+  background: var(--bgColor-neutral-muted, #818b981f);
+}
+
+.prf-callout-judged {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: fit-content;
+  font-weight: 400;
+  cursor: pointer;
 }

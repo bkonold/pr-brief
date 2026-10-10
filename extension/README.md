@@ -27,30 +27,60 @@ earliest block in the page.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
-- A toggle, "Walkthrough" / "Files". "Files" brings the host's own file tree back (GitHub's, or Forgejo's); the toggle
-  stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
+- A toggle, "Walkthrough" / "Layers" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
+  swaps in the stop list, "Layers" (only for a brief that has layers, see "Layers tab") the layer list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a layer, which narrows the page to its hunks, and the Tests control in "Files" and "Layers", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
-- Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
+- Under the toggle, a filter line. In "Walkthrough" and "Files" its left side holds chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
-  (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, and clicking one never
+  (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, stays through a switch of the toggle, and clicking one never
   moves the diagram. See "File sets" below.
+  In "Layers" it holds the layer count instead (see "Layers tab"). At its right end, when the brief lists test files, sits the Tests control (see "Tests control"). A line with nothing to show is not drawn.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
-  diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout.
+  diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout. A muted line above
+  the stops counts them, `6 stops, in reading order` (`1 stop`; with a file set, the stops listed), and says in its tooltip what the list is for; a run with no stops has none.
+  The selected row, in this list and in the layer list, has an inset 2px bar and a faint tint of the guide purple (the callout's), and every row's number sits in a fixed two-digit column so titles line up.
 
 ## File sets
 
 "API" and "Data" narrow the pane to the files that make up the PR's API contract change and its data change.
 
 - In "Walkthrough" mode the list is the stops whose file is in the set, in walkthrough order, each with its file's name
-  under its title, then a "no stop" row for every file of the set that has no stop, which jumps to the file's header.
-  Under them is the set's table: each contract or data line with its impact, and links that jump to a line in the diff.
-  A contract line links to the code that declares it (`Customer.java:18`, from the line's `source`) and, beside it, to
-  its place in the spec; one with no source links to the spec alone. A data line links to its entity and, beside it, to
-  the migration, or to the migration alone when it has no entity. A line whose place is not in the PR has no link.
-- In "Files" mode the host's own tree hides the files that are not in the set, and a directory left with no visible file.
-  The host re-renders its tree, so the hiding is applied again on every refresh, as the callouts are. A tree row is
-  matched to a file by the `#diff-…` link it holds.
-- Every diff stays in the page, whichever chip is chosen.
+  under its title. A set whose files have no stop says so.
+- In both modes the diff shows only the set's files. In "Files" mode the host's own tree hides the others too, and a
+  directory left with no visible file. The host re-renders its tree and loads diffs as the page scrolls, so the hiding is
+  applied again on every refresh, as the callouts are. A tree row is matched to a file by the `#diff-…` link it holds.
+- A click on a diagram box, or on a stop, in a file outside the set puts the chip back on "All" first, so the file shows.
+
+## Tests control
+
+`review.json`'s `file_sets.tests` lists the PR's test files, as full paths. When it is not empty, the filter line (under the
+toggle, in "Files" and "Layers" only) ends with the Tests control: a small GitHub-style dropdown button at the line's right
+reading `Tests: All ▾` (the muted label "Tests:", the mode in effect in the default colour, a muted triangle-down icon). It is a styled
+wrapper (24px high, 12px text, a 1px border, 6px radius, the button background and its hover) with a transparent native `<select>`
+(`aria-label="Tests"`) laid over all of it, so a click anywhere opens the browser's own menu and the keyboard works natively;
+the wrapper shows a focus ring when the select is keyboard-focused. Choosing an option picks that mode directly. The line's right
+padding (14px) matches the list's, so the two end at the same place. A brief
+without `file_sets.tests` (an older run, or a PR with no test files) has no control and shows every file. The "Walkthrough"
+has no Tests control and no test behaviour: it shows the files its file set chooses, whatever the stored mode.
+
+| Option | Value | Shows |
+| --- | --- | --- |
+| All | `all` | every file |
+| Hidden | `hide` | every file but the tests |
+| Only | `only` | the test files only |
+
+- **Diff and tree.** In "Files", in "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
+  with none, whatever the chip or the layer keeps (the `exclude` of `page.filter`, a third filter that only subtracts). In "only" the
+  page is narrowed to the test files by the file filter (within the chosen chip, if any), so no list of the PR's other files is
+  needed. Either way the host's own tree rows follow, as with a chip.
+- **Dimming.** In the selected layer's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
+  its name muted and struck through.
+- **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
+  hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
+  whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
+  it still shows its lines and its callout. A click on a struck-through file in the layer's list has no row to land on.
+- **Preference.** The mode is kept in this browser's `localStorage` under `prf-tests-mode` as the string `all`, `hide` or `only`
+  (absent means `all`), across PRs, read and written in a try/catch. A review with no test files ignores it.
 
 ## The walkthrough
 
@@ -81,29 +111,85 @@ variant) is not shown: see "Older runs".
   column) in two columns. The left column has a route icon and a header in bold default text, `Stop <i> of <n> · <box
   title>` (without the box part for a stop on no box), a small muted chevron, then the stop's title in
   normal weight, and then on its own line a small muted "Why stop here" over the stop's `why`, wrapping within the
-  header's width. The right column is top-aligned with the header and right-aligned, with no divider before it, and always has two
-  slots: a "↑ Previous" button (its tooltip is the previous stop's title) over a row of the muted "Next" caption and a
-  small button with the next stop's title and ↓. On the first stop the Previous slot, and on the last the Next slot,
+  header's width, with backtick spans in it drawn as code. The right column is top-aligned with the header and right-aligned, with no divider before it, and always has two
+  slots: a "↑ Previous" button (its tooltip is the previous stop's title) over a "Next ↓" button (its tooltip is the next stop's title). On the first stop the Previous slot, and on the last the Next slot,
   stays in the layout hidden (`visibility: hidden`, `inert`, `aria-hidden`, no tab stop), so the other slot does not
   move and the column keeps its height; a walkthrough of one stop hides both. On a diff too narrow for
   both columns the right column wraps below the text and stays right-aligned. A button goes to that stop, as a click on
-  its row does, without the pulse. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
+  its row does, without the flash of its line. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
   once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "Walkthrough" mode.
 - A stop with no line has its callout as the first child of that file's diff entry (the GitHub diff entry, the Forgejo
   file box), so it sits directly above the file header and spans the entry's full width with the same card. The jump
-  places the callout like a line stop's, so the header shows under it, and marks and pulses the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
+  places the callout like a line stop's, so the header shows under it, and marks the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
+- Every callout of the shown mode (all stops in Walkthrough, all layers in Layers) has the same width: that of the widest
+  card at its natural width, its heading and its Previous/Next column, not its summary, at least 480px and never more than
+  the space it sits in. The host draws only the diff near the viewport, so the width is measured from the data: every card
+  is built into a hidden container, and the widest, rounded up, is set as `--prf-callout-width` on the page, which
+  `tree.css` reads. It is measured again whenever the shown set is rebuilt (the brief loading, a mode switch, a Tests
+  change), not on scroll; Files mode keeps the last width.
 - The stop's line is left exactly as the host draws it. Each callout card starts at the file pane's left edge, and the
   jumped-to stop's card border is the full purple where the other callouts' is purple at 45%. The file, line number and code are not repeated, since the diff row shows them. Only
   one card is marked as the target; the mark goes whenever the line target clears (another selection, a new jump or
-  teardown) and comes back if the host re-renders the row. When a jump lands, its callout pulses once: a purple ring
-  that swells from its resting width to 3px wider and back, three times over about two seconds (666ms each). It fires on
-  every jump from the list or the diagram (a stop or box click) and from a link to a stop, but not
+  teardown) and comes back if the host re-renders the row. When a jump lands on a stop's line, the line flashes: a
+  translucent purple overlay (the guide colour) fades in and out twice over 1.2 seconds on top of the row's cells, so the
+  host's add/remove tint shows through. A stop with no line, and a layer, flash nothing, and no callout pulses. The flash
+  fires on every jump from the list or the diagram (a stop or box click) and from a link to a stop, but not
   from the callout's own Next and ↑ buttons, since the reader is already following the callouts. Only the jumped-to
-  stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
+  line flashes, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not flash.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-Nothing about the review's state is remembered: every load and every navigation into the files page starts in "Walkthrough"
-on stop 1, with the default variant. The one thing kept is whether the diagram panel is collapsed (see below).
+Nothing about the review's state is remembered, except which layers are judged (see "Layers tab") and the Tests control's mode (see "Tests control"): every load and every navigation into the files page opens as GitHub would,
+in "Files" mode with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
+link to a stop's line selects that stop. The one thing kept is whether the diagram panel is expanded (see below).
+
+## Layers tab
+
+`review.json`'s `chunks` (the layers; the code calls them chunks), when the brief has them, is an ordered list of `{i, title, summary, risk, risk_reason, depends_on,
+hunks}`: the change cut into pieces to judge one at a time. `risk` is `"low"`, `"medium"` or `"high"`, `depends_on` the
+numbers of the layers this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count], added, removed}`, the last two
+being the lines the hunk adds and removes (a review made before they were written has none).
+A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" entry in the toggle.
+
+- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer: its number and title, and at the end a risk pill
+  (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"), with the layer's line counts over all its hunks
+  right-aligned on the line under them in GitHub's diffstat form (`+12` in the success green, `−34` in the danger red, 12px, tabular figures; both shown even when one is 0). The selected row is marked as a
+  stop's is, and scrolled into view when a layer is opened from its callout.
+- The selected row, and only it, lists the files its layer touches, grouped by folder. Each folder is one line, not a button, with a
+  muted folder icon (GitHub's `file-directory-fill`) and its label in muted 12px text; a long label wraps rather than being cut off,
+  preferring to break after a `/`, and hangs under its own first character, not under the icon. The folder's full directory is the tooltip.
+  Its files sit under it, indented so each file's icon is under the label's first character: one button per file with a muted file icon (`file`) and the
+  file's name in the default text colour, and its full path as the tooltip, and at its right end that file's line counts over this layer's hunks only (the name keeps wrapping and shrinking, the counts stay on one line). A layer or file with a hunk that has no counts shows none. Folders come in the order of their first
+  hunk in the layer, and files within a folder in the order of each file's first hunk. A click
+  jumps to that file's first hunk of the layer, at the line the layer's own jump would use, and stays in the tab: the
+  selection and the page filter do not change. A click on a file of a layer that is not selected opens that layer first. A file the
+  Tests control keeps out of view is struck through, and so is a folder line whose files all are; their icons and line counts dim with them.
+- Folder labels shorten a JVM source folder, one shaped `<module>/src/<set>/<lang>/<package>` with `<lang>` java, kotlin,
+  scala, groovy or resources (the module is empty when `src` is at the repo root): `<module> › <package>` for the `main` set and
+  `<module> <set> › <package>` for another, e.g. `acme-api test › creators/lumber`. The package segments every JVM folder in
+  the review shares at the front (not just this layer's) are dropped, always leaving each folder one segment. The module is
+  never left out, however many folders the layer has. Any other folder is labelled by its full directory, and a file at the repo root is in the folder `/`.
+- Selecting a layer narrows the page to it: the diffs of the layer's files only, and in each only the rows that show a
+  line inside one of the layer's hunks. A hunk's new range filters the right side and its old range the left, so removed
+  lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own
+  tree is behind the sidebar in this tab, but its rows for the other files are hidden as in a file set. The view then
+  lands on the layer's callout above its file's header, the way a stop on a file does, and the selection clears any stop, box or chip. Selecting a stop, a box or a file leaves the
+  tab and shows the whole diff again; opening the tab with a layer already selected narrows to it again, and with none
+  selects nothing and filters nothing.
+- The layer's callout sits above the header of one file, outside the file's box, like a stop on a file: the first, in the page's
+  order, of the files the layer's shown hunks touch (a Tests-hidden file does not count, unless every file of the layer is hidden). The
+  page's order is the document order of the file entries; when none of the layer's entries is in the page yet, the first file of
+  the layer's hunks stands in. A click on a file in the layer's list still lands on that file's first hunk line. Its header is shaped like a stop's: `Layer 2 of 6` in bold, a small muted chevron, then the title in
+  normal weight; under it are the risk pill and `risk_reason` (muted) when there is one, the summary, and `Needs 1, 3` with a
+  button per number that opens that layer. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening
+  the neighbouring layer, with the "Judged" checkbox under them. Only the selected layer's callout is shown, and none in the other tabs.
+- "Judged" is the reader's own mark, kept in this browser's `localStorage` under `prf-judged:<host>/<owner>/<repo>#<pr>@<head_sha>`
+  as a JSON array of layer numbers, so it is per PR head and comes back on reload; a new head starts empty. It is read and
+  written in a try/catch, and without storage the marks last until the page is left. Nothing else about layers is remembered.
+- The chip row ("All", "API", "Data") is not drawn in this tab: the selected layer owns the page filter, and a chip
+  is not applied while the tab is open.
+- Known limit: the host renders rows as the page scrolls, and a row it has not rendered yet is filtered when it appears
+  (the filter runs again on every change of the document), so a row can show for an instant first. A diff the host holds
+  back behind its load control is loaded, once, when its layer is selected.
 
 ## When the page server is down
 
@@ -128,9 +214,9 @@ sticky or fixed elements that span the diff column), then flashes the header for
 When `review.json` names a `diagram` (`diagram.svg` in the run directory), `background.js` fetches it with the review
 and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
 diagram, stop list, code, and the other two columns narrow by the panel's width (by default the width at which the walkthrough draws the diagram's widest box with its halo at 100%, at most 40% of the viewport, at least 220px) instead of being
-covered. The panel is sticky at the file tree pane's offset and as tall as the pane. Its header's `‹` button collapses it
-(remembered in `sessionStorage`) into a 30px rail in the same spot, with "Diagram" written vertically under a `›` button
-that expands it.
+covered. The panel is sticky at the file tree pane's offset and as tall as the pane. It is mounted collapsed, as a 30px rail
+in that spot with "Diagram" written vertically under a `›` button that expands it; the header's `‹` button collapses it
+again. Whether this tab expanded it is remembered in `sessionStorage`, so a reload keeps it expanded.
 - The diagram, the stop list and the code are separated by single dividers: the panel's right border, then GitHub's own
   rule down the pane's right edge.
 
@@ -138,7 +224,7 @@ that expands it.
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
   250ms. The emphasized box gets a concentric 8px halo (22% of the accent, `#534ab7` in the light theme and `#9d94f5` in the dark), an 11% accent tint over its fill and an accent-dark title, and keeps its own stroke. `prefers-reduced-motion: reduce` turns all of it off, leaving only the end states.
 - The panel's right edge is a drag handle: dragging it right widens the panel and narrows the diffs. Width is 220px up to 65% of
-  the viewport, by default the width that shows the widest box at 100%. A width dragged to lasts until the page is left and is not stored, so every load starts at the default; the extension removes the `diagramWidth` key an earlier version saved in `chrome.storage.local`.
+  the viewport, by default the width that shows the widest box at 100%. A width dragged to lasts until the page is left and is not stored, so every load starts at the default.
 - Each box shows the numbers of the stops that land on it as a purple badge (`2 · 5`) before its bold title, and a
   box with no stop has no badge. A box covering no changed file is dashed and muted. When the diagram has one, a line
   under the card reads "Dashed boxes are unchanged context".
@@ -153,13 +239,13 @@ that expands it.
   400%), as does a pinch (Chrome reports a trackpad pinch as Ctrl + wheel); the page does not scroll while the pointer
   is over the canvas. Pressing and dragging anywhere on the canvas pans it; a drag that starts on a box pans once it
   moves more than 4px, and a shorter press is a box click. The header has −, the current zoom (click it for 100%), +
-  and ↺ (Reset). Reset puts the review back as it was when it loaded: no box or stop selected, no line, box or stop
-  callout highlighted, GitHub's tree swapped back out for the review list, and the canvas
-  back at its resting view. The stop callouts stay in the diff, as they are at load. Panning stops when a diagram edge
+  and ↺ (Reset). Reset clears the selection: no box or stop selected, no line, box or stop
+  callout highlighted, the pane's mode as it is, and the canvas
+  back at its resting view. The stop callouts stay in the diff. Panning stops when a diagram edge
   reaches the middle of the canvas.
 - Focusing a stop, whether from a stop row, a callout's Previous/Next or a click on its box, moves the canvas over about
-  200ms (at once under reduced motion). From a stop row, a callout's Previous/Next, a stop's link or anchor, or the
-  stop-1 selection on load, it also zooms so the box, halo included, takes 90% of the pane's width, kept between 0.5
+  200ms (at once under reduced motion). From a stop row, a callout's Previous/Next, or a stop's link or
+  anchor, it also zooms so the box, halo included, takes 90% of the pane's width, kept between 0.5
   and 1.25 (titles between 8px and 20px), and set to exactly 1 when it comes within 5% of it; at the default pane width it
   is exactly 1. A click on a box in the
   diagram, dragging, the wheel, a pinch and Reset never change the zoom: a box click only pans, at the reader's zoom.
@@ -173,10 +259,9 @@ that expands it.
   focused box back where a click on it would, at the new width (with its walkthrough zoom, when it came from the
   list or Next/Previous), and a diagram still at rest stays at rest. When the page replaces the panel (GitHub re-renders the files page
   after it loads), the new panel goes back to the box the old one was following. Zoom and position are not saved.
-- Loading the files page in "Walkthrough" mode selects stop 1 as a click on it would: its box is highlighted, the canvas
-  pans to it, its callout shows and the diff scrolls to it. A stop the URL links to is opened instead. When the URL
-  already names a diff line or review comment (`#diff-…`, `#r…`, `#discussion_r…`) that is not a stop's, stop 1 is
-  highlighted and panned to but the diff does not scroll, so the line the URL names stays in view.
+- Loading the files page selects nothing: no box is highlighted, the canvas stays at its resting view and the diff is not
+  scrolled. A stop the URL links to (`#diff-…` naming a stop's line or file) is opened instead, as a click on it would,
+  which switches to "Walkthrough" mode.
 - The SVG is parsed with `DOMParser` and stripped of `<script>`, `on*` attributes and `javascript:` links first.
   GitHub's CSP allows the SVG's own `<style>` and inline `style` attributes, so no restyling is needed.
 - Mermaid 11 ids: a node is `<g class="node" id="pr-diagram-flowchart-<nodeId>-<n>">`; an edge is a `path` with
@@ -194,7 +279,7 @@ which only the background script sends.
 `run_control.js` owns one run's progress for a PR page: it starts the run, asks `/api/status` every 3 seconds, ticks
 a one-second clock between polls and reports to the page. The card and the files view's line both draw from it.
 
-- **Conversation page, no run:** the card is a bar with "PR brief", "local, not posted" and a "Generate brief" button
+- **Conversation page, no run:** the card is a bar with "PR Brief · AI-generated", "local, not posted" and a "Generate brief" button
   (nothing at all when no server URL is set).
 - **Running:** "Writing brief · m:ss", a pill per stage (Fetch PR, Gather context, Write, Render; done ones green, the
   current one in the accent colour) and a Cancel link. Leaving the page does not stop the run; the next visit asks
@@ -224,19 +309,24 @@ else of the old run is shown.
 
 ## The PR brief card
 
-On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR brief"
+On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR Brief · AI-generated"
 card above the PR's description when the PR has a brief (`prFromUrl` returns `view: "conversation"`; the files page is
-`view: "files"` and behaves as before). Its badge says "from the PR's comment" for a brief read from the comment and "local,
-not posted" for one the local server holds, nothing is written to the page's data, and its header links to the files
-view. Without a brief it is the "Generate brief" bar described above, and only where a server URL is set.
+`view: "files"` and behaves as before). Its title's tooltip says the brief is written by an AI from the diff and should be checked.
+Its badge says "from the PR's comment" for a brief read from the comment and "local,
+not posted" for one the local server holds, followed by the model that wrote the run when `review.json` records it, nothing is written to the page's data, and its header links to the files
+view. Without a brief it is the "Generate brief" bar described above, and only where a server URL is set. When the page has no brief comment yet (the host is still rendering the timeline), the card is mounted as soon as
+the comment appears.
 
 - It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
   are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.
+- The diagram, in the card and in the diagram pane, follows the host's theme: its text, outline and halo colours are the
+  Primer names (Forgejo's mapped by its adapter), with the system's `prefers-color-scheme` as the fallback, and the
+  purple accents stay the same. The card's and the pane's own rules re-theme a diagram whose SVG was written with fixed colours.
 - `body.html` from `render.py` is a standalone page that draws itself: the description is a markdown string in a
   script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
   `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
-  description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
+  description's bullets, with the caption about dashed boxes under it, on the site's own surface colour. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
 - The brief's "API" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
   in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is
@@ -281,13 +371,13 @@ Run the pure tests with `node --test test/*.test.js`.
 | `background.js` | When a server URL is set: fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers. With none set it answers `unset` and requests nothing |
 | `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
 | `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
-| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, change watching. `createPage(spec)` builds an adapter from a host's spec |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, the file, hunk and exclude filters, change watching. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Marks the active file's header, and scrolls to a diff. It hides nothing |
-| `tree.js`, `tree.css`, `focus.css` | The stop list, the stop callout card with its previous and next stop, and the classes `focus.js` and the line jump toggle |
-| `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
+| `tree.js`, `tree.css`, `focus.css` | The stop list and the layer list, the stop and layer callout cards with their previous and next, and the classes `focus.js` and the line jump toggle |
+| `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state, the layer selection and the judged marks |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
 | `comment_source.js` | Reads the brief from the PR's "Brief data" comment block (inflate, split, fetch the conversation page). Loaded before `source.js` |
@@ -302,7 +392,7 @@ The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
 `prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `conversationUrl(pr)`, `isConversationPage(pr?)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
 `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
-`restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `filter({ files, hunks, exclude })` (each `null` for none: `files` and `exclude` are paths, `hunks` is `[{path, side, start, count}]`; one call sets all three and applies them in one pass), `blockCount()`, `changedFileCount(blocks?)`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange`, `quietly(fn)` (runs `fn` so that the `onChange` watchers do not see its own changes to the page, after handing them the changes made before it), `isStructural(node)` (whether a node a mutation added or removed is, or holds, a table row, diff block or tree row) and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)
@@ -319,6 +409,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Tree host | `#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]`: GitHub's tree with its "File tree" heading. `#pr-file-tree` also holds the "Filter files" box as its first child, so the list is inserted before the host and the host is hidden with a class |
 | Tree rows | `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory; a file row is matched to its diff by the `a[href*="#diff-"]` it holds (the diff's id). A directory row is hidden only when it has file rows in the page and all of them are hidden |
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed, and its callout row is scrolled to the stop place. |
+| Row lines, hunk rows | `rowLines(tr)` reads the row's `[data-line-anchor]` cell as `diff-<hash>(L\|R)<n>`, one per row: R for an added or a context line, L for a removed one. `hunkRow(tr)` is a row holding `td.diff-hunk-cell`: the `@@` header and the expand-context row. That cell carries an anchor too, for the line just before or after the hunk (`R0` above a new file's first hunk, `R133` above a hunk starting at 134), so it is skipped as a line. Observed 2026-10-09 on a files page in the React view
 | Load Diff control | A diff GitHub does not render by default (observed 2026-10-09 on the `/changes` page: "Large diffs are not rendered by default.", "Some generated files are not rendered by default.") is the same diff block with no `tr` and no `[data-line-anchor]`, holding a `button[data-component="Button"]` whose trimmed text is "Load Diff" (inner `span[data-component="text"]`) beside a `span.fgColor-muted` with the sentence. `loadDiff(id)` clicks that button, found by its text and not by the sentence. A second later (1 to 9 s) the block is replaced by a new node with the same id (the old one is detached), so the jump looks the block up by id again after the wait; the entry wrapper stays |
 | Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
 | Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, on the files page and (observed 2026-10-09) on the conversation page; trusted only for the PR the page was first opened on. For any other page the PR's conversation page is fetched and read the same way (`readHeadSha(doc)`), and only then a set run server is asked |
@@ -340,6 +431,7 @@ All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
 | Block path | `data-new-filename`, else `data-old-filename` |
 | File header | `.diff-file-header`, sticky at 44px inside the box, under the sticky summary bar `.diff-detail-box` (top 0, 44px) that the scroll offset is measured against |
 | Line row | `.lines-num [rel="diff-<sha1 of path>R<line>"]` (`L` for a removed line); its closest `tr`. The cell is `td.lines-num-new` / `td.lines-num-old` with `data-line-num` |
+| Row lines, hunk rows | `rowLines(tr)` reads every `.lines-num [rel]` span as `diff-<sha1>(L\|R)<n>`; an added row's old-number span and a removed row's new-number span have an empty `rel` and give no line. `hunkRow(tr)` is `tr.tag-code` (`data-line-type="tag"`): the `@@` header row (`td.lines-code.blob-hunk` holding `@ -a,b +c,d @@`). The expand-context row is assumed to share the class: the `@@` rows were observed 2026-10-09 in the files pages of local PRs, which had no expand rows |
 | Tree host | `#diff-file-tree > .diff-file-tree-items`: the Vue-rendered tree inside the sticky 380px column `#diff-file-tree`. The list is mounted before it in that column and the tree is hidden with a class |
 | Tree rows | `.item-file` is a file row, matched to its diff by the `a[href*="#diff-"]` it is or holds. Directory rows are left showing |
 | Diagram host | pane `#diff-file-tree`, content `#diff-content-container`, both children of the flex row `#diff-container`; the panel goes right after the pane |

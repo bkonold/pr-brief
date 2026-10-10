@@ -3,15 +3,19 @@
 `section` draws one section (Contract or Data) of the brief: a closed `<details>` whose summary holds the section's name
 and the count at each impact level, and whose body is one table with a row per line of the whole PR. The markup is HTML
 and GitHub-flavoured markdown tables, so it survives both GitHub and the extension's brief pane; GitHub drops the
-`class` attributes, which leaves the top level bold and the others plain.
+`class` attributes, which leaves the top level bold and the others plain. The section's name is an `<h3>` inside the
+summary, the same heading size as the brief's other sections.
+
+`chunks_section` draws the Layers section: one `<details>` per layer, in review order, with a link to each of its hunks.
 """
 import html
 import re
-from typing import Callable
+from typing import Any, Callable
 
 from pathlib import PurePosixPath
 
 from contract_lines import Line, Source, plural, rank_of
+from hunks import Hunk
 
 CONTRACT_COLUMNS: tuple[str, ...] = ("Impact", "Side", "Change", "On", "↗")
 DATA_COLUMNS: tuple[str, ...] = ("Impact", "Change", "Table", "↗")
@@ -103,21 +107,59 @@ def table(kind: str, levels: tuple[str, ...], lines: list[Line], link_of: Callab
 
 
 def files_list(heading: str, files: list[tuple[str, str]]) -> str:
-    """`**Contract files**` and a link to each file, `(path, url)`, labelled with its name, or its whole path when two
-    files share a name; empty for no file."""
+    """`**Contract files**`, a blank line, then one `- [name](url)` item per file, `(path, url)`, in the order given; the label
+    is the file's name, or its whole path when two files share a name. Empty for no file."""
     names: list[str] = [PurePosixPath(path).name for path, _ in files]
-    links: list[str] = [f"[{path if names.count(name) > 1 else name}]({url})" for (path, url), name in zip(files, names)]
-    return f"**{heading}** " + " · ".join(links) if files else ""
+    items: list[str] = [f"- [{path if names.count(name) > 1 else name}]({url})" for (path, url), name in zip(files, names)]
+    return f"**{heading}**\n\n" + "\n".join(items) if files else ""
 
 
 def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line], link_of: Callable[[Line], str],
             source_link_of: Callable[[Source], str] | None = None, files: list[tuple[str, str]] | None = None) -> str:
-    """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` whose summary holds `heading`, the glance
-    chips and the number of lines in muted text, one table of every line in it, sorted by `sort_key` (lines of equal
-    key keep their order), and under it the section's files as links (`files` holds `(path, url)`)."""
+    """The section's markdown (`kind` is `contract` or `data`): a closed `<details>` whose two-line summary holds `heading`
+    alone on the first line and, after a `<br>`, the glance chips and the number of lines in muted text, so a collapsed
+    section shows both; inside it, one table of every line, sorted by `sort_key` (lines of equal key keep their order), and
+    under it the section's files as a bulleted list of links (`files` holds `(path, url)`)."""
     ordered: list[Line] = sorted(lines, key=lambda line: sort_key(kind, line, levels))
     listed: str = files_list(f"{heading} files", files or [])
-    return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong> {glance(lines, levels)} '
+    return (f'<details class="section">\n<summary><h3>{html.escape(heading)}</h3><br>\n{glance(lines, levels)} '
             f'<span class="muted">{plural(len(lines), "change")}</span></summary>\n\n'
             f'<div class="table-wrap">\n\n{table(kind, levels, ordered, link_of, source_link_of)}\n\n</div>\n\n'
             f'{listed + chr(10) * 2 if listed else ""}</details>')
+
+
+# ---------------------------------------------------------------- chunks
+
+def hunk_target(hunk: Hunk) -> tuple[str, int, int]:
+    """The side, first line and last line a hunk is shown at: its new lines, or its old lines for a hunk of a deleted file."""
+    if hunk.change == "deleted":
+        return "L", hunk.old_start, hunk.old_start + max(hunk.old_count, 1) - 1
+    return "R", hunk.new_start, hunk.new_start + max(hunk.new_count, 1) - 1
+
+
+def chunk_summary(chunk: dict[str, Any]) -> str:
+    """A layer's `<summary>`: its number and title in bold, its risk and, when it has one, the reason in italics."""
+    reason: str = f" · <i>{html.escape(chunk['risk_reason'], quote=False)}</i>" if chunk["risk_reason"] else ""
+    return f"<summary><b>{chunk['i']}. {html.escape(chunk['title'], quote=False)}</b> · {chunk['risk']}{reason}</summary>"
+
+
+def chunks_section(chunks: list[dict[str, Any]], hunks: dict[str, Hunk], link_of: Callable[[Hunk], str],
+                   unplaced: list[tuple[str, str]] | None = None) -> str:
+    """The `### Layers` section: a line with the number of layers, then one closed `<details>` per layer, in order. A layer's
+    summary holds its number, title, risk and risk reason; inside it are its summary sentence and one bullet per hunk, a link
+    to the hunk's lines (`path:first–last`) and its id. `hunks` maps ids to hunks, and `link_of` gives the URL of a hunk's first
+    line. `unplaced` is `(path, url)` for each file of the PR with no hunk, listed after the layers. Empty for no layer."""
+    if not chunks:
+        return ""
+    blocks: list[str] = []
+    for chunk in chunks:
+        bullets: list[str] = []
+        for name in chunk["hunks"]:
+            _, first, last = hunk_target(hunks[name])
+            bullets.append(f"- [`{hunks[name].path}:{first}–{last}`]({link_of(hunks[name])}) ({name})")
+        sentence: str = f"{html.escape(chunk['summary'], quote=False)}\n\n" if chunk["summary"] else ""
+        blocks.append(f"<details>\n{chunk_summary(chunk)}\n\n{sentence}" + "\n".join(bullets) + "\n\n</details>")
+    out: str = f"### Layers\n\n{plural(len(chunks), 'layer')}, in review order.\n\n" + "\n\n".join(blocks)
+    if unplaced:
+        out += "\n\nAlso in this PR, with no hunks to assign:\n\n" + "\n".join(f"- [{path}]({url})" for path, url in unplaced)
+    return out

@@ -8,7 +8,7 @@ usage: post.py <run dir> [--repo owner/name] [--pr N] [--dry-run]
 --repo and --pr default to the run's own. --dry-run prints the comment and posts nothing; without it the program calls
 `gh api`, which reads GH_TOKEN from the environment.
 
-The comment is one collapsed "PR Brief" details element, whose summary line names the variant and the head commit. It holds the
+The comment is one collapsed "PR Brief · AI-generated" details element, whose summary line names the variant and the head commit. It holds the
 brief's markdown with the diagram as a ```mermaid fence, which GitHub draws itself, a walkthrough whose stops link to their
 lines in the diff, any notes and a collapsed "Brief data" block; a hidden `<!-- pr-brief:v1 -->` marker follows it. The block is a code fence holding the base64 of the gzip of review.json plus the run's `diagram.svg` and
 `body.html` (as the keys `diagram_svg` and `body_html`, null when the run has no such file); the browser extension reads
@@ -93,17 +93,6 @@ def data_block(encoded: str) -> str:
     return f"<details><summary>{DATA_SUMMARY}</summary>\n\n```\n{encoded}\n```\n\n</details>"
 
 
-def unpack(comment: str) -> dict[str, Any] | None:
-    """The payload (review.json plus `diagram_svg` and `body_html`) that a comment holds; None when it holds none. It is
-    read from the "Brief data" block, or from the base64 inside the marker comment where a comment has its payload there."""
-    block: re.Match[str] | None = DATA_BLOCK.search(comment)
-    encoded: str = "".join(block["data"].split()) if block else ""
-    if not encoded:
-        start: int = comment.find(MARKER)
-        encoded = comment[start + len(MARKER):].split("-->", 1)[0].strip() if start >= 0 else ""
-    return json.loads(gzip.decompress(base64.b64decode(encoded))) if encoded else None
-
-
 def run_text(run_dir: Path, name: str) -> str | None:
     """The text of a file of the run; None when it has none."""
     file: Path = run_dir / name
@@ -111,11 +100,11 @@ def run_text(run_dir: Path, name: str) -> str | None:
 
 
 def brief_markdown(body: str) -> str:
-    """The run's body.md without its title (the PR has one) and its tool marker, and without the rule that closes it."""
+    """The run's body.md without its title (the PR has one) and without the rule that closes it."""
     lines: list[str] = body.strip().split("\n")
     if lines and lines[0].startswith("# "):
         lines = lines[1:]
-    kept: str = "\n".join(line for line in lines if line.strip() != "<!-- pr-agent-generated -->").strip()
+    kept: str = "\n".join(lines).strip()
     return kept.removesuffix("___").strip()
 
 
@@ -131,7 +120,7 @@ def build_comment(run_dir: Path, repo: str | None = None, pr: int | str | None =
     pr = pr or review["pr"]
     brief: str = brief_markdown((run_dir / "body.md").read_text())
     stops: list[dict[str, Any]] = review["walkthrough"]
-    summary: str = f"<details>\n<summary><b>PR Brief</b> · {review['variant']} · {review['head_sha'][:7]}</summary>"
+    summary: str = f"<details>\n<summary><b>PR Brief · AI-generated</b> · {review['variant']} · {review['head_sha'][:7]}</summary>"
 
     def assemble(shown: int, notes: list[str], data: str, brief_text: str = brief) -> str:
         parts: list[str] = [summary, brief_text, walkthrough_markdown(stops, repo, pr, shown).strip(), *notes, data, "</details>", f"{MARKER} -->"]

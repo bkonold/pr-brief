@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from contract_lines import ADDITIVE, CALLERS, CONSUMERS, CONTRACT_LEVELS, DEPRECATED, Line, Member  # noqa: E402
 from data_lines import DATA_LEVELS, DESTRUCTIVE, REWRITES  # noqa: E402
-from layout import glance, middle, pill, section  # noqa: E402
+from layout import files_list, glance, middle, pill, section  # noqa: E402
 
 
 def line(text: str, impact: str | None, *members: Member, loc: tuple[str, int] | None = ("R", 3), path: str = "api/openapi.json",
@@ -58,23 +58,38 @@ class Drawing(unittest.TestCase):
     def test_a_section_is_one_closed_details_with_its_name_and_chips_in_the_summary(self) -> None:
         text = self.draw([line("a", CALLERS), line("b", ADDITIVE), line("c", ADDITIVE)])
         self.assertEqual(text.count("<details"), 1)
-        self.assertTrue(text.startswith('<details class="section">\n<summary><strong>API</strong> <span class="pill p0">'))
+        self.assertTrue(text.startswith('<details class="section">\n<summary><h3>API</h3><br>\n<span class="pill p0">'))
         self.assertNotIn("open", text.split("\n")[0])
-        summary = re.search(r"<summary>(.*?)</summary>", text).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API callers must change additive 3 changes")
+        summary = re.search(r"(?s)<summary>(.*?)</summary>", text).group(1)
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API\ncallers must change additive 3 changes")
         self.assertEqual(pills(summary), ["callers must change", "additive"])
         self.assertTrue(summary.endswith(' <span class="muted">3 changes</span>'))
         self.assertTrue(text.endswith("</div>\n\n</details>"))
 
+    def test_the_summary_is_the_heading_alone_then_a_break_and_the_chips_and_count(self) -> None:
+        text = self.draw([line("a", CALLERS), line("b", ADDITIVE)])
+        first, second = re.search(r"(?s)<summary>(.*?)</summary>", text).group(1).split("\n")
+        self.assertEqual(first, "<h3>API</h3><br>")
+        self.assertEqual(pills(second), ["callers must change", "additive"])
+        self.assertTrue(second.endswith('<span class="muted">2 changes</span>'))
+
+    def test_the_files_are_one_link_item_per_line_under_the_bold_label(self) -> None:
+        text = section("contract", "API", CONTRACT_LEVELS, self.lines(1), lambda l: "https://example.test",
+                       files=[("a/One.java", "https://x/1"), ("b/Two.ts", "https://x/2")])
+        self.assertIn("\n\n**API files**\n\n- [One.java](https://x/1)\n- [Two.ts](https://x/2)\n\n</details>", text)
+        self.assertEqual(files_list("Data files", [("a/Same.java", "u1"), ("b/Same.java", "u2")]),
+                         "**Data files**\n\n- [a/Same.java](u1)\n- [b/Same.java](u2)")
+        self.assertEqual(files_list("Data files", []), "")
+
     def test_the_total_is_singular_for_one_line_and_is_not_a_chip(self) -> None:
         text = self.draw(self.lines(1))
-        summary = re.search(r"<summary>(.*?)</summary>", text).group(1)
+        summary = re.search(r"(?s)<summary>(.*?)</summary>", text).group(1)
         self.assertTrue(summary.endswith(' <span class="muted">1 change</span>'))
         self.assertEqual(pills(summary), ["additive"])
 
     def test_a_data_section_is_headed_data(self) -> None:
         text = self.draw([line("x", DESTRUCTIVE, change="c", on="`t`")], kind="data", levels=DATA_LEVELS)
-        self.assertIn("<summary><strong>Data</strong> ", text)
+        self.assertIn("<summary><h3>Data</h3><br>\n", text)
 
     def test_the_section_has_no_chunk_wording_and_no_per_group_markup(self) -> None:
         text = self.draw(self.lines(3))

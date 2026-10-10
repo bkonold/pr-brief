@@ -4,12 +4,14 @@
 
 One TOML per variant in `variants/` (see `PR_BRIEF_HOME` in the [README](../README.md#run-it-locally) for adding your own). Keys: `description`, `context` (see
 [Context packs](context.md)), `extra_instructions`, `schema_additions` and `example_additions` (inserted after the `changes_diagram`
-field in the prompt's schema and example) and `[context_options]`. The renderer has one set of settings and a variant
+field in the prompt's schema and example), `hunk_ids` (default false: the prompt's diff carries a `[hNN]` tag at the end of
+each `@@` line, and the repository context lists the hunks that belong together; the `brief` variant sets it), `diagram` (default true: false leaves the
+`changes_diagram` field out of the prompt) and `[context_options]`. The renderer has one set of settings and a variant
 cannot change them. [prompt.md](prompt.md) shows how the variant's rules and fields become the prompt.
 
 | Variant | What it is |
 | --- | --- |
-| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR |
+| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR; and the diff's hunks, each assigned by its `[hNN]` tag to one of an ordered stack of 2 to 7 layers with a title, a summary, the earlier layers it depends on and a risk |
 
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.
@@ -26,7 +28,10 @@ re-run it instead.
   reaches but does not edit, and a line under the diagram says "Dashed boxes are unchanged context" when there is one.
   Each box that stops land on starts with their numbers as a badge (`2 · 5`), and a box with no stop has none. Diagrams
   in `body.html` and `diagram.svg` share one minimal-outline theme (`DIAGRAM_STYLE` in `render.py`): rounded outlines,
-  open-chevron arrowheads, hairline subgraphs. `body.md` carries the badge as the label's leading numbers.
+  open-chevron arrowheads, hairline subgraphs. `body.md` carries the badge as the label's leading numbers. The text,
+  outline and halo colours follow the host's light or dark theme through Primer's `--fgColor-*`, `--bgColor-*` and
+  `--borderColor-*` variables (Forgejo's are mapped to them by the extension) and, where the page defines none, the
+  system's `prefers-color-scheme`; the purple accents are the same in both.
 - **Walkthrough.** The answer's `walkthrough` is 3 to 10 stops, `{node, file, title, why, line_text?}`, in the order a
   reader should follow the change; stops may return to a file or a box already visited. The renderer finds a stop's line
   in the diff the model was shown (embedded in `prompt.txt`), comparing it with every added, removed and context line of
@@ -37,10 +42,28 @@ re-run it instead.
   A stop's `node` must be a box of the diagram that covers files; when it is missing or is not, the stop takes the first
   box, in diagram order, whose files include the stop's file, with a note, and when no box holds the file `node` is null
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
+- **Layers.** The JSON key and the code call them `chunks`. A layer is a set of hunks that tells one story a reviewer can judge on its own, and the layers are an ordered
+  stack, each layer sitting on the ones below it. In the `brief` variant, which sets `hunk_ids`, `hunks.py` numbers every hunk of the diff `h01`, `h02`, ... in diff order and tags its
+  `@@` line; the answer's `chunks` is `[{title, summary, hunks, depends_on, risk, risk_reason}]` where `hunks` holds only
+  those ids, so the model never copies code. The prompt's repository context also lists the hunks that hold one contract or
+  data line (the spec line and the code that declares it, the migration statement and its entity) as hunks that belong
+  together. The renderer drops an unknown hunk id and one an earlier layer already has (the first assignment wins), drops a
+  layer left with no hunk and renumbers the rest, resets a `risk` that is not low, medium or high to low, drops a
+  `depends_on` entry that is not a whole number or does not name an earlier layer (and renumbers the rest after drops), and
+  gathers the hunks no layer has into a last layer, `Unassigned`; each fix, a title over 8 words, a missing summary and a
+  count outside 1 to 7 leave a note in `error.txt`. The `### Layers` section of `body.md` follows the Data section: a
+  `<details>` per layer whose summary has its number, title, risk and risk reason, then its summary sentence and a link to
+  each hunk (`path:first–last`, the old lines for a deleted file) with its id; files with no hunk (a pure rename, a binary
+  file) are listed after the layers. `review.json` gets `chunks: [{i, title, summary, risk, risk_reason, depends_on, hunks:
+  [{id, path, change, old: [start, count], new: [start, count], added, removed}]}]` only when the answer has a `chunks`
+  key, `added` and `removed` being how many of the hunk's lines start with `+` and with `-` (a `\ No newline at end of
+  file` marker is neither); the schema is still 4, the two counts being additive. Layers are additive: a missing diagram
+  or walkthrough is noted, and no stop left is an error, layers or not. `scripts/eval_chunks.py` scores a run against `eval/<pr>.toml`.
 - **Contract and Data** are two sections after the description, built
-  without a model call. Each is one closed `<details>` (class `section`) whose summary holds the section's name in bold,
-  one chip for each level present, worst first (`callers must change` `additive`; no counts), and the number of table
-  rows as muted text (`3 changes`, `1 change`), so they show while it is collapsed. Opened, it holds one GitHub markdown
+  without a model call. Each is one closed `<details>` (class `section`) whose two-line summary holds the section's name
+  in bold on the first line and, after a `<br>`, one chip for each level present, worst first (`callers must change`
+  `additive`; no counts), and the number of table rows as muted text (`3 changes`, `1 change`), so they show while it is
+  collapsed. Opened, it holds one GitHub markdown
   table with a row per line of the whole PR. Contract rows are sorted
   by worst level, then request before response before both (then no side), then On alphabetically; Data rows by worst
   level, then table, then the document's order; rows with equal keys keep the document's order. With no lines a section
@@ -53,7 +76,7 @@ re-run it instead.
   `added_required` (the newly required properties that the base schema did not declare, including in an inline `allOf`
   member; they read `added (required)`, and the others `now required`).
 
-  Each section ends with its file set as a short list of links to the files' diffs, `Contract files` and `Data files`
+  Each section ends with its file set as a bold label over a bulleted list of links, one file per line, to the files' diffs, `Contract files` and `Data files`
   (see Sources and file sets below); a set with no files draws no list.
 
   The Contract table has the columns Impact, Side, Change, On and ↗. The Data table has Impact, Change, Table and ↗.
@@ -105,40 +128,49 @@ re-run it instead.
 
   The same statement on one table is one line with its count; one column added or dropped on 3 or more tables is one line.
 - **Sources and file sets.** The spec is generated from the Java code, so a contract line can say where the code
-  declares what changed (`sources.py`). springdoc names a schema after the simple name of its record or class and an
-  operation's `operationId` after the controller method (an overload's `_1` suffix is dropped). Among the PR's changed
-  files, and never a test file, the renderer finds, in the diff at the head commit:
+  declares what changed (`sources.py`). springdoc names a schema after the simple name of its record, class or enum and
+  an operation's `operationId` after the controller method (an overload's `_1` suffix is dropped). Among the PR's
+  changed files, and never a test file, the renderer finds, in the diff at the head commit:
 
   | Line | Source |
   | --- | --- |
-  | property added, removed, changed or deprecated | the line declaring it as a record component or field, in the changed model file named `<Schema>.java` (or, for a nested record, the only changed model file that declares it) |
-  | schema added or removed | that file's `record <Schema>` or `class <Schema>` line |
-  | enum value added or removed | the line of the constant, in the schema's file, else a file named for the property that holds the enum (`Status` for `status`), else the only model file that declares it |
-  | operation added, removed, changed or moved, or a parameter change | the controller method whose name is the operationId, or the `@...Mapping` annotation above it when the diff shows that |
+  | property added, removed, changed or deprecated | the line declaring it as a record component or field, in the changed Java file named `<Schema>.java` (or, for a nested record, the only changed Java file that declares it) |
+  | schema added or removed | that file's `record <Schema>`, `class <Schema>` or `enum <Schema>` line |
+  | enum value added or removed | the line of the constant, in the schema's file, else a file named for the property that holds the enum (`Status` for `status`), else the only changed Java file that declares it |
+  | operation added, removed, changed or moved, or a parameter change | the method whose name is the operationId, in a changed Java file that is a controller, or the `@...Mapping` annotation above it when the diff shows that |
   | data line with a table | the changed Java file whose `@Table(name = "<table>")` names it, at that annotation; when the diff does not show the annotation, the file at the head commit is read from the mirror |
 
-  A model file is a path containing one of `model_dirs` (default `models/frontend/`) and a controller one containing
-  one of `controller_dirs` (default `controllers/`); both are keys of `local.example.toml`. A line the PR's files do not
-  settle has no source (a removed endpoint whose controller the PR does not touch, for one). A line that stands for
-  several schemas or operations has the source of its first match in `source`, and every match in the file set.
+  A controller is a Java file with `@RestController` or `@Controller`, in the file at the head commit or else in its
+  diff. No directory settings are involved: every changed non-test Java file is searched.
 
-  `file_sets` is `{"contract": [paths], "data": [paths]}`, each sorted without repeats and empty when the PR has none.
-  Contract is the spec when the PR changes it, the source of every contract line and every changed file under a
-  `model_dirs` path; data is the migration files and the source of every data line.
+  The generated TypeScript client under `sdk_dir` declares the same things, so a contract line also has a source in each
+  changed non-test `.ts` file there that declares it, found in the diff first and then in the file at the head commit:
+
+  | Line | Source |
+  | --- | --- |
+  | schema | the `export interface`, `export type` or `export const` line of its name |
+  | property | the `name:` row of that interface or type, between its `export` line and the next declaration |
+  | enum value | the `VALUE: "VALUE"` row of the `export const` object of the enum |
+  | operation | the `operationId: (` member of the client's operations |
+
+  A line the PR's files do not settle has no source (a removed endpoint whose controller the PR does not touch, for one).
+  A line that stands for several schemas or operations has the source of its first match in `source`, and every source,
+  Java first and then the client, in `sources`; the table row links the first one.
+
+  `file_sets` is `{"contract": [paths], "data": [paths], "tests": [paths]}`, each sorted without repeats and empty when
+  the PR has none. Contract is the spec when the PR changes it and the source of every contract line, so a changed file that no line
+  traces to is not in it; data is the migration files and the source of every data line; tests is the PR's test files,
+  by the repo's `test_dirs` and the fixed conventions (`/src/test/`, `.test.`, `Test.java`), for the extension's Tests switch.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,
   `files` the paths it covers and `stops` the numbers of the stops that land on it), `walkthrough: [{i, title, why, path,
-  side, line, node}]`, the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
-  line, source}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell;
-  `impact` is null for a line with no impact, `side` and `line` are null when the diff does not settle the line, and
-  `source` is `{path, side, line}` in the PR's own code or null (`side` is `L` for a removed line); and `file_sets`.
-  A run made before `source` and `file_sets` existed has neither.
+  side, line, node}]`, `chunks` (see Layers, only when the answer has them) and `file_sets`.
 
 ## Run folder
 
 Each run writes `runs/<key>/<variant>/`, where `<key>` is the PR number on GitHub and `fj-<number>` on
 Forgejo, so the two hosts' numbers cannot collide: `prompt.txt`, `answer.yaml` (raw model output), `pr.json` (the PR
-data the run used), `run.json` (including `diagram_edges`, the labelled and total arrows of the diagram),
+data the run used), `run.json`,
 `body.md`, `body.html`, `diagram.svg`, `review.json` (the extension reads it, from the PR comment's "Brief data" block or from the local server; `post.py` packs `review.json`, `diagram.svg` and `body.html` into that block),
 `context.md` and `contract.json` (when the variant has a context pack with a contract section) and `error.txt` on failure or when the renderer
 dropped something. Open any `.html` straight from disk. `runs/<key>/status.json` (beside the variant folders) says how far the latest run has got. A rerun of the same PR and variant overwrites its

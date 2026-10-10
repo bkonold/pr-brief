@@ -28,14 +28,12 @@ KEYS: frozenset[str] = frozenset({
     "repo", "source_checkout", "github_url", "mirror_name",
     "openapi_path", "migration_dirs", "migration_globs",
     "sdk_dir", "sdk_specifier", "workspace_alias", "workspace_root",
-    "test_dirs", "callers_exclude_globs", "model_dirs", "controller_dirs",
+    "test_dirs", "callers_exclude_globs",
     "host", "forgejo_url", "forgejo_token_file",
     "default_variant", "serve_repos",
     "chrome", "model",
     "reach",
 })
-# Tables that earlier versions read; a file that still has one is accepted and the table is not used.
-RETIRED_KEYS: frozenset[str] = frozenset({"archetypes"})
 
 
 def use_config_flag(argv: Sequence[str]) -> None:
@@ -65,7 +63,7 @@ def load_local() -> dict[str, Any]:
             raise SystemExit(f"the config file {path} does not exist")
         return {}
     settings: dict[str, Any] = tomllib.loads(path.read_text())
-    unknown: list[str] = sorted(set(settings) - KEYS - RETIRED_KEYS)
+    unknown: list[str] = sorted(set(settings) - KEYS)
     if unknown:
         raise SystemExit(f"{path.name} has unknown keys: {', '.join(unknown)}")
     return settings

@@ -341,7 +341,7 @@ test("each adapter names itself and its tree for the interface", () => {
   assert.deepEqual([githubPage.name, githubPage.treeLabel], ["GitHub", "Files"]);
   assert.deepEqual([forgejoPage.name, forgejoPage.treeLabel], ["Forgejo", "Files"]);
   for (const page of [githubPage, forgejoPage]) {
-    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
+    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "firstInPage", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
       assert.equal(typeof page[member], "function", `${page.name}.${member}`);
     }
   }
@@ -527,6 +527,7 @@ function fakeDom() {
     }
     append(...nodes) {
       this.children.push(...nodes);
+      this.textContent = this.children.map((child) => (typeof child === "string" ? child : child.textContent)).join("");
     }
     setAttribute(name, value) {
       this.attributes[name] = value;
@@ -555,9 +556,9 @@ test("a stop callout names the stop, its box and title, why to stop here, and it
     assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Check the owner filter survives.");
     const previous = byClass(card, "prf-callout-prev")[0];
     assert.deepEqual([previous.textContent, previous.title], ["\u2191 Previous", "List is built"]);
-    assert.equal(byClass(card, "prf-callout-nav-label")[0].textContent, "Next");
-    assert.deepEqual(byClass(card, "prf-callout-go").map((button) => button.textContent), ["Back to the screen \u2193"]);
-    for (const button of [...byClass(card, "prf-callout-go"), previous]) button.listeners.click();
+    const next = byClass(card, "prf-callout-next")[0];
+    assert.deepEqual([next.tag, next.textContent, next.title], ["button", "Next \u2193", "Back to the screen"]);
+    for (const button of [next, previous]) button.listeners.click();
     assert.deepEqual(gone, [3, 1]);
   } finally {
     delete globalThis.document;
@@ -571,8 +572,11 @@ function navSlots(card) {
     hidden: slot.className.split(" ").includes("prf-callout-empty"),
     ariaHidden: slot.attributes["aria-hidden"] ?? null,
     inert: slot.inert ?? false,
-    buttons: walk(slot).filter((element) => element.tag === "button").map((element) => ({ text: element.textContent, tabindex: element.attributes.tabindex ?? null, disabled: element.disabled ?? false })),
-    caption: byClass(slot, "prf-callout-nav-label")[0]?.textContent ?? null,
+    tag: slot.tag,
+    text: slot.textContent,
+    title: slot.title ?? null,
+    tabindex: slot.attributes.tabindex ?? null,
+    disabled: slot.disabled ?? false,
   }));
 }
 
@@ -583,17 +587,17 @@ test("the callout keeps a Previous slot over a Next slot on the first, a middle 
     const shown = STOPS.map((stop) => navSlots(stopCallout(stop, STOPS, (target) => gone.push(target.i), NODES)));
     for (const [prevSlot, nextSlot] of shown) {
       assert.deepEqual([prevSlot.classes.includes("prf-callout-prev"), nextSlot.classes.includes("prf-callout-next")], [true, true]);
-      assert.equal(nextSlot.caption, "Next");
+      assert.deepEqual([prevSlot.tag, nextSlot.tag, nextSlot.text], ["button", "button", "Next \u2193"]);
     }
     const [first, middle, last] = shown;
     assert.deepEqual([first[0].hidden, first[1].hidden], [true, false]);
     assert.deepEqual([middle[0].hidden, middle[1].hidden], [false, false]);
     assert.deepEqual([last[0].hidden, last[1].hidden], [false, true]);
-    assert.deepEqual(first[0], { classes: ["prf-callout-prev", "prf-callout-empty"], hidden: true, ariaHidden: "true", inert: true, buttons: [{ text: "\u2191 Previous", tabindex: "-1", disabled: true }], caption: null });
-    assert.deepEqual([last[1].ariaHidden, last[1].inert, last[1].buttons.map((button) => [button.tabindex, button.disabled])], ["true", true, [["-1", true]]]);
-    assert.deepEqual([middle[0].ariaHidden, middle[0].inert, middle[0].buttons[0].tabindex, middle[0].buttons[0].disabled], [null, false, null, false]);
-    assert.deepEqual([middle[1].ariaHidden, middle[1].buttons.map((button) => [button.text, button.tabindex])], [null, [["Back to the screen \u2193", null]]]);
-    assert.deepEqual([first[1].buttons[0].text, last[0].buttons[0].text], [`${STOPS[1].title} \u2193`, "\u2191 Previous"]);
+    assert.deepEqual(first[0], { classes: ["prf-callout-prev", "prf-callout-empty"], hidden: true, ariaHidden: "true", inert: true, tag: "button", text: "\u2191 Previous", title: null, tabindex: "-1", disabled: true });
+    assert.deepEqual([last[1].ariaHidden, last[1].inert, last[1].tabindex, last[1].disabled, last[1].title], ["true", true, "-1", true, null]);
+    assert.deepEqual([middle[0].ariaHidden, middle[0].inert, middle[0].tabindex, middle[0].disabled], [null, false, null, false]);
+    assert.deepEqual([middle[1].ariaHidden, middle[1].text, middle[1].title, middle[1].tabindex], [null, "Next \u2193", "Back to the screen", null]);
+    assert.deepEqual([first[1].text, first[1].title, last[0].text, last[0].title], ["Next \u2193", STOPS[1].title, "\u2191 Previous", STOPS[1].title]);
   } finally {
     delete globalThis.document;
   }
@@ -621,7 +625,21 @@ test("a single stop has two hidden slots and keeps the column", () => {
     const only = [STOPS[0]];
     const [prevSlot, nextSlot] = navSlots(stopCallout(only[0], only, () => {}, NODES));
     assert.deepEqual([prevSlot.hidden, nextSlot.hidden, prevSlot.ariaHidden, nextSlot.ariaHidden], [true, true, "true", "true"]);
-    assert.deepEqual([prevSlot.buttons[0].text, nextSlot.caption], ["\u2191 Previous", "Next"]);
+    assert.deepEqual([prevSlot.text, nextSlot.text], ["\u2191 Previous", "Next \u2193"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("backtick spans in why to stop here render as code", () => {
+  globalThis.document = fakeDom();
+  try {
+    const card = stopCallout({ ...STOPS[0], why: "`validateRequest` calls this; check slot rules." }, STOPS, () => {}, NODES);
+    const reason = byClass(card, "prf-callout-reason")[0];
+    const code = reason.children.filter((child) => child.tag === "code");
+    assert.deepEqual(code.map((element) => element.textContent), ["validateRequest"]);
+    assert.equal(reason.textContent.includes("`"), false);
+    assert.equal(walk(reason).filter((element) => element.tag === "code").length, 1);
   } finally {
     delete globalThis.document;
   }
@@ -670,6 +688,63 @@ test("a walkthrough row shows the stop's number and its title, and marks the cur
   }
 });
 
+const STOPS_TIP =
+  "A few lines picked from the diff, in the order to read them. A stop opens its lines and lights its box in the diagram. Stops don't cover every change; Layers and Files do.";
+const LAYERS_TIP =
+  "Every changed hunk, grouped into layers that each make sense alone, each building on the ones before. Pick one to narrow the diff to its lines; mark it judged when done. Risk is the model's judgment.";
+
+function tipOf(lede) {
+  const [button] = byClass(lede, "prf-info-button");
+  const [tip] = byClass(lede, "prf-tip");
+  return { button, tip, text: lede.children[0].textContent };
+}
+
+test("the walkthrough list opens with a line saying what the stops are for, with an info tip", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const list = stopList({ stops: WALK_STOPS, selectedStop: null }, {});
+    const lede = list.children[0];
+    assert.equal(lede.className, "prf-lede");
+    assert.equal(lede.title, undefined);
+    const { button, tip, text } = tipOf(lede);
+    assert.equal(text, `${WALK_STOPS.length} stops, in reading order`);
+    assert.deepEqual([tip.textContent, tip.attributes.role], [STOPS_TIP, "tooltip"]);
+    assert.match(tip.id, /^prf-tip-\d+$/);
+    assert.deepEqual(
+      [button.tag, button.type, button.attributes["aria-label"], button.attributes["aria-describedby"]],
+      ["button", "button", "About this tab", tip.id],
+    );
+    assert.deepEqual(button.children.map((child) => [child.tag, child.className, child.attributes.width]), [["svg", "prf-info-icon", "16"]]);
+    assert.equal(tipOf(stopList({ stops: WALK_STOPS.slice(0, 1), selectedStop: null }, {}).children[0]).text, "1 stop, in reading order");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("each info tip has its own id", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const first = tipOf(stopList({ stops: WALK_STOPS, selectedStop: null }, {}).children[0]);
+    const second = tipOf(stopList({ stops: WALK_STOPS, selectedStop: null }, {}).children[0]);
+    assert.notEqual(first.tip.id, second.tip.id);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a run with no stops has no lede line", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const list = stopList({ stops: [], selectedStop: null }, {});
+    assert.deepEqual(byClass(list, "prf-lede"), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test("a run with no stops says so instead of listing rows", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
@@ -708,7 +783,7 @@ function fakeTable(anchors) {
   const lines = new Map(anchors.map((anchor) => [anchor, new Row("line")]));
   rows.push(...lines.values());
   const classes = (selector) => rows.filter((row) => row.className.split(" ").includes(selector.slice(1)));
-  globalThis.document = { createElement: () => new Row(), querySelectorAll: classes };
+  globalThis.document = { createElement: () => new Row(), querySelectorAll: classes, getElementById: () => null };
   const addLine = (anchor) => {
     lines.set(anchor, new Row("line"));
     rows.push(lines.get(anchor));
@@ -812,6 +887,10 @@ function fakeEntries(ids) {
       return { top: 0, height: 0, bottom: 0, left: 0, right: 0 };
     }
     addEventListener() {}
+    compareDocumentPosition(other) {
+      const order = root.all();
+      return order.indexOf(other) > order.indexOf(this) ? 4 : 2;
+    }
     querySelector(selector) {
       return this.all().find((node) => node !== this && node.classes?.has(selector.slice(1))) ?? null;
     }
@@ -916,16 +995,16 @@ test("a file callout and a line callout can be shown together without disturbing
   }
 });
 
-test("jumpToFile marks the file callout as the target and pulses it, and a jump without the pulse only marks it", async () => {
+test("jumpToFile marks the file callout as the target and pulses nothing", async () => {
   const dom = fakeEntries(["a", "b"]);
   try {
     const page = filePage();
     page.showCallouts([fileEntry(1, "a"), fileEntry(2, "b")]);
     const [first, second] = dom.callouts();
     assert.equal(await page.jumpToFile("a"), true);
-    assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [true, true]);
+    assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [true, false]);
     assert.deepEqual([second.classes.has("prf-line-target"), second.classes.has("prf-pulse")], [false, false]);
-    assert.equal(await page.jumpToFile("b", { pulse: false }), true);
+    assert.equal(await page.jumpToFile("b"), true);
     assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [false, false]);
     assert.deepEqual([second.classes.has("prf-line-target"), second.classes.has("prf-pulse")], [true, false]);
     page.clearLineTarget();
@@ -1028,12 +1107,36 @@ test("restoreLineTarget gives a re-created file callout its target mark back", a
     const page = filePage();
     const entries = [fileEntry(1, "a")];
     page.showCallouts(entries);
-    await page.jumpToFile("a", { pulse: false });
+    await page.jumpToFile("a");
     dom.callouts()[0].remove();
     page.showCallouts(entries);
     assert.equal(dom.callouts()[0].classes.has("prf-line-target"), false);
     page.restoreLineTarget();
     assert.equal(dom.callouts()[0].classes.has("prf-line-target"), true);
+  } finally {
+    dom.done();
+  }
+});
+
+test("firstInPage picks the file whose entry comes first in the document, whatever the order asked", async () => {
+  const dom = fakeEntries(["a", "b", "c"]);
+  try {
+    const page = filePage();
+    assert.equal(await page.firstInPage(["c", "b"]), "b");
+    assert.equal(await page.firstInPage(["b", "c", "a"]), "a");
+    assert.equal(await page.firstInPage(["c"]), "c");
+  } finally {
+    dom.done();
+  }
+});
+
+test("firstInPage skips a file whose entry is not in the page, falls back to the first asked when none is, and is null for no files", async () => {
+  const dom = fakeEntries(["a", "b"]);
+  try {
+    const page = filePage();
+    assert.equal(await page.firstInPage(["late", "b"]), "b");
+    assert.equal(await page.firstInPage(["late", "later"]), "late");
+    assert.equal(await page.firstInPage([]), null);
   } finally {
     dom.done();
   }
@@ -1053,7 +1156,7 @@ test("jumpToFile does nothing for a diff that is not in the page", async () => {
 
 function fakeHeader() {
   const classes = new Set();
-  return { classes, classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } };
+  return { classes, classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name), contains: (name) => classes.has(name) } };
 }
 
 test("focus offers no way to hide a diff, and markBox marks only the active files' headers without touching any diff", async () => {
@@ -1114,35 +1217,6 @@ test("a newer markBox wins over an older one that is still looking for its heade
   }
 });
 
-test("loading the diagram script removes the width an earlier version saved and stores nothing", async () => {
-  const path = require.resolve("../diagram.js");
-  const calls = [];
-  const originalChrome = globalThis.chrome;
-  const originalPrFocus = globalThis.prFocus;
-  const cached = require.cache[path];
-  delete require.cache[path];
-  globalThis.prFocus = { alive: () => true };
-  globalThis.chrome = {
-    storage: {
-      local: {
-        get: async (...args) => (calls.push(["get", ...args]), {}),
-        set: async (...args) => (calls.push(["set", ...args]), undefined),
-        remove: async (...args) => (calls.push(["remove", ...args]), undefined),
-      },
-    },
-  };
-  try {
-    require("../diagram.js");
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(calls, [["remove", "diagramWidth"]]);
-  } finally {
-    delete require.cache[path];
-    if (cached) require.cache[path] = cached;
-    globalThis.chrome = originalChrome;
-    globalThis.prFocus = originalPrFocus;
-  }
-});
-
 const SETS = { contract: ["a.js", "api.json"], data: [] };
 
 test("fileChips counts all changed files and each set that has files, and shows no chip for an empty set", () => {
@@ -1162,97 +1236,74 @@ test("fileChips gives no chips to a run without a non-empty set, and All never c
   assert.equal(fileChips({ file_sets: SETS }, 0)[0].count, 2);
 });
 
-test("fileSetOf is the chosen set with its lines, and nothing for All, an empty set or an unknown name", () => {
+test("fileSetOf is the chosen set with its paths, and nothing for All, an empty set or an unknown name", () => {
   const { fileSetOf } = require("../tree.js");
-  const contract = [{ text: "x" }];
-  const review = { file_sets: { contract: ["a.js"], data: [] }, contract, data: [] };
-  assert.deepEqual(fileSetOf(review, "contract"), { id: "contract", paths: ["a.js"], lines: contract });
+  const review = { file_sets: { contract: ["a.js"], data: [] } };
+  assert.deepEqual(fileSetOf(review, "contract"), { id: "contract", paths: ["a.js"] });
   assert.equal(fileSetOf(review, "all"), null);
   assert.equal(fileSetOf(review, "data"), null);
   assert.equal(fileSetOf(review, "toString"), null);
   assert.equal(fileSetOf({}, "contract"), null);
 });
 
-test("the chips sit under the mode toggle, mark the chosen one and choose a set when clicked", () => {
-  const { bar } = require("../tree.js");
+test("the chips sit on the filter line under the mode toggle, mark the chosen one and choose a set when clicked", () => {
+  const { bar, filters } = require("../tree.js");
   globalThis.document = fakeDom();
   globalThis.prFocus.page = { treeLabel: "Files" };
   try {
     const chips = [{ id: "all", label: "All", count: 9 }, { id: "contract", label: "API", count: 4 }];
     const chosen = [];
-    const element = bar({ mode: "review", chips, fileSet: { id: "contract" } }, { onMode() {}, onFileSet: (id) => chosen.push(id) });
+    const element = filters({ mode: "github", chips, fileSet: { id: "contract" } }, { onFileSet: (id) => chosen.push(id) });
     const buttons = byClass(element, "prf-chip");
     assert.deepEqual(buttons.map((chip) => byClass(chip, "prf-chip-count")[0].textContent), ["9", "4"]);
     assert.deepEqual(buttons.map((chip) => chip.attributes["aria-pressed"]), ["false", "true"]);
-    assert.deepEqual(element.children.map((child) => child.className), ["prf-modes", "prf-chips"]);
+    assert.equal(element.className, "prf-filters");
+    assert.deepEqual(element.children.map((child) => child.className), ["prf-chips"]);
+    assert.deepEqual(bar({ mode: "github", chips }, { onMode() {} }).children.map((child) => child.className), ["prf-modes"]);
     for (const chip of buttons) chip.listeners.click();
     assert.deepEqual(chosen, ["all", "contract"]);
-    assert.deepEqual(byClass(bar({ mode: "review", chips: [] }, {}), "prf-chips"), []);
+    assert.equal(filters({ mode: "github", chips: [] }, {}), null);
   } finally {
     delete globalThis.document;
     delete globalThis.prFocus.page;
   }
 });
 
-test("with a set chosen the list is its stops in walkthrough order, then its files with no stop, which jump to the file", () => {
+test("with a set chosen the list is the lede and only the stops on its files, in walkthrough order", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const fileSet = { id: "contract", paths: ["c.md", "b.js", "api.json"], lines: [] };
-    const picked = [];
-    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet }, { onSelectStop() {}, onSelectFile: (path) => picked.push(path) });
-    const rows = [...byClass(list, "prf-stop"), ...byClass(list, "prf-nostop")];
+    const fileSet = { id: "contract", paths: ["c.md", "b.js", "api.json"] };
+    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet }, { onSelectStop() {} });
+    const rows = byClass(list, "prf-stop");
     assert.deepEqual(
       rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-file")[0].textContent]),
-      [["2", "Query filters", "b.js"], ["3", "Docs", "c.md"], ["–", "no stop", "api.json"]],
+      [["2", "Query filters", "b.js"], ["3", "Docs", "c.md"]],
     );
-    assert.deepEqual(list.children.map((row) => row.className.split(" ")[1]), ["prf-stop", "prf-stop", "prf-nostop"]);
-    for (const row of byClass(list, "prf-nostop")) byClass(row, "prf-head-main")[0].listeners.click();
-    assert.deepEqual(picked, ["api.json"]);
+    assert.deepEqual(list.children.map((row) => row.className.split(" ")[0] === "prf-lede" ? "prf-lede" : row.className.split(" ")[1]), ["prf-lede", "prf-stop", "prf-stop"]);
+    assert.equal(byClass(list, "prf-nostop").length, 0);
   } finally {
     delete globalThis.document;
   }
 });
 
-test("a set with no stop on any of its files lists only no-stop rows, not the banner for a run with no stops", () => {
+test("a set with no stop on any of its files lists only a banner naming the set", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const list = stopList({ stops: [], selectedStop: null, fileSet: { id: "data", paths: ["m.sql"], lines: [] } }, { onSelectFile() {} });
-    assert.equal(byClass(list, "prf-banner").length, 0);
-    assert.equal(byClass(list, "prf-nostop").length, 1);
+    const list = stopList({ stops: WALK_STOPS, selectedStop: null, fileSet: { id: "contract", paths: ["api.json"], lines: [] } }, { onSelectStop() {} });
+    assert.deepEqual(list.children.map((child) => [child.className, child.textContent]), [["prf-banner", "No stops on API files."]]);
   } finally {
     delete globalThis.document;
   }
 });
 
-test("a contract line links to its source and its spec; a data line to its entity and migration, or the migration alone", () => {
-  const { lineLinks } = require("../tree.js");
-  const source = { path: "src/models/Customer.java", side: "R", line: 18 };
-  const contract = { path: "openapi.json", side: "R", line: 40, source };
-  assert.deepEqual(lineLinks("contract", contract), [
-    { label: "Customer.java:18", loc: source },
-    { label: "spec", loc: { path: "openapi.json", side: "R", line: 40 } },
-  ]);
-  assert.deepEqual(lineLinks("contract", { ...contract, source: null }), [{ label: "spec", loc: { path: "openapi.json", side: "R", line: 40 } }]);
-  assert.deepEqual(lineLinks("data", { path: "db/V2__items.sql", side: "R", line: 3, source }).map((link) => link.label), ["Customer.java:18", "migration"]);
-  assert.deepEqual(lineLinks("data", { path: "db/V2__items.sql", side: "R", line: 3, source: null }).map((link) => link.label), ["migration"]);
-  assert.deepEqual(lineLinks("contract", { path: null, source: null }), []);
-});
-
-test("the set's table lists each line with its impact and text, and its links jump to the place", () => {
+test("a run with no stops lists only the banner for a run with no stops", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const source = { path: "Customer.java", side: "R", line: 18 };
-    const lines = [{ impact: "consumers may break", text: "`Customer.nickname` added", path: "openapi.json", side: "R", line: 40, source }];
-    const jumped = [];
-    const list = stopList({ stops: [], fileSet: { id: "contract", paths: ["Customer.java"], lines } }, { onSelectFile() {}, onJump: (loc) => jumped.push(loc) });
-    const [row] = byClass(list, "prf-line");
-    assert.equal(byClass(row, "prf-line-impact")[0].textContent, "consumers may break · ");
-    assert.deepEqual(byClass(row, "prf-line-link").map((link) => link.textContent), ["Customer.java:18", "spec"]);
-    for (const link of byClass(row, "prf-line-link")) link.listeners.click();
-    assert.deepEqual(jumped, [source, { path: "openapi.json", side: "R", line: 40 }]);
+    const list = stopList({ stops: [], selectedStop: null, fileSet: null }, { onSelectStop() {} });
+    assert.deepEqual(list.children.map((child) => [child.className, child.textContent]), [["prf-banner", "This run has no stops to walk through."]]);
   } finally {
     delete globalThis.document;
   }
@@ -1282,35 +1333,1094 @@ function fakeTree(links) {
   return { files, dir, host };
 }
 
-test("filterTree hides the tree's file rows outside the set and a directory left empty, and shows them all for null", async () => {
+function fakeBlocks(ids) {
+  const blocks = ids.map((id) => ({ id, hidden: false, classList: { toggle(name, on) { blocks.find((block) => block.id === id).hidden = on; } } }));
+  globalThis.document = { querySelectorAll: (selector) => (selector === "block" ? blocks : []) };
+  return blocks;
+}
+
+function withBlocks(ids, body) {
+  return async () => {
+    const blocks = fakeBlocks(ids);
+    try {
+      await body(blocks);
+    } finally {
+      delete globalThis.document;
+    }
+  };
+}
+
+test("filter with files hides the tree's file rows outside the set and a directory left empty, and shows them all for null", withBlocks([], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b", "https://host/pull/1/files#diff-c"]);
-  const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
-  await page.filterTree(["a", "c"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
+  await page.filter({ files: ["a", "c"] });
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true, false]);
   assert.equal(tree.dir.hidden, false);
-  await page.filterTree(["b"]);
+  await page.filter({ files: ["b"] });
   assert.deepEqual(tree.files.map((row) => row.hidden), [true, false, true]);
-  await page.filterTree(["zzz"]);
+  await page.filter({ files: ["zzz"] });
   assert.equal(tree.dir.hidden, true);
-  await page.filterTree(null);
+  await page.filter({ files: null });
   assert.deepEqual([...tree.files, tree.dir].map((row) => row.hidden), [false, false, false, false]);
-});
+}));
 
-test("filterTree is applied again to rows the host re-rendered, without asking for the ids again", async () => {
+test("filter with files is applied again to rows the host re-rendered, without asking for the ids again", withBlocks([], async () => {
   const tree = fakeTree(["#diff-a", "#diff-b"]);
   let asked = 0;
-  const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
-  await page.filterTree(["a"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
+  await page.filter({ files: ["a"] });
   for (const row of tree.files) row.hidden = false;
-  await page.filterTree(["a"]);
+  await page.filter({ files: ["a"] });
   assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
   assert.equal(asked, 1);
+}));
+
+test("a tree row with no diff link is left showing, and a page with no tree is left alone", withBlocks([], async () => {
+  const tree = fakeTree([null, "#diff-b"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => `diff-${path}` });
+  await page.filter({ files: ["a"] });
+  assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
+  await filePage({ blockSelector: "block", treeHost: () => null, treeFileSelector: "file", diffId: async (path) => path }).filter({ files: ["a"] });
+}));
+
+test("filter with files hides the diff blocks outside the set, with or without a tree, and shows them all for null", withBlocks(["diff-a", "diff-b", "diff-c"], async (blocks) => {
+  const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => `diff-${path}` });
+  await page.filter({ files: ["a", "c"] });
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, true, false]);
+  await page.filter({ files: ["b"] });
+  assert.deepEqual(blocks.map((block) => block.hidden), [true, false, true]);
+  await page.filter({ files: null });
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, false, false]);
+}));
+
+test("a diff block that appears after the filter was set is hidden when the filter is applied again", withBlocks(["diff-a"], async (blocks) => {
+  const tree = fakeTree(["#diff-a", "#diff-b"]);
+  let asked = 0;
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => (asked += 1, `diff-${path}`) });
+  await page.filter({ files: ["a"] });
+  assert.deepEqual(blocks.map((block) => block.hidden), [false]);
+  const later = fakeBlocks(["diff-a", "diff-b"]);
+  await page.filter({ files: ["a"] });
+  assert.deepEqual(later.map((block) => block.hidden), [false, true]);
+  assert.equal(asked, 1);
+}));
+
+const CHUNKS = [
+  { i: 1, title: "Entities take identity", summary: "Moves `id` into the constructor.", risk: "low", risk_reason: "", depends_on: [], hunks: [{ id: "h1", path: "a.js", change: "modified", old: [1, 2], new: [1, 3] }] },
+  { i: 2, title: "Callers follow", summary: "Callers use it.", risk: "high", risk_reason: "Touches the `upload` path.", depends_on: [1, 3], hunks: [{ id: "h2", path: "b.js", change: "modified", old: [4, 2], new: [4, 2] }, { id: "h3", path: "c.js", change: "added", old: [0, 0], new: [1, 9] }] },
+  { i: 3, title: "Tests", summary: "", risk: "medium", risk_reason: "", depends_on: [], hunks: [] },
+];
+
+test("chunksOf is the review's chunks, and none for a review made before chunks", () => {
+  const { chunksOf } = require("../tree.js");
+  assert.deepEqual(chunksOf({ chunks: CHUNKS }), CHUNKS);
+  assert.deepEqual(chunksOf({}), []);
 });
 
-test("a tree row with no diff link is left showing, and a page with no tree is left alone", async () => {
-  const tree = fakeTree([null, "#diff-b"]);
-  const page = filePage({ treeHost: () => tree.host, treeFileSelector: "file", diffId: async (path) => `diff-${path}` });
-  await page.filterTree(["a"]);
-  assert.deepEqual(tree.files.map((row) => row.hidden), [false, true]);
-  await filePage({ treeHost: () => null, treeFileSelector: "file", diffId: async (path) => path }).filterTree(["a"]);
+test("the chunks filter line counts the chunks and how many are judged, singular for one, and the chunk list has no lede", () => {
+  const { chunkList, filters } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const ledeOf = (chunks, judged) => byClass(filters({ mode: "chunks", chunks, selectedChunk: null, judged: new Set(judged) }, {}), "prf-lede")[0];
+    const lede = (chunks, judged) => tipOf(ledeOf(chunks, judged)).text;
+    assert.equal(lede(CHUNKS, [2]), "Every change in 3 layers, foundations first \u00b7 1 judged");
+    assert.equal(lede(CHUNKS, []), "Every change in 3 layers, foundations first \u00b7 0 judged");
+    assert.equal(lede(CHUNKS.slice(0, 1), [1]), "Every change in 1 layer, foundations first \u00b7 1 judged");
+    assert.equal(lede(CHUNKS, [2, 99]), "Every change in 3 layers, foundations first \u00b7 1 judged");
+    const layers = ledeOf(CHUNKS, []);
+    const { button, tip } = tipOf(layers);
+    assert.equal(layers.title, undefined);
+    assert.deepEqual([tip.textContent, tip.attributes.role, button.attributes["aria-describedby"]], [LAYERS_TIP, "tooltip", tip.id]);
+    assert.deepEqual(byClass(chunkList({ chunks: CHUNKS, selectedChunk: null, judged: new Set() }, {}), "prf-lede"), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk row shows the number, title, risk and a tick when judged, and marks the current chunk", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const picked = [];
+    const list = chunkList({ chunks: CHUNKS, selectedChunk: 2, judged: new Set([1]) }, { onSelectChunk: (i) => picked.push(i) });
+    const rows = byClass(list, "prf-chunk");
+    assert.deepEqual(
+      rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-risk")[0].textContent, byClass(row, "prf-file").length]),
+      [["1", "Entities take identity", "low", 0], ["2", "Callers follow", "high", 0], ["3", "Tests", "medium", 0]],
+    );
+    assert.deepEqual(rows.map((row) => byClass(row, "prf-risk")[0].className), ["prf-risk prf-risk-low", "prf-risk prf-risk-high", "prf-risk prf-risk-medium"]);
+    assert.deepEqual(rows.map((row) => byClass(row, "prf-judged-tick").length), [1, 0, 0]);
+    const tick = byClass(rows[0], "prf-judged-tick")[0];
+    assert.deepEqual([tick.title, tick.textContent, tick.children.map((child) => [child.tag, child.className, child.attributes.width])], ["Judged", "", [["svg", "prf-judged-icon", "16"]]]);
+    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-name", "prf-chunk-meta"]);
+    assert.deepEqual(byClass(rows[1], "prf-chunk-badges")[0].children.map((child) => child.className), ["prf-risk prf-risk-high"]);
+    assert.deepEqual(rows.map((row) => row.className.split(" ").includes("prf-selected")), [false, true, false]);
+    assert.deepEqual(rows.map((row) => byClass(row, "prf-head-main")[0].attributes["aria-current"] ?? null), [null, "step", null]);
+    assert.deepEqual(rows.map((row) => row.dataset.chunk), ["1", "2", "3"]);
+    for (const row of rows) byClass(row, "prf-head-main")[0].listeners.click();
+    assert.deepEqual(picked, [1, 2, 3]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("filesOf groups a chunk's hunks by path, in the order of each path's first hunk", () => {
+  const { filesOf } = require("../tree.js");
+  const hunk = (id, path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
+  const chunk = { i: 1, hunks: [hunk("h1", "src/b.js"), hunk("h2", "src/a.js"), hunk("h3", "src/b.js"), hunk("h4", "src/b.js")] };
+  assert.deepEqual(filesOf(chunk), [
+    { path: "src/b.js", hunks: [chunk.hunks[0], chunk.hunks[2], chunk.hunks[3]] },
+    { path: "src/a.js", hunks: [chunk.hunks[1]] },
+  ]);
+  assert.deepEqual(filesOf(CHUNKS[2]), []);
+});
+
+const COUNTED = [
+  { i: 1, title: "One", summary: "", risk: "low", risk_reason: "", depends_on: [], hunks: [
+    { id: "h1", path: "src/a.js", change: "modified", old: [1, 2], new: [1, 3], added: 5, removed: 2 },
+    { id: "h2", path: "src/b.js", change: "modified", old: [4, 2], new: [4, 2], added: 0, removed: 7 },
+    { id: "h3", path: "src/a.js", change: "modified", old: [30, 1], new: [31, 4], added: 3, removed: 1 },
+  ] },
+  { i: 2, title: "Two", summary: "", risk: "high", risk_reason: "", depends_on: [], hunks: [{ id: "h4", path: "src/c.js", change: "added", old: [0, 0], new: [1, 9], added: 9, removed: 0 }] },
+];
+
+test("a layer row shows its added and removed totals under its risk, and a file line its own sums over the layer's hunks", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const rows = byClass(chunkList({ chunks: COUNTED, selectedChunk: 1, judged: new Set([1]) }, {}), "prf-chunk");
+    const stats = (element) => byClass(element, "prf-diffstat").map((stat) => stat.children.map((part) => [part.className, part.textContent]));
+    const main = byClass(rows[0], "prf-head-main")[0];
+    assert.deepEqual(main.children.map((child) => child.className.split(" ")[0]), ["prf-num", "prf-name", "prf-chunk-meta"]);
+    const meta = byClass(main, "prf-chunk-meta")[0];
+    assert.deepEqual(meta.children.map((child) => child.className.split(" ")[0]), ["prf-chunk-badges", "prf-diffstat"]);
+    assert.deepEqual(byClass(meta, "prf-chunk-badges")[0].children.map((child) => child.className.split(" ")[0]), ["prf-risk", "prf-judged-tick"]);
+    assert.deepEqual(stats(meta), [[["prf-stat-added", "+8"], ["prf-stat-removed", "\u221210"]]]);
+    assert.deepEqual(stats(byClass(rows[1], "prf-chunk-meta")[0]), [[["prf-stat-added", "+9"], ["prf-stat-removed", "\u22120"]]]);
+    const files = byClass(rows[0], "prf-chunk-file");
+    assert.deepEqual(files.map((file) => byClass(file, "prf-chunk-file-name")[0].textContent), ["a.js", "b.js"]);
+    assert.deepEqual(files.map((file) => file.children.at(-1).className), ["prf-diffstat", "prf-diffstat"]);
+    assert.deepEqual(files.map((file) => stats(file)[0].map(([, text]) => text)), [["+8", "\u22123"], ["+0", "\u22127"]]);
+    assert.deepEqual(byClass(rows[1], "prf-chunk-file"), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a layer or file with a hunk that lacks its counts shows no counts", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const [counted] = COUNTED;
+    const withoutCounts = { id: "h9", path: "src/b.js", change: "modified", old: [9, 1], new: [9, 1] };
+    const half = { ...withoutCounts, id: "h8", path: "src/d.js", added: 4 };
+    const chunk = { ...counted, hunks: [...counted.hunks, withoutCounts, half] };
+    const row = byClass(chunkList({ chunks: [chunk, { ...counted, i: 2, hunks: [withoutCounts] }], selectedChunk: 1, judged: new Set() }, {}), "prf-chunk")[0];
+    assert.deepEqual(byClass(byClass(row, "prf-chunk-meta")[0], "prf-diffstat"), []);
+    const files = byClass(row, "prf-chunk-file");
+    assert.deepEqual(files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, byClass(file, "prf-diffstat").length]), [["a.js", 1], ["b.js", 0], ["d.js", 0]]);
+    const old = byClass(chunkList({ chunks: CHUNKS, selectedChunk: 2, judged: new Set() }, {}), "prf-chunk");
+    assert.deepEqual(old.map((element) => byClass(element, "prf-diffstat").length), [0, 0, 0]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a file line the Tests control keeps out of view is dimmed with its counts", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [{ ...COUNTED[0], hunks: [COUNTED[0].hunks[0], { ...COUNTED[0].hunks[1], path: "src/b.test.js" }] }];
+    const files = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/b.test.js"], testsMode: "hide" }, {}), "prf-chunk-file");
+    assert.deepEqual(files.map((file) => [file.className.split(" ").includes("prf-dimmed"), byClass(file, "prf-diffstat").length]), [[false, 1], [true, 1]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("only the selected chunk's row lists its files, by name with the path as the tooltip, and a click opens the file in the chunk", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const picked = [];
+    const chunks = [{ ...CHUNKS[0], hunks: [{ ...CHUNKS[0].hunks[0], path: "src/deep/a.js" }] }, { ...CHUNKS[1], hunks: [...CHUNKS[1].hunks, { id: "h4", path: "b.js", change: "modified", old: [9, 1], new: [9, 1] }] }, CHUNKS[2]];
+    const rows = (selectedChunk) => byClass(chunkList({ chunks, selectedChunk, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk");
+    assert.deepEqual(rows(null).map((row) => byClass(row, "prf-chunk-files").length), [0, 0, 0]);
+    assert.deepEqual(rows(2).map((row) => byClass(row, "prf-chunk-files").length), [0, 1, 0]);
+    const files = byClass(rows(2)[1], "prf-chunk-file");
+    assert.deepEqual(
+      files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title]),
+      [["b.js", "b.js"], ["c.js", "c.js"]],
+    );
+    const nested = byClass(rows(1)[0], "prf-chunk-file");
+    assert.deepEqual(nested.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title]), [["a.js", "src/deep/a.js"]]);
+    assert.equal(byClass(rows(3)[2], "prf-chunk-files")[0].children.length, 0);
+    for (const file of files) file.listeners.click();
+    nested[0].listeners.click();
+    assert.deepEqual(picked, [[2, "b.js"], [2, "c.js"], [1, "src/deep/a.js"]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk callout names the chunk, its risk and why, its summary and what it needs, which go", () => {
+  const { chunkCallout } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const went = [];
+    const card = chunkCallout(CHUNKS[1], CHUNKS, (i) => went.push(i), () => {});
+    const head = byClass(card, "prf-callout-head")[0];
+    assert.deepEqual(head.children.map((child) => child.className), ["prf-callout-icon", "prf-callout-where", "prf-callout-sep", "prf-callout-name"]);
+    assert.deepEqual([head.children[1].tag, head.children[1].textContent, head.children[3].textContent], ["strong", "Layer 2 of 3", "Callers follow"]);
+    const risk = byClass(card, "prf-callout-risk")[0];
+    assert.deepEqual([byClass(risk, "prf-risk")[0].textContent, byClass(risk, "prf-callout-reason-text")[0].textContent, byClass(risk, "code").length], ["high", "Touches the upload path.", 0]);
+    assert.equal(walk(risk).filter((element) => element.tag === "code")[0].textContent, "upload");
+    assert.equal(byClass(card, "prf-callout-reason")[0].textContent, "Callers use it.");
+    const needs = byClass(card, "prf-callout-needs")[0];
+    assert.equal(needs.textContent, "Needs 1, 3");
+    const buttons = byClass(needs, "prf-callout-need");
+    assert.deepEqual(buttons.map((element) => element.textContent), ["1", "3"]);
+    for (const element of buttons) element.listeners.click();
+    assert.deepEqual(went, [1, 3]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk callout leaves out the risk line, the summary and Needs when the chunk has none", () => {
+  const { chunkCallout } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const card = chunkCallout({ ...CHUNKS[2], risk: undefined }, CHUNKS, () => {}, () => {});
+    assert.deepEqual([byClass(card, "prf-callout-risk").length, byClass(card, "prf-callout-reason").length, byClass(card, "prf-callout-needs").length], [0, 0, 0]);
+    const first = chunkCallout({ ...CHUNKS[0], risk_reason: "" }, CHUNKS, () => {}, () => {});
+    assert.deepEqual([byClass(first, "prf-risk").length, byClass(first, "prf-callout-reason-text").length], [1, 0]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk callout keeps its Previous and Next slots, hiding the missing one, and each goes to that chunk", () => {
+  const { chunkCallout } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const slots = (chunk) => {
+      const went = [];
+      const card = chunkCallout(chunk, CHUNKS, (i) => went.push(i), () => {});
+      const [back, next] = [byClass(card, "prf-callout-prev")[0], byClass(card, "prf-callout-next")[0]];
+      back.listeners.click();
+      next.listeners.click();
+      return { texts: [back.textContent, next.textContent], inert: [back.disabled ?? false, next.disabled ?? false], titles: [back.title ?? null, next.title ?? null], went };
+    };
+    assert.deepEqual(slots(CHUNKS[0]), { texts: ["↑ Previous", "Next ↓"], inert: [true, false], titles: [null, "Callers follow"], went: [2] });
+    assert.deepEqual(slots(CHUNKS[1]), { texts: ["↑ Previous", "Next ↓"], inert: [false, false], titles: ["Entities take identity", "Tests"], went: [1, 3] });
+    assert.deepEqual(slots(CHUNKS[2]), { texts: ["↑ Previous", "Next ↓"], inert: [false, true], titles: ["Callers follow", null], went: [2] });
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk callout's Judged checkbox starts as the chunk is and reports each change", () => {
+  const { chunkCallout } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const reported = [];
+    const box = (judged) => walk(chunkCallout(CHUNKS[0], CHUNKS, () => {}, (i, on) => reported.push([i, on]), judged)).find((element) => element.tag === "input");
+    assert.deepEqual([box(false).checked, box(true).checked, box(false).type], [false, true, "checkbox"]);
+    const live = box(false);
+    live.checked = true;
+    live.listeners.change();
+    live.checked = false;
+    live.listeners.change();
+    assert.deepEqual(reported, [[1, true], [1, false]]);
+    const card = chunkCallout(CHUNKS[0], CHUNKS, () => {}, () => {});
+    assert.equal(byClass(card, "prf-callout-judged")[0].textContent, "Judged");
+    assert.deepEqual(byClass(card, "prf-callout-nav")[0].children.map((child) => child.className), ["prf-callout-prev prf-callout-empty", "prf-callout-next", "prf-callout-judged"]);
+    assert.deepEqual(byClass(byClass(card, "prf-callout-main")[0], "prf-callout-judged"), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("the mode toggle offers Chunks between the walkthrough and the host's tree only for a review with chunks, and the chunks tab has no chip row", () => {
+  const { bar } = require("../tree.js");
+  globalThis.document = fakeDom();
+  globalThis.prFocus.page = { treeLabel: "Files" };
+  try {
+    const chips = [{ id: "all", label: "All", count: 9 }, { id: "contract", label: "API", count: 4 }];
+    const labels = (state) => byClass(bar(state, { onMode() {} }), "prf-mode").map((choice) => choice.children[1].textContent);
+    assert.deepEqual(labels({ mode: "github", chips: [], chunks: CHUNKS }), ["Walkthrough", "Layers", "Files"]);
+    assert.deepEqual(labels({ mode: "github", chips: [], chunks: [] }), ["Walkthrough", "Files"]);
+    assert.deepEqual(labels({ mode: "github", chips: [] }), ["Walkthrough", "Files"]);
+    const modes = [];
+    const element = bar({ mode: "chunks", chips, chunks: CHUNKS }, { onMode: (mode) => modes.push(mode) });
+    const choices = byClass(element, "prf-mode");
+    assert.deepEqual(choices.map((choice) => choice.attributes["aria-pressed"]), ["false", "true", "false"]);
+    for (const choice of choices) choice.listeners.click();
+    assert.deepEqual(modes, ["review", "chunks", "github"]);
+    assert.deepEqual(element.children.map((child) => child.className), ["prf-modes"]);
+    assert.deepEqual(bar({ mode: "review", chips, chunks: CHUNKS, tests: ["a.test.js"] }, {}).children.map((child) => child.className), ["prf-modes"]);
+  } finally {
+    delete globalThis.document;
+    delete globalThis.prFocus.page;
+  }
+});
+
+function fakeDiff(blockIds) {
+  class Row {
+    constructor(lines = [], extra = {}) {
+      Object.assign(this, { lines, hunk: false, callout: false, hidden: false, ...extra });
+      this.classList = {
+        contains: (name) => name === "prf-callout-row" && this.callout,
+        add: () => (this.hidden = true),
+        remove: () => (this.hidden = false),
+        toggle: (_name, on) => (this.hidden = Boolean(on)),
+      };
+    }
+  }
+  const line = (...pairs) => new Row(pairs.map(([side, number]) => ({ side, line: number })));
+  const blocks = blockIds.map((id) => {
+    const block = { id, fileHidden: false, rows: [], classList: { toggle: (_name, on) => (block.fileHidden = Boolean(on)) } };
+    block.querySelectorAll = (selector) => (selector === "tr" ? block.rows : []);
+    return block;
+  });
+  globalThis.document = { querySelectorAll: (selector) => (selector === "block" ? blocks : []) };
+  return { blocks, Row, line };
+}
+
+function hunkPage(extra = {}) {
+  return filePage({
+    blockSelector: "block",
+    treeHost: () => null,
+    diffId: async (path) => `diff-${path}`,
+    rowLines: (row) => row.lines,
+    hunkRow: (row) => row.hunk,
+    ...extra,
+  });
+}
+
+test("filter with hunks hides the rows outside the ranges and the hunk header or expand row left standing before a hidden one", async () => {
+  const { blocks, Row, line } = fakeDiff(["diff-a", "diff-b"]);
+  const [a, b] = blocks;
+  a.rows = [
+    new Row([], { hunk: true }),
+    line(["L", 9], ["R", 10]),
+    line(["R", 11]),
+    new Row([], { hunk: true }),
+    line(["L", 29], ["R", 30]),
+    new Row([], { callout: true }),
+    new Row([], { hunk: true }),
+    line(["R", 50]),
+    new Row([]),
+  ];
+  b.rows = [line(["R", 1])];
+  const page = hunkPage();
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 10, count: 2 }] });
+  assert.deepEqual(a.rows.map((row) => row.hidden), [false, false, false, true, true, false, true, true, false]);
+  assert.deepEqual([a.fileHidden, b.fileHidden], [false, true]);
+  await page.filter({ hunks: null });
+  assert.deepEqual([...a.rows, ...b.rows].map((row) => row.hidden), new Array(10).fill(false));
+  assert.deepEqual([a.fileHidden, b.fileHidden], [false, false]);
+});
+
+test("a row is kept when any of its lines is in a range of its own side, so a removed line needs an old-side range", async () => {
+  const { blocks, line } = fakeDiff(["diff-a"]);
+  blocks[0].rows = [line(["L", 5]), line(["R", 5]), line(["L", 5], ["R", 5]), line(["L", 6]), line(["R", 4]), line(["R", 7])];
+  const page = hunkPage();
+  await page.filter({ hunks: [{ path: "a", side: "L", start: 5, count: 1 }] });
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true, false, true, true, true]);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 5, count: 2 }, { path: "a", side: "L", start: 6, count: 1 }] });
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [true, false, false, false, true, true]);
+});
+
+test("a row that shows no line and is no hunk row is left alone, with or without hunk detection", async () => {
+  const { blocks, Row, line } = fakeDiff(["diff-a"]);
+  blocks[0].rows = [new Row([]), line(["R", 99]), new Row([]), new Row([], { hunk: true }), line(["R", 98])];
+  await hunkPage().filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }] });
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true, false, true, true]);
+  for (const row of blocks[0].rows) row.hidden = false;
+  await hunkPage({ hunkRow: undefined }).filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }] });
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true, false, false, true]);
+});
+
+test("filter with hunks is applied again to rows the host rendered since, without asking for the ids again, and a new filter drops the old rows' hiding", async () => {
+  const { blocks, Row, line } = fakeDiff(["diff-a", "diff-b"]);
+  const [a, b] = blocks;
+  a.rows = [line(["R", 1])];
+  let asked = 0;
+  const page = hunkPage({ diffId: async (path) => (asked += 1, `diff-${path}`) });
+  const ranges = [{ path: "a", side: "R", start: 1, count: 1 }];
+  await page.filter({ hunks: ranges });
+  a.rows.push(line(["R", 2]), new Row([], { hunk: true }), line(["R", 9]));
+  await page.filter({ hunks: ranges });
+  assert.deepEqual(a.rows.map((row) => row.hidden), [false, true, true, true]);
+  assert.equal(asked, 1);
+  b.rows = [line(["R", 1]), line(["R", 5])];
+  await page.filter({ hunks: [{ path: "b", side: "R", start: 1, count: 1 }] });
+  assert.deepEqual([a.fileHidden, b.fileHidden, ...b.rows.map((row) => row.hidden), ...a.rows.map((row) => row.hidden)], [true, false, false, true, false, false, false, false]);
+});
+
+test("the hunk filter takes the place of the file filter while set, tree rows included, and the file filter comes back after it", async () => {
+  const { blocks } = fakeDiff(["diff-a", "diff-b", "diff-c"]);
+  const tree = fakeTree(["#diff-a", "#diff-b", "#diff-c"]);
+  const page = hunkPage({ treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir" });
+  await page.filter({ files: ["a", "b"] });
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false, true]);
+  await page.filter({ files: ["a", "b"], hunks: [{ path: "c", side: "R", start: 1, count: 1 }] });
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [true, true, false]);
+  assert.deepEqual(tree.files.map((row) => row.hidden), [true, true, false]);
+  await page.filter({ files: ["a", "b"] });
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false, true]);
+  assert.deepEqual(tree.files.map((row) => row.hidden), [false, false, true]);
+});
+
+test("a newer hunk filter call wins over an older one that is still looking up its ids", async () => {
+  const { blocks } = fakeDiff(["diff-a", "diff-b"]);
+  let release;
+  const slow = new Promise((resolve) => (release = resolve));
+  const page = hunkPage({ diffId: async (path) => (path === "a" ? (await slow, "diff-a") : "diff-b") });
+  const older = page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }] });
+  await page.filter({ hunks: [{ path: "b", side: "R", start: 1, count: 1 }] });
+  release();
+  await older;
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [true, false]);
+});
+
+test("a kept diff behind the host's load control is loaded once, and a diff outside the ranges is not", async () => {
+  const { blocks } = fakeDiff(["diff-a", "diff-b"]);
+  const loaded = [];
+  const page = hunkPage({ loadDiff: (id) => (loaded.push(id), true) });
+  const ranges = [{ path: "a", side: "R", start: 1, count: 1 }];
+  await page.filter({ hunks: ranges });
+  await page.filter({ hunks: ranges });
+  assert.deepEqual(loaded, ["diff-a"]);
+  assert.equal(blocks.length, 2);
+});
+
+function adapterRows(rows, algorithm) {
+  const block = { id: `diff-${createHash(algorithm).update("x").digest("hex")}`, classList: { toggle() {} }, querySelectorAll: (selector) => (selector === "tr" ? rows : []) };
+  globalThis.document = {
+    querySelectorAll: (selector) => (selector.startsWith("#diff-container") || selector.startsWith("div[id^=") ? [block] : []),
+    querySelector: () => null,
+    getElementById: (id) => (id === "prf-forgejo-theme" ? {} : null),
+  };
+}
+
+function adapterRow(extra) {
+  const row = { hidden: false, text: "", ...extra };
+  row.textContent = row.text;
+  row.classList = { contains: (name) => (row.classes ?? []).includes(name), add: () => (row.hidden = true), remove: () => (row.hidden = false), toggle: (_name, on) => (row.hidden = Boolean(on)) };
+  return row;
+}
+
+test("GitHub rows give their lines by their line anchors, and a hunk cell's anchor is no line but marks a @@ or expand row", async () => {
+  const hash = "f".repeat(64);
+  const cell = (anchor) => ({ getAttribute: (name) => (name === "data-line-anchor" ? anchor : null) });
+  const code = (...anchors) => adapterRow({ querySelectorAll: () => anchors.map(cell), querySelector: () => null });
+  const hunk = (anchor, text) =>
+    adapterRow({ text, querySelectorAll: (selector) => (selector.includes(":not(") ? [] : [cell(anchor)]), querySelector: (selector) => (selector === ".diff-hunk-cell" ? {} : null) });
+  const rows = [
+    hunk(`diff-${hash}R0`, "@@ -1,3 +1,4 @@"),
+    code(`diff-${hash}R1`),
+    code(`diff-${hash}L2`),
+    code(`diff-${hash}R2`),
+    hunk(`diff-${hash}R3`, ""),
+    hunk(`diff-${hash}R9`, "@@ -9,2 +10,2 @@"),
+    code(`diff-${hash}R10`),
+    code(`diff-${hash}HL4`),
+    adapterRow({ text: "A comment", querySelectorAll: () => [], querySelector: () => null }),
+  ];
+  adapterRows(rows, "sha256");
+  try {
+    await githubPage.filter({ hunks: [{ path: "x", side: "R", start: 1, count: 2 }, { path: "x", side: "L", start: 2, count: 1 }] });
+    assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, false, true, true, true, false, false]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("Forgejo rows give their lines by the rel of their line-number spans, and a tag-code row stands with the next row", async () => {
+  const hash = "e".repeat(40);
+  const span = (rel) => ({ getAttribute: (name) => (name === "rel" ? rel : null) });
+  const code = (...rels) => adapterRow({ classes: ["add-code"], querySelectorAll: () => rels.map(span) });
+  const rows = [
+    adapterRow({ classes: ["tag-code"], querySelectorAll: () => [] }),
+    code("", `diff-${hash}R3`),
+    code(`diff-${hash}L4`, ""),
+    adapterRow({ classes: ["tag-code"], querySelectorAll: () => [] }),
+    code(`diff-${hash}L40`, `diff-${hash}R41`),
+  ];
+  adapterRows(rows, "sha1");
+  try {
+    await forgejoPage.filter({ hunks: [{ path: "x", side: "R", start: 3, count: 1 }, { path: "x", side: "L", start: 4, count: 1 }] });
+    assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, true, true]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("testsOf is the review's test files, and none for a review made before they were listed", () => {
+  const { testsOf } = require("../tree.js");
+  assert.deepEqual(testsOf({ file_sets: { contract: [], data: [], tests: ["a.test.js"] } }), ["a.test.js"]);
+  assert.deepEqual(testsOf({ file_sets: { contract: ["a.js"] } }), []);
+  assert.deepEqual(testsOf({}), []);
+});
+
+function filtersOf(state, handlers = {}) {
+  const { filters } = require("../tree.js");
+  globalThis.document = fakeDom();
+  globalThis.prFocus.page = { treeLabel: "Files" };
+  try {
+    return filters({ chips: [], ...state }, handlers);
+  } finally {
+    delete globalThis.document;
+    delete globalThis.prFocus.page;
+  }
+}
+
+function testsControlOf(state, handlers = {}) {
+  const line = filtersOf(state, handlers);
+  return line ? byClass(line, "prf-tests") : [];
+}
+
+test("the filter line holds the chips in the walkthrough and Files, the lede in Chunks, and the Tests control outside the walkthrough", () => {
+  const tests = ["a.test.js"];
+  const chips = [{ id: "all", label: "All", count: 3 }];
+  assert.deepEqual(filtersOf({ mode: "review", chips, tests, chunks: CHUNKS }).children.map((child) => child.className), ["prf-chips"]);
+  assert.equal(filtersOf({ mode: "review", chips: [], tests }), null);
+  assert.deepEqual(filtersOf({ mode: "github", chips, tests }).children.map((child) => child.className), ["prf-chips", "prf-tests"]);
+  assert.deepEqual(filtersOf({ mode: "chunks", chunks: CHUNKS, tests }).children.map((child) => child.className), ["prf-lede", "prf-tests"]);
+  assert.deepEqual(filtersOf({ mode: "chunks", chunks: CHUNKS }).children.map((child) => child.className), ["prf-lede"]);
+  assert.deepEqual(filtersOf({ mode: "github", chips: [], tests }).children.map((child) => child.className), ["prf-tests"]);
+  assert.equal(filtersOf({ mode: "github", chips: [] }), null);
+});
+
+test("the Tests control is drawn only when the review has test files, in Files and Chunks, and not in the walkthrough", () => {
+  assert.deepEqual(testsControlOf({ mode: "github" }), []);
+  assert.deepEqual(testsControlOf({ mode: "github", tests: [] }), []);
+  assert.equal(testsControlOf({ mode: "github", tests: ["a.test.js"] }).length, 1);
+  assert.equal(testsControlOf({ mode: "chunks", chunks: CHUNKS, tests: ["a.test.js"] }).length, 1);
+  assert.deepEqual(testsControlOf({ mode: "review", tests: ["a.test.js"] }), []);
+});
+
+test("the Tests control reads Tests: All, Hidden or Only and selects the option matching the mode, All when there is none", () => {
+  const view = (testsMode) => {
+    const [control] = testsControlOf({ mode: "github", tests: ["a.test.js"], testsMode });
+    const [select] = byClass(control, "prf-tests-select");
+    return { label: byClass(control, "prf-tests-label")[0].textContent, value: byClass(control, "prf-tests-value")[0].textContent, selected: select.value };
+  };
+  assert.deepEqual(view("all"), { label: "Tests:", value: "All", selected: "all" });
+  assert.deepEqual(view("hide"), { label: "Tests:", value: "Hidden", selected: "hide" });
+  assert.deepEqual(view("only"), { label: "Tests:", value: "Only", selected: "only" });
+  assert.deepEqual(view("bogus"), { label: "Tests:", value: "All", selected: "all" });
+  assert.deepEqual(view(undefined), { label: "Tests:", value: "All", selected: "all" });
+});
+
+test("the Tests select is labelled Tests and offers All, Hidden and Only with the values all, hide and only", () => {
+  const [control] = testsControlOf({ mode: "github", tests: ["a.test.js"] });
+  const [select] = byClass(control, "prf-tests-select");
+  assert.equal(select.tag, "select");
+  assert.equal(select.attributes["aria-label"], "Tests");
+  const options = select.children;
+  assert.deepEqual(options.map((option) => [option.tag, option.textContent, option.value]), [["option", "All", "all"], ["option", "Hidden", "hide"], ["option", "Only", "only"]]);
+});
+
+test("changing the Tests select sends its value as the mode", () => {
+  const asked = [];
+  const [control] = testsControlOf({ mode: "chunks", chunks: CHUNKS, tests: ["a.test.js"], testsMode: "hide" }, { onTestsMode: (mode) => asked.push(mode) });
+  const [select] = byClass(control, "prf-tests-select");
+  for (const value of ["all", "only", "hide"]) {
+    select.value = value;
+    select.listeners.change();
+  }
+  assert.deepEqual(asked, ["all", "only", "hide"]);
+});
+
+test("a stop row is not dimmed by the Tests mode", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const stops = [
+      { i: 1, title: "Code", why: "", path: "src/a.js", side: "R", line: 1, node: null },
+      { i: 2, title: "Test", why: "", path: "src/a.test.js", side: "R", line: 1, node: null },
+    ];
+    for (const testsMode of ["all", "hide", "only"]) {
+      const classes = byClass(stopList({ stops, selectedStop: null, tests: ["src/a.test.js"], testsMode }, {}), "prf-stop").map((row) => row.className);
+      assert.deepEqual(classes.filter((name) => name.includes("prf-dimmed")), []);
+    }
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a chunk's file button is struck through when the Tests mode keeps that file out of view", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const hunk = (id, path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
+    const chunks = [{ i: 1, title: "t", summary: "", risk: "low", depends_on: [], hunks: [hunk("h1", "src/a.js"), hunk("h2", "src/a.test.js")] }];
+    const struck = (testsMode) => byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/a.test.js"], testsMode }, {}), "prf-chunk-file").map((file) => file.className.split(" ").includes("prf-dimmed"));
+    assert.deepEqual(struck("all"), [false, false]);
+    assert.deepEqual(struck("hide"), [false, true]);
+    assert.deepEqual(struck("only"), [true, false]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+const hunkAt = (path, id = path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
+const layerOf = (...paths) => ({ i: 1, title: "t", summary: "", risk: "low", depends_on: [], hunks: paths.map((path) => hunkAt(path)) });
+const labelsOf = (layer, review = [layer]) => require("../tree.js").folderGroups(layer, review.flatMap((other) => other.hunks.map((hunk) => hunk.path))).map((group) => group.label);
+
+test("folderGroups labels a JVM folder by module and package, adding the source set when it is not main", () => {
+  const layers = [
+    layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java"),
+    layerOf("acme-api/src/test/java/com/acme/creators/lumber/ATest.java"),
+    layerOf("acme-api/src/integrationTest/java/com/acme/backends/lumber/BIT.java"),
+    layerOf("acme-api/src/main/resources/com/acme/db/C.sql"),
+    layerOf("tools/acme-cli/src/main/kotlin/com/acme/cli/D.kt"),
+  ];
+  assert.deepEqual(layers.map((layer) => labelsOf(layer, layers)), [
+    ["acme-api \u203a creators/lumber"],
+    ["acme-api test \u203a creators/lumber"],
+    ["acme-api integrationTest \u203a backends/lumber"],
+    ["acme-api \u203a db"],
+    ["tools/acme-cli \u203a cli"],
+  ]);
+});
+
+test("folderGroups drops the package prefix every JVM folder in the review shares, not only the layer's", () => {
+  const layer = layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java");
+  const other = layerOf("acme-api/src/main/java/com/acme/models/B.java");
+  assert.deepEqual(labelsOf(layer, [layer]), ["acme-api \u203a lumber"]);
+  assert.deepEqual(labelsOf(layer, [layer, other]), ["acme-api \u203a creators/lumber"]);
+  const outside = layerOf("acme-api/src/main/java/org/other/C.java");
+  assert.deepEqual(labelsOf(layer, [layer, other, outside]), ["acme-api \u203a com/acme/creators/lumber"]);
+});
+
+test("folderGroups keeps at least one package segment in every JVM folder", () => {
+  const shallow = layerOf("acme-api/src/main/java/com/acme/A.java");
+  const same = layerOf("acme-api/src/test/java/com/acme/ATest.java");
+  assert.deepEqual(labelsOf(shallow, [shallow, same]), ["acme-api \u203a acme"]);
+  assert.deepEqual(labelsOf(same, [shallow, same]), ["acme-api test \u203a acme"]);
+  assert.deepEqual(labelsOf(shallow, [shallow]), ["acme-api \u203a acme"]);
+});
+
+test("folderGroups handles a source root at the repo root, which has no module", () => {
+  const layer = layerOf("src/main/java/com/acme/a/A.java", "src/test/java/com/acme/b/BTest.java");
+  const other = layerOf("src/main/java/com/acme/c/C.java");
+  assert.deepEqual(labelsOf(layer, [layer, other]), ["a", "test \u203a b"]);
+  const single = layerOf("src/test/java/com/acme/b/BTest.java");
+  assert.deepEqual(labelsOf(single, [layer, other]), ["test \u203a b"]);
+  const main = layerOf("src/main/java/com/acme/a/A.java");
+  assert.deepEqual(labelsOf(main, [layer, other]), ["a"]);
+});
+
+test("folderGroups keeps the module in every JVM label, whatever else the layer holds", () => {
+  const layer = layerOf(
+    "acme-api/src/main/java/com/acme/creators/lumber/A.java",
+    "acme-api/src/main/java/com/acme/models/B.java",
+    "acme-api/src/test/java/com/acme/creators/lumber/ATest.java",
+  );
+  assert.deepEqual(labelsOf(layer), ["acme-api \u203a creators/lumber", "acme-api \u203a models", "acme-api test \u203a creators/lumber"]);
+  const two = layerOf("acme-api/src/main/java/com/acme/x/A.java", "acme-core/src/main/java/com/acme/y/B.java");
+  assert.deepEqual(labelsOf(two), ["acme-api \u203a x", "acme-core \u203a y"]);
+});
+
+test("folderGroups labels non-JVM folders by their full directory", () => {
+  const layer = layerOf("web/app/routes/a/x.tsx", "web/app/routes/b/y.tsx", "web/app/routes/b/z.tsx");
+  assert.deepEqual(labelsOf(layer), ["web/app/routes/a", "web/app/routes/b"]);
+  const nested = layerOf("web/app/routes/x.tsx", "web/app/routes/b/y.tsx");
+  assert.deepEqual(labelsOf(nested), ["web/app/routes", "web/app/routes/b"]);
+  assert.deepEqual(labelsOf(layerOf("web/app/routes/x.tsx")), ["web/app/routes"]);
+  assert.deepEqual(labelsOf(layerOf("web/sdk/x.ts", "docs/y.md")), ["web/sdk", "docs"]);
+});
+
+test("folderGroups keeps JVM labels and full non-JVM directories in a mixed layer", () => {
+  const layer = layerOf(
+    "acme-api/src/main/java/com/acme/enums/A.java",
+    "acme-web/sdk/x.ts",
+    "acme-web/app/routes/y.tsx",
+    "acme-api/src/test/java/com/acme/services/ATest.java",
+  );
+  const other = layerOf("acme-api/src/main/java/com/acme/models/B.java");
+  assert.deepEqual(labelsOf(layer, [layer, other]), ["acme-api \u203a enums", "acme-web/sdk", "acme-web/app/routes", "acme-api test \u203a services"]);
+});
+
+test("folderGroups puts a file at the repo root in the folder /", () => {
+  assert.deepEqual(labelsOf(layerOf("README.md")), ["/"]);
+  assert.deepEqual(labelsOf(layerOf("README.md", "docs/a.md")), ["/", "docs"]);
+  assert.deepEqual(labelsOf(layerOf("docs/a.md", "README.md")), ["docs", "/"]);
+});
+
+test("folderGroups lists folders by first hunk and keeps each folder's files in hunk order", () => {
+  const layer = layerOf("b/x.js", "a/y.js", "b/w.js", "a/y.js", "b/x.js");
+  const groups = require("../tree.js").folderGroups(layer, layer.hunks.map((hunk) => hunk.path));
+  assert.deepEqual(groups.map((group) => [group.dir, group.files.map((file) => file.path)]), [["b", ["b/x.js", "b/w.js"]], ["a", ["a/y.js"]]]);
+  assert.deepEqual(groups[0].files[0].hunks, [layer.hunks[0], layer.hunks[4]]);
+  assert.deepEqual(require("../tree.js").folderGroups(layerOf(), []), []);
+});
+
+test("the selected chunk lists a folder line with an icon over each folder's files, with the directory as its tooltip", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const picked = [];
+    const chunks = [
+      layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java", "acme-api/src/main/java/com/acme/models/B.java", "acme-api/src/main/java/com/acme/creators/lumber/C.java"),
+      { ...layerOf("acme-api/src/test/java/com/acme/x/XTest.java"), i: 2 },
+    ];
+    const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk")[0];
+    const groups = byClass(row, "prf-chunk-group");
+    assert.deepEqual(
+      groups.map((group) => [byClass(group, "prf-chunk-folder")[0].textContent, byClass(group, "prf-chunk-folder")[0].title, byClass(group, "prf-chunk-file").map((file) => byClass(file, "prf-chunk-file-name")[0].textContent)]),
+      [
+        ["acme-api \u203a creators/lumber", "acme-api/src/main/java/com/acme/creators/lumber", ["A.java", "C.java"]],
+        ["acme-api \u203a models", "acme-api/src/main/java/com/acme/models", ["B.java"]],
+      ],
+    );
+    for (const group of groups) {
+      assert.deepEqual(byClass(group, "prf-chunk-folder")[0].children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-folder-label"]]);
+      for (const file of byClass(group, "prf-chunk-file")) {
+        assert.deepEqual(file.children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-file-name"]]);
+      }
+    }
+    assert.deepEqual(byClass(row, "prf-chunk-folder").map((folder) => folder.tag), ["div", "div"]);
+    for (const file of byClass(row, "prf-chunk-file")) file.listeners.click();
+    assert.deepEqual(picked.map(([, path]) => path.split("/").pop()), ["A.java", "C.java", "B.java"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a folder label breaks after each / that has text after it, from text nodes and wbr elements", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const row = byClass(chunkList({ chunks: [layerOf("web/app/routes/a.tsx", "README.md")], selectedChunk: 1, judged: new Set() }, {}), "prf-chunk")[0];
+    const [deep, root] = byClass(row, "prf-chunk-folder-label");
+    assert.deepEqual(deep.children.map((child) => (typeof child === "string" ? child : child.tag)), ["web/", "wbr", "app/", "wbr", "routes"]);
+    assert.equal(deep.textContent, "web/app/routes");
+    assert.deepEqual(root.children, ["/"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a folder line is struck through only when every file under it is", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("src/a.js", "src/a.test.js", "spec/b.test.js", "spec/c.test.js", "lib/d.js")];
+    const struck = (testsMode) => {
+      const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/a.test.js", "spec/b.test.js", "spec/c.test.js"], testsMode }, {}), "prf-chunk")[0];
+      return [byClass(row, "prf-chunk-folder"), byClass(row, "prf-chunk-file")].map((elements) => elements.map((element) => element.className.split(" ").includes("prf-dimmed")));
+    };
+    assert.deepEqual(struck("all"), [[false, false, false], [false, false, false, false, false]]);
+    assert.deepEqual(struck("hide"), [[false, true, false], [false, true, true, true, false]]);
+    assert.deepEqual(struck("only"), [[false, false, true], [true, false, false, false, true]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a stop callout's Previous and Next go to the neighbouring stops, and a slot with none beyond it is hidden", () => {
+  globalThis.document = fakeDom();
+  try {
+    const gone = [];
+    const [prevSlot, nextSlot] = navSlots(stopCallout(STOPS[0], STOPS, (target) => gone.push(target.i), NODES));
+    assert.deepEqual([prevSlot.hidden, nextSlot.hidden, nextSlot.title], [true, false, STOPS[1].title]);
+    const [, lastNext] = navSlots(stopCallout(STOPS[2], STOPS, () => {}, NODES));
+    assert.equal(lastNext.hidden, true);
+    const card = stopCallout(STOPS[1], STOPS, (target) => gone.push(target.i), NODES);
+    for (const button of walk(card).filter((element) => element.tag === "button")) button.listeners.click();
+    assert.deepEqual(gone, [1, 3]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("filter with exclude hides the blocks and tree rows of its files, and a directory left with none, whatever the file filter keeps", withBlocks(["diff-a", "diff-b", "diff-c"], async (blocks) => {
+  const tree = fakeTree(["#diff-a", "#diff-b", "#diff-c"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file", treeDirSelector: "dir", diffId: async (path) => `diff-${path}` });
+  await page.filter({ exclude: ["b"] });
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, true, false]);
+  assert.deepEqual(tree.files.map((row) => row.hidden), [false, true, false]);
+  assert.equal(tree.dir.hidden, false);
+  await page.filter({ files: ["a", "b"], exclude: ["b"] });
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, true, true]);
+  assert.deepEqual(tree.files.map((row) => row.hidden), [false, true, true]);
+  await page.filter({ files: ["a", "b"], exclude: ["a", "b", "c"] });
+  assert.equal(tree.dir.hidden, true);
+  await page.filter({ files: ["a", "b"] });
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, false, true]);
+  await page.filter();
+  assert.deepEqual([...blocks, ...tree.files, tree.dir].map((item) => item.hidden), new Array(7).fill(false));
+}));
+
+test("filter with exclude is applied again on every call and asks for the ids once per set of paths, and a newer call wins", withBlocks(["diff-a", "diff-b"], async (blocks) => {
+  let asked = 0;
+  const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => (asked += 1, `diff-${path}`) });
+  await page.filter({ exclude: ["a"] });
+  blocks[0].hidden = false;
+  await page.filter({ exclude: ["a"] });
+  assert.deepEqual([blocks[0].hidden, asked], [true, 1]);
+  const older = page.filter({ exclude: ["b"] });
+  await page.filter({ exclude: ["a"] });
+  await older;
+  assert.deepEqual(blocks.map((block) => block.hidden), [true, false]);
+}));
+
+test("an excluded block is hidden even when the hunk filter keeps it, and its rows are left alone", async () => {
+  const { blocks, Row, line } = fakeDiff(["diff-a", "diff-b"]);
+  blocks[0].rows.push(line(["R", 1]), line(["R", 2]));
+  blocks[1].rows.push(line(["R", 1]));
+  const page = hunkPage();
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }] });
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false]);
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }], exclude: ["a"] });
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [true, false]);
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, false]);
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }] });
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false]);
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
+  assert.ok(Row);
+});
+
+test("widestWidth is the widest card by the measure, rounded up to a whole pixel", () => {
+  const { widestWidth } = require("../tree.js");
+  const widths = { a: 480, b: 612.2, c: 530.9 };
+  assert.equal(widestWidth(["a", "b", "c"], (card) => widths[card]), 613);
+  assert.equal(widestWidth(["a", "c"], (card) => widths[card]), 531);
+  assert.equal(widestWidth(["a"], (card) => widths[card]), 480);
+});
+
+test("widestWidth is null when there are no cards, and does not measure", () => {
+  const { widestWidth } = require("../tree.js");
+  const measured = [];
+  assert.equal(widestWidth([], (card) => measured.push(card)), null);
+  assert.deepEqual(measured, []);
+});
+
+function observedDocument() {
+  const watchers = [];
+  const saved = { document: globalThis.document, MutationObserver: globalThis.MutationObserver };
+  globalThis.document = { body: {}, querySelectorAll: () => [] };
+  globalThis.MutationObserver = class {
+    constructor(callback) {
+      this.callback = callback;
+      this.records = [];
+      watchers.push(this);
+    }
+    observe() {}
+    disconnect() {
+      watchers.splice(watchers.indexOf(this), 1);
+    }
+    takeRecords() {
+      const taken = this.records;
+      this.records = [];
+      return taken;
+    }
+  };
+  const restore = () => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete globalThis[name];
+      else globalThis[name] = value;
+    }
+  };
+  return { watchers, restore };
+}
+
+test("quietly hands the callback the changes made before it, drops those fn makes, and returns fn's result", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    const seen = [];
+    page.onChange((records) => seen.push([...records]));
+    dom.watchers[0].records.push("page");
+    const result = page.quietly(() => {
+      dom.watchers[0].records.push("ours");
+      return 7;
+    });
+    assert.equal(result, 7);
+    assert.deepEqual(seen, [["page"]]);
+    assert.deepEqual(dom.watchers[0].records, []);
+    dom.watchers[0].records.push("later");
+    assert.deepEqual(dom.watchers[0].takeRecords(), ["later"]);
+  } finally {
+    dom.restore();
+  }
+});
+
+test("quietly reaches every watcher, and drops the changes of an fn that throws", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    const seen = [];
+    page.onChange((records) => seen.push(["first", ...records]));
+    page.onChange((records) => seen.push(["second", ...records]));
+    dom.watchers[0].records.push("a");
+    dom.watchers[1].records.push("b");
+    assert.throws(() => page.quietly(() => {
+      for (const watcher of dom.watchers) watcher.records.push("ours");
+      throw new Error("boom");
+    }), /boom/);
+    assert.deepEqual(seen, [["first", "a"], ["second", "b"]]);
+    assert.deepEqual(dom.watchers.map((watcher) => watcher.records), [[], []]);
+    page.quietly(() => dom.watchers[0].records.push("again"));
+    assert.deepEqual(dom.watchers[0].records, []);
+  } finally {
+    dom.restore();
+  }
+});
+
+test("a quietly inside a quietly just runs, so only the outer one delivers earlier changes", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    const seen = [];
+    page.onChange((records) => seen.push([...records]));
+    dom.watchers[0].records.push("page");
+    const inner = page.quietly(() => {
+      dom.watchers[0].records.push("outer");
+      return page.quietly(() => (dom.watchers[0].records.push("inner"), "inner result"));
+    });
+    assert.equal(inner, "inner result");
+    assert.deepEqual(seen, [["page"]]);
+    assert.deepEqual(dom.watchers[0].records, []);
+    dom.watchers[0].records.push("after");
+    page.quietly(() => {});
+    assert.deepEqual(seen, [["page"], ["after"]]);
+  } finally {
+    dom.restore();
+  }
+});
+
+test("quietly with no watcher just runs fn, and a stopped watcher is no longer reached", () => {
+  const dom = observedDocument();
+  try {
+    const page = filePage();
+    assert.equal(page.quietly(() => "ran"), "ran");
+    const stop = page.onChange(() => assert.fail("a stopped watcher is called"));
+    dom.watchers[0].records.push("page");
+    stop();
+    assert.equal(dom.watchers.length, 0);
+    assert.equal(page.quietly(() => "ran"), "ran");
+  } finally {
+    dom.restore();
+  }
+});
+
+function fakeElement(tag, ...inside) {
+  const element = { nodeType: 1, tag, inside };
+  const names = (selector) => selector.split(", ");
+  element.matches = (selector) => names(selector).includes(tag);
+  element.querySelector = (selector) => {
+    for (const child of inside) {
+      if (child.matches(selector)) return child;
+      const found = child.querySelector(selector);
+      if (found) return found;
+    }
+    return null;
+  };
+  return element;
+}
+
+test("isStructural is true for a row, a diff block, a tree row and anything holding one, and false for a toolbar in a cell", () => {
+  const page = filePage({ blockSelector: "block", treeFileSelector: "file", treeDirSelector: "dir" });
+  assert.equal(page.isStructural(fakeElement("tr")), true);
+  assert.equal(page.isStructural(fakeElement("block")), true);
+  assert.equal(page.isStructural(fakeElement("file")), true);
+  assert.equal(page.isStructural(fakeElement("dir")), true);
+  assert.equal(page.isStructural(fakeElement("div", fakeElement("span"), fakeElement("section", fakeElement("tr")))), true);
+  assert.equal(page.isStructural(fakeElement("div", fakeElement("button", fakeElement("svg")))), false);
+  assert.equal(page.isStructural({ nodeType: 3 }), false);
+});
+
+test("a host with no tree directory selector builds its structural selector without it", () => {
+  const page = filePage({ blockSelector: "block", treeFileSelector: "file" });
+  assert.equal(page.isStructural(fakeElement("dir")), false);
+  assert.equal(page.isStructural(fakeElement("file")), true);
+});
+
+test("one filter call with all three filters looks each path up once and applies the filters once", async () => {
+  const { blocks, line } = fakeDiff(["diff-a", "diff-b", "diff-c"]);
+  blocks[0].rows = [line(["R", 1]), line(["R", 9])];
+  const asked = [];
+  let applied = 0;
+  const page = hunkPage({ treeHost: () => (applied += 1, null), diffId: async (path) => (asked.push(path), `diff-${path}`) });
+  await page.filter({ files: ["a", "b"], hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }], exclude: ["b"] });
+  assert.deepEqual([...asked].sort(), ["a", "a", "b", "b", "b"]);
+  assert.equal(applied, 1);
+  assert.deepEqual(blocks.map((block) => block.fileHidden), [false, true, true]);
+  assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
+  await page.filter({ files: ["a", "b"], hunks: [{ path: "a", side: "R", start: 1, count: 1 }, { path: "b", side: "R", start: 1, count: 1 }], exclude: ["b"] });
+  assert.equal(asked.length, 5);
+  assert.equal(applied, 2);
+});
+
+test("filter looks up only the filters whose paths changed", withBlocks(["diff-a", "diff-b"], async (blocks) => {
+  const asked = [];
+  const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => (asked.push(path), `diff-${path}`) });
+  await page.filter({ files: ["a", "b"], exclude: ["b"] });
+  await page.filter({ files: ["a", "b"], exclude: ["a"] });
+  assert.deepEqual(asked, ["a", "b", "b", "a"]);
+  assert.deepEqual(blocks.map((block) => block.hidden), [true, false]);
+}));
+
+test("a newer filter call wins over an older one that is still looking up its ids, whatever each sets", withBlocks(["diff-a", "diff-b"], async (blocks) => {
+  let release;
+  const slow = new Promise((resolve) => (release = resolve));
+  const page = filePage({ blockSelector: "block", treeHost: () => null, diffId: async (path) => (path === "a" ? (await slow, "diff-a") : `diff-${path}`) });
+  const older = page.filter({ files: ["a"] });
+  await page.filter({ exclude: ["b"] });
+  release();
+  await older;
+  assert.deepEqual(blocks.map((block) => block.hidden), [false, true]);
+}));
+
+test("filter with no arguments shows every file and row again", async () => {
+  const { blocks, line } = fakeDiff(["diff-a", "diff-b"]);
+  blocks[0].rows = [line(["R", 1]), line(["R", 9])];
+  const page = hunkPage();
+  await page.filter({ hunks: [{ path: "a", side: "R", start: 1, count: 1 }], exclude: ["b"] });
+  assert.deepEqual([blocks[0].rows[1].hidden, blocks[1].fileHidden], [true, true]);
+  await page.filter();
+  assert.deepEqual([blocks[0].rows[1].hidden, blocks[1].fileHidden], [false, false]);
+});
+
+test("blockCount counts the diff blocks, and changedFileCount takes the count it is given", withBlocks(["diff-a", "diff-b", "diff-c"], async () => {
+  const tree = fakeTree(["#diff-a", "#diff-b"]);
+  const page = filePage({ blockSelector: "block", treeHost: () => tree.host, treeFileSelector: "file" });
+  assert.equal(page.blockCount(), 3);
+  assert.equal(page.changedFileCount(), 3);
+  assert.equal(page.changedFileCount(1), 2);
+  assert.equal(page.changedFileCount(7), 7);
+}));
+
+test("focus scans the page's blocks only for a path whose entry is not found by its id, and once per call", async () => {
+  const focus = require("../focus.js");
+  const headers = new Map([["a.js", fakeHeader()], ["b.js", fakeHeader()], ["c.js", fakeHeader()]]);
+  const saved = { page: globalThis.prFocus.page, alive: globalThis.prFocus.alive };
+  let scans = 0;
+  globalThis.prFocus.alive = () => true;
+  globalThis.prFocus.page = {
+    fileBlocks: () => (scans += 1, new Map([["b.js", "b.js"], ["c.js", "c.js"]])),
+    entryFor: async (path) => (path === "a.js" ? path : null),
+    entryOf: (block) => block ?? null,
+    fileHeaderOf: (entry) => headers.get(entry) ?? null,
+  };
+  try {
+    await focus.markBox(["a.js"]);
+    assert.equal(scans, 0);
+    await focus.markBox(["a.js", "b.js", "c.js"]);
+    assert.equal(scans, 1);
+    assert.deepEqual([...headers].filter(([, header]) => header.classes.has("prf-box-active")).map(([path]) => path), ["a.js", "b.js", "c.js"]);
+    focus.clearBox();
+    assert.deepEqual([...headers].filter(([, header]) => header.classes.has("prf-box-active")), []);
+  } finally {
+    globalThis.prFocus.page = saved.page;
+    globalThis.prFocus.alive = saved.alive;
+  }
 });

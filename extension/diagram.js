@@ -6,7 +6,6 @@
   const NODE_ID = /flowchart-(.+)-\d+$/;
   const EDGE_ID = /^L_(.+)_\d+$/;
   const DASHED_EDGE = /\bedge-pattern-(?:dotted|dashed)\b/;
-  const WIDTH_KEY = "diagramWidth";
   const DEFAULT_VIEWPORT_SHARE = 0.2;
   const MIN_WIDTH = 220;
   const MAX_DEFAULT_SHARE = 0.4;
@@ -343,11 +342,13 @@
     return make("p", "prd-caption", text);
   }
 
+  // The panel starts collapsed; it is expanded only when this tab expanded it earlier ("0"). Unreadable storage counts
+  // as unset.
   function readCollapsed() {
     try {
-      return sessionStorage.getItem(COLLAPSED_KEY) === "1";
+      return sessionStorage.getItem(COLLAPSED_KEY) !== "0";
     } catch {
-      return false;
+      return true;
     }
   }
 
@@ -717,12 +718,6 @@
     canvas?.centerOn(nodeIds, options);
   }
 
-  // The title of a box: the bold first line of its label, without the box number; "" for an unknown box or one the
-  // diagram draws without a title.
-  function titleOf(nodeId) {
-    return found?.nodes.get(nodeId)?.querySelector(".nodeLabel .t")?.textContent.trim() ?? "";
-  }
-
   function remove() {
     canvas?.destroy();
     root?.remove();
@@ -735,10 +730,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  // Cleans up the width an earlier version saved.
-  if (ns.alive?.() && globalThis.chrome?.storage?.local) chrome.storage.local.remove(WIDTH_KEY).catch(() => {});
-
-  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, titleOf, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor, clampScale, contentSize, restingView, walkScale, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
+  ns.diagram = { applyEmphasis, resetAction, zoomControls, render, emphasize, centerOn, remove, owns, nodeIdOf, edgeEnds, unsafeAttribute, clampWidth, defaultWidth, widestBox, captionFor, clampScale, contentSize, restingView, walkScale, zoomAround, stepScale, clampView, followBoxView, wheelZoomFactor, createCanvas };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.diagram;

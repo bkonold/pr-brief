@@ -1,17 +1,25 @@
 (() => {
   const ns = (globalThis.prFocus ??= {});
-  async function entryOfPath(path, scanned) {
-    return (await ns.page.entryFor(path)) ?? ns.page.entryOf(scanned.get(path));
+  // The blocks scan runs only for a path whose entry is not found by its id, and at most once per `scan` taken.
+  function lazyScan() {
+    let scanned;
+    return () => (scanned ??= ns.page.fileBlocks());
+  }
+
+  async function entryOfPath(path, scan) {
+    return (await ns.page.entryFor(path)) ?? ns.page.entryOf(scan().get(path));
   }
 
   async function scrollTo(path) {
-    const entry = await entryOfPath(path, ns.page.fileBlocks());
+    const entry = await entryOfPath(path, lazyScan());
     if (entry) await ns.page.scrollToElement(entry);
   }
 
   const ACTIVE = "prf-box-active";
   const FLASH = "prf-box-flash";
 
+  // The headers carrying ACTIVE or FLASH.
+  let marked = new Set();
   let boxGeneration = 0;
   let announceGeneration = 0;
 
@@ -21,8 +29,8 @@
 
   // The loaded file headers for `paths`, in order; a file whose diff isn't in the page yet is left out.
   async function headersOf(paths) {
-    const scanned = ns.page.fileBlocks();
-    const entries = await Promise.all(paths.map((path) => entryOfPath(path, scanned)));
+    const scan = lazyScan();
+    const entries = await Promise.all(paths.map((path) => entryOfPath(path, scan)));
     return entries.filter(Boolean).map((entry) => ns.page.fileHeaderOf(entry) ?? entry);
   }
 
@@ -32,16 +40,22 @@
     const mine = ++boxGeneration;
     const headers = new Set(paths.length ? await headersOf(paths) : []);
     if (mine !== boxGeneration || !ns.alive?.()) return;
-    for (const header of document.querySelectorAll(`.${ACTIVE}`)) {
-      if (!headers.has(header)) header.classList.remove(ACTIVE);
+    for (const header of marked) {
+      if (headers.has(header)) continue;
+      header.classList.remove(ACTIVE);
+      if (!header.classList.contains(FLASH)) marked.delete(header);
     }
-    for (const header of headers) header.classList.add(ACTIVE);
+    for (const header of headers) {
+      header.classList.add(ACTIVE);
+      marked.add(header);
+    }
   }
 
   function flash(header) {
     header.classList.remove(FLASH);
     void header.offsetWidth;
     header.classList.add(FLASH);
+    marked.add(header);
     header.addEventListener("animationend", () => header.classList.remove(FLASH), { once: true });
   }
 
@@ -57,7 +71,8 @@
   function clearBox() {
     boxGeneration += 1;
     announceGeneration += 1;
-    for (const header of document.querySelectorAll(`.${ACTIVE}, .${FLASH}`)) header.classList.remove(ACTIVE, FLASH);
+    for (const header of marked) header.classList.remove(ACTIVE, FLASH);
+    marked = new Set();
   }
 
   ns.focus = { scrollTo, markBox, announceBox, clearBox };

@@ -1,0 +1,15 @@
+# Expected chunks for PR 12298, for `python scripts/eval_chunks.py runs/12298/brief eval/12298.toml`.
+
+[chunks."Dynamic attributes model"] # placeholder, fill in
+hunks = [
+  "tamarack-api/src/main/java/com/tamarack/models/backend/entities/lumber/DynamicAttributesBE.java",
+  "tamarack-api/src/main/java/com/tamarack/models/shared/enums/DynamicAttributeDataType.java",
+  "tamarack-web/sdk/generated.ts",
+  "tamarack-web/sdk/openapi.json",
+]
+
+[chunks."Untagged inventory upload"] # placeholder, fill in
+hunks = [
+  "tamarack-api/src/main/java/com/tamarack/services/lumber/UntaggedInventoryUploadService.java",
+  "tamarack-api/src/test/java/com/tamarack/services/lumber/UntaggedInventoryUploadServiceTest.java:1-100",
+]

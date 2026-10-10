@@ -254,6 +254,30 @@ class DiagramSize(unittest.TestCase):
         self.assertNotIn("overflow-wrap", render.DIAGRAM_STYLE)
 
 
+class DiagramTheme(unittest.TestCase):
+    def test_the_theme_has_a_dark_block(self) -> None:
+        self.assertIn("@media (prefers-color-scheme: dark)", render.DIAGRAM_STYLE)
+
+    def test_the_theme_colours_are_properties_with_a_fallback_and_appear_nowhere_bare(self) -> None:
+        for colour in ("#26215c", "#5f5e5a", "#e5e3f0", "#8a8a99"):
+            bare = re.findall(rf"(?<!, ){colour}", render.DIAGRAM_STYLE)
+            self.assertEqual(bare, [], colour)
+            self.assertRegex(render.DIAGRAM_STYLE, rf"var\(--[A-Za-z-]+, {colour}\)")
+
+    def test_the_theme_has_no_white_halo_or_dark_text_written_in(self) -> None:
+        self.assertNotIn("#fff,", render.DIAGRAM_STYLE)
+        self.assertRegex(render.DIAGRAM_STYLE, r"text-shadow: 0 0 3px var\(--prd-bg\), 0 0 3px var\(--prd-bg\), 0 0 3px var\(--prd-bg\)")
+
+    def test_the_properties_are_set_on_an_element_every_label_sits_under(self) -> None:
+        self.assertRegex(render.DIAGRAM_STYLE, r"\.root \{ --prd-text:")
+        self.assertNotRegex(render.DIAGRAM_STYLE, r"(?m)^\s*(?:#pr-diagram|&|:root) ?\{")
+
+    def test_the_standalone_page_follows_the_system_theme(self) -> None:
+        self.assertIn("github-markdown-css@5/github-markdown.css", render.PAGE)
+        self.assertNotIn("github-markdown-light.css", render.PAGE)
+        self.assertRegex(render.PAGE, r"@media \(prefers-color-scheme: dark\) \{[^@]*body, pre\.mermaid \{ background: #0d1117; \}")
+
+
 @unittest.skipUnless(shutil.which("node"), "node is needed to run the diagram's label script")
 class BreakPoints(unittest.TestCase):
     def broken(self, text: str) -> str:

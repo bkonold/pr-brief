@@ -144,8 +144,8 @@
 }
 
 .prd-card {
-  color: #333;
-  background: #ffffff;
+  color: var(--fgColor-default, #333);
+  background: var(--bgColor-default, #ffffff);
   border: 1px solid var(--borderColor-default, #d0d7de);
   border-radius: 6px;
 }
@@ -198,12 +198,46 @@
 }
 
 .prd-card g.node.prd-on .nodeLabel .t {
-  color: color-mix(in srgb, var(--prf-guide, #534ab7) 65%, #000) !important;
+  color: color-mix(in srgb, var(--prf-guide, #534ab7) 65%, var(--fgColor-default, #000)) !important;
 }
 
 .prd-card path.prd-on {
   stroke: var(--prf-guide, #534ab7) !important;
   stroke-width: 2px !important;
+}
+
+/* The host's text, border and surface colours decide the diagram's, whatever fixed colours its own style carries. */
+.prd-card svg .nodeLabel,
+.prd-card svg .node .label div {
+  color: var(--fgColor-default, #26215c) !important;
+}
+
+.prd-card svg .nodeLabel .t {
+  color: inherit !important;
+}
+
+.prd-card svg .nodeLabel .s,
+.prd-card svg .context .nodeLabel,
+.prd-card svg .context .label div {
+  color: var(--fgColor-muted, #5f5e5a) !important;
+}
+
+.prd-card svg .cluster rect {
+  stroke: var(--borderColor-muted, #e5e3f0) !important;
+}
+
+.prd-card svg .cluster-label * {
+  color: var(--fgColor-muted, #8a8a99) !important;
+}
+
+.prd-card svg .edgeLabel,
+.prd-card svg .edgeLabel p,
+.prd-card svg .edgeLabel span,
+.prd-card svg .labelBkg {
+  text-shadow:
+    0 0 3px var(--bgColor-default, #ffffff),
+    0 0 3px var(--bgColor-default, #ffffff),
+    0 0 3px var(--bgColor-default, #ffffff) !important;
 }
 
 .prd-card g.node {

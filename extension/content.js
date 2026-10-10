@@ -1,9 +1,10 @@
 (() => {
-  const { page, source, runControl, focus, tree, diagram, brief, alive } = globalThis.prFocus;
+  const { page, source, commentSource, runControl, focus, tree, diagram, brief, alive } = globalThis.prFocus;
   if (!page) return;
 
   const SETTLE_MS = 150;
   const LOAD_GRACE_MS = 5000;
+  const BRIEF_WAIT_MS = 250;
   const NO_BLOCKS_NOTE = `Couldn't find ${page.name}'s diff blocks; selectors may need updating`;
 
   let current = null;
@@ -35,7 +36,8 @@
   }
 
   // The card is drawn for the PR's run when it has one, else as a bar offering to generate it. A run in progress
-  // on the server, left by an earlier visit, is followed from where it is.
+  // on the server, left by an earlier visit, is followed from where it is. A page with no brief comment yet, where
+  // generating is not possible, is waited on: the lookup is repeated once the document has changed and settled.
   async function mountBrief(pr) {
     const key = `${pr.owner}/${pr.repo}#${pr.pr}`;
     if (briefState?.key === key) return;
@@ -51,7 +53,10 @@
     ]);
     if (!live() || token !== briefToken) return;
     const canGenerate = runControl.mayGenerate(status);
-    if (!run && !canGenerate) return;
+    if (!run && !canGenerate) {
+      waitForBrief(state, pr);
+      return;
+    }
 
     let current = run;
     const baseView = () => (current ? { kind: "brief", ...current, runSha: current.headSha, pageSha, canGenerate } : { kind: "none", canGenerate });
@@ -86,6 +91,26 @@
     if (status.ok && status.state === "running") controller.adopt(status);
   }
 
+  // Waits for the brief comment to reach the page: once the document has changed and settled, the lookup runs again
+  // if a "Brief data" block is now in it. The wait ends with the next mount or unmount.
+  function waitForBrief(state, pr) {
+    let pending = null;
+    const stopChange = page.onChange(() => {
+      clearTimeout(pending);
+      pending = setTimeout(() => {
+        if (briefState !== state || !live()) return;
+        if (commentSource && !commentSource.extractPayload(document)) return;
+        state.stop();
+        briefState = null;
+        mountBrief(pr);
+      }, BRIEF_WAIT_MS);
+    });
+    state.stop = () => {
+      clearTimeout(pending);
+      stopChange();
+    };
+  }
+
   function sessionKey(pr) {
     return `${pr.owner}/${pr.repo}#${pr.pr}`;
   }
@@ -101,7 +126,12 @@
     }, delay);
   }
 
+  // The extension's own writes to the document are made quietly, so they do not schedule another refresh.
   function refresh() {
+    page.quietly(applySession);
+  }
+
+  function applySession() {
     const session = current;
     if (session?.offline && live()) {
       tree.renderServerNote(session.offline, { onRetry: () => retry(session) });
@@ -115,12 +145,24 @@
     renderDiagram(session);
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
-    page.showCallouts(session.mode === "review" ? session.callouts : []);
+    page.showCallouts(calloutsShown(session));
+    sizeCallouts(session);
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
-    page.filterTree(fileSet?.paths ?? null);
+    const mode = testsMode(session);
+    const exempt = exemptPaths(session);
+    const hidden = mode === "hide" ? session.tests.filter((path) => !exempt.has(path)) : null;
+    if (session.mode === "review") {
+      page.filter({ files: fileSet?.paths ?? null });
+    } else if (session.mode === "chunks") {
+      const chunk = selectedChunkOf(session);
+      page.filter({ hunks: chunk ? chunkRanges(session, chunk) : null, exclude: hidden });
+    } else {
+      page.filter({ files: mode === "only" ? onlyTestPaths(session, fileSet, exempt) : (fileSet?.paths ?? null), exclude: hidden });
+    }
 
     const waited = Date.now() - session.startedAt;
-    const noBlocks = page.fileBlocks().size === 0;
+    const blocks = page.blockCount();
+    const noBlocks = blocks === 0;
     if (noBlocks && waited < LOAD_GRACE_MS) schedule(LOAD_GRACE_MS - waited + SETTLE_MS);
     tree.render(
       session.review,
@@ -128,9 +170,14 @@
         mode: session.mode,
         stops: session.stops,
         selectedStop: session.selectedStop,
+        chunks: session.chunks,
+        selectedChunk: session.selectedChunk,
+        judged: session.judged,
         pageSha: page.headSha(),
-        chips: tree.fileChips(session.review, page.changedFileCount()),
+        chips: tree.fileChips(session.review, page.changedFileCount(blocks)),
         fileSet,
+        tests: session.tests,
+        testsMode: mode,
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
       handlersFor(session),
@@ -187,12 +234,12 @@
   // file, the file's diff scrolls to its callout above the header.
   async function jumpToStop(session, stop, options) {
     if (current !== session || !live()) return;
-    if (isFileStop(stop)) await page.jumpToFile(stop.path, options);
+    if (isFileStop(stop)) await page.jumpToFile(stop.path);
     else await page.jumpToLine(stop.path, stop.side, stop.line, options);
   }
 
   // The callouts of the walkthrough, one per stop that has a place in the diff: each is built when its place is found,
-  // and its buttons open a stop as a click on it in the list would, without the pulse: the reader is already following
+  // and its buttons open a stop as a click on it in the list would, a line stop without the flash: the reader is already following
   // the callouts, so nothing needs finding.
   async function calloutsFor(session) {
     const { stops, review } = session;
@@ -211,6 +258,195 @@
     );
   }
 
+  // The callouts of the layers, one per layer, each above the header of the first file, in the page's order, that the
+  // layer's shown hunks touch: each is built when its place is found. A layer with no hunks has none. Its buttons open a
+  // layer, and its checkbox records the layer as judged. Each entry names its file, which selecting the layer lands on.
+  async function chunkCalloutsFor(session) {
+    const { chunks } = session;
+    const paths = await Promise.all(chunks.map((chunk) => chunkFile(session, chunk)));
+    const anchors = await Promise.all(paths.map((path) => (path === null ? null : page.fileAnchor(path))));
+    return chunks.flatMap((chunk, index) =>
+      anchors[index]
+        ? [
+            {
+              key: `chunk:${chunk.i}`,
+              anchor: anchors[index],
+              path: paths[index],
+              file: true,
+              render: () => tree.chunkCallout(chunk, chunks, (i) => selectChunk(session, i), (i, on) => setJudged(session, i, on), session.judged.has(chunk.i)),
+            },
+          ]
+        : [],
+    );
+  }
+
+  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected layer's in the layers tab.
+  function calloutsShown(session) {
+    if (session.mode === "review") return session.callouts;
+    if (session.mode !== "chunks") return [];
+    return session.chunkCallouts.filter((entry) => entry.key === `chunk:${session.selectedChunk}`);
+  }
+
+  // The callouts of the shown mode's whole set: all stops in the walkthrough, all layers in the layers tab; none in Files.
+  function calloutSetOf(session) {
+    if (session.mode === "review") return session.callouts;
+    if (session.mode === "chunks") return session.chunkCallouts;
+    return null;
+  }
+
+  // Gives every callout of the shown mode the width of the widest one at its natural width, as the page-wide
+  // --prf-callout-width that tree.css reads. The page draws only the diff near the viewport, so the width comes from
+  // the data: every card is built into a hidden container and measured. The lists are rebuilt as a whole (on load and
+  // on a Tests change) and a mode switch picks another, so measuring again whenever the set shown is not the one last
+  // measured covers each change, and a refresh for anything else costs nothing. Files mode keeps the last width.
+  function sizeCallouts(session) {
+    const set = calloutSetOf(session);
+    if (!set || set === session.sizedFor) return;
+    session.sizedFor = set;
+    const host = document.createElement("div");
+    Object.assign(host.style, { position: "absolute", visibility: "hidden", left: "-10000px", top: "0" });
+    const cards = set.map((entry) => {
+      const card = entry.render();
+      card.style.width = "max-content";
+      return card;
+    });
+    host.append(...cards);
+    document.body.append(host);
+    let width;
+    try {
+      width = tree.widestWidth(cards, (card) => card.getBoundingClientRect().width);
+    } finally {
+      host.remove();
+    }
+    if (width !== null) document.documentElement.style.setProperty("--prf-callout-width", `${width}px`);
+  }
+
+  function selectedChunkOf(session) {
+    return session.chunks.find((chunk) => chunk.i === session.selectedChunk) ?? null;
+  }
+
+  // The file a layer's callout sits above: of the files its shown hunks touch, the one the page lists first; null for a
+  // layer with no hunks.
+  function chunkFile(session, chunk) {
+    const paths = [...new Set(shownHunks(session, chunk).map((hunk) => hunk.path))];
+    return paths.length > 0 ? page.firstInPage(paths) : null;
+  }
+
+  // The hunks of a layer the Tests mode leaves in view. A layer whose hunks are all kept out is shown whole instead, so
+  // that opening it still shows its callout and its lines.
+  function shownHunks(session, chunk) {
+    const kept = chunk.hunks.filter((hunk) => !isExcluded(session, hunk.path));
+    return kept.length > 0 ? kept : chunk.hunks;
+  }
+
+  // The first line a hunk shows: its first new line, or its first old line when it has no new lines.
+  function hunkTarget(hunk) {
+    return hunk.new[1] > 0 ? { path: hunk.path, side: "R", line: hunk.new[0] } : { path: hunk.path, side: "L", line: hunk.old[0] };
+  }
+
+  // The lines the page is narrowed to for a layer: each hunk's new lines on the right and its old lines on the left, so
+  // that removed lines stay.
+  function rangesOf(chunk) {
+    return chunk.hunks.flatMap(({ path, old: before, new: after }) => [
+      ...(after[1] > 0 ? [{ path, side: "R", start: after[0], count: after[1] }] : []),
+      ...(before[1] > 0 ? [{ path, side: "L", start: before[0], count: before[1] }] : []),
+    ]);
+  }
+
+  // The lines the page is narrowed to for a layer: its shown hunks' ranges.
+  function chunkRanges(session, chunk) {
+    return rangesOf({ hunks: shownHunks(session, chunk) });
+  }
+
+  // The layers the reader has judged, kept in this browser per PR head: the viewer's own marks, not part of the review.
+  function judgedKey(session) {
+    const { pr, review } = session;
+    return `prf-judged:${location.host}/${pr.owner}/${pr.repo}#${pr.pr}@${review.head_sha}`;
+  }
+
+  function loadJudged(session) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(judgedKey(session)) ?? "[]");
+      return new Set(Array.isArray(stored) ? stored.filter(Number.isInteger) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveJudged(session) {
+    try {
+      localStorage.setItem(judgedKey(session), JSON.stringify([...session.judged].sort((a, b) => a - b)));
+    } catch {
+      // The marks stay for this page's life when storage is unavailable.
+    }
+  }
+
+  function setJudged(session, i, on) {
+    return change(session, () => {
+      if (on) session.judged.add(i);
+      else session.judged.delete(i);
+      saveJudged(session);
+    });
+  }
+
+  const TESTS_MODE_KEY = "prf-tests-mode";
+  const TESTS_MODES = ["all", "hide", "only"];
+
+  // The Tests switch's mode is the reader's preference across PRs, kept in this browser.
+  function loadTestsMode() {
+    try {
+      const stored = localStorage.getItem(TESTS_MODE_KEY);
+      return TESTS_MODES.includes(stored) ? stored : "all";
+    } catch {
+      return "all";
+    }
+  }
+
+  function saveTestsMode(mode) {
+    try {
+      localStorage.setItem(TESTS_MODE_KEY, mode);
+    } catch {
+      // The mode stays for this page's life when storage is unavailable.
+    }
+  }
+
+  // The mode in effect in "Files" and "Layers": a review with no test files shows every file whatever the preference.
+  function testsMode(session) {
+    return session.tests.length > 0 ? session.testsMode : "all";
+  }
+
+  // Whether the Tests mode keeps a file out of view: a test file when tests are hidden, any other file when only tests show.
+  function isExcluded(session, path) {
+    const mode = testsMode(session);
+    if (mode === "all") return false;
+    return session.tests.includes(path) === (mode === "hide");
+  }
+
+  // The files the mode must keep in view although it would not: in the layers tab, the files of a selected layer that
+  // is shown whole.
+  function exemptPaths(session) {
+    const paths = new Set();
+    if (session.mode !== "chunks") return paths;
+    const chunk = selectedChunkOf(session);
+    if (chunk && chunk.hunks.every((hunk) => isExcluded(session, hunk.path))) for (const hunk of chunk.hunks) paths.add(hunk.path);
+    return paths;
+  }
+
+  // The files shown in "only" mode: the PR's test files, and the exempt ones, within the file set when one is chosen.
+  function onlyTestPaths(session, fileSet, exempt) {
+    const wanted = new Set([...session.tests, ...exempt]);
+    return (fileSet?.paths ?? [...wanted]).filter((path) => wanted.has(path));
+  }
+
+  // Changes the mode, saves it and builds the layer callouts again, whose places depend on which hunks it keeps in view.
+  async function setTestsMode(session, mode) {
+    if (current !== session || !live() || !TESTS_MODES.includes(mode)) return;
+    session.testsMode = mode;
+    saveTestsMode(mode);
+    session.chunkCallouts = await chunkCalloutsFor(session);
+    return change(session, () => {});
+  }
+
   // Each selection takes the next number, so that a selection a later one has overtaken stops before it jumps: clicking
   // Previous or Next quickly ends at the last stop clicked.
   function startSelection(session) {
@@ -218,14 +454,21 @@
     return session.selection;
   }
 
+  // A selection in a file the chip hides shows every file again, so the target can be seen.
+  function showFileOf(session, path) {
+    const fileSet = tree.fileSetOf(session.review, session.fileSet);
+    if (fileSet && !fileSet.paths.includes(path)) session.fileSet = "all";
+  }
+
   // Makes the stop's file the active one, gives the stop's box the diagram's halo and jumps to the stop's line, or to its
   // file's header when the stop has no line. A stop on no box selects no box. `scroll: false` leaves the diff where it
   // is, so only the box, the list and the highlight follow. The diagram zooms to the stop's box, except with `zoom: false`,
-  // which a click on the box itself passes so that it only pans; any other option, e.g. `{ pulse: false }`, passes on to the
+  // which a click on the box itself passes so that it only pans; any other option, e.g. `{ pulse: false }`, passes on to a line's
   // jump.
   async function selectStop(session, stop, { scroll = true, zoom = true, ...jump } = {}) {
     const mine = startSelection(session);
     await change(session, () => {
+      showFileOf(session, stop.path);
       leaveLine();
       deactivate(session);
       session.mode = "review";
@@ -239,14 +482,45 @@
     if (scroll) await jumpToStop(session, stop, Object.keys(jump).length ? jump : undefined);
   }
 
-  // Puts the review back as it was when it loaded: no box or stop selected and no line or box marked.
+  // Opens a layer: the tab shows layers, no stop or box is selected, and the page narrows to the layer's hunks. The view
+  // lands on the layer's callout above its file's header, as it does for a stop on a file.
+  async function selectChunk(session, i) {
+    const chunk = session.chunks.find((candidate) => candidate.i === i);
+    if (!chunk) return;
+    const mine = startSelection(session);
+    await change(session, () => {
+      leaveLine();
+      deactivate(session);
+      session.mode = "chunks";
+      session.selectedChunk = chunk.i;
+      session.selectedStop = null;
+      session.selectedNode = null;
+      session.fileSet = "all";
+    });
+    if (current !== session || !live() || session.selection !== mine) return;
+    tree.revealChunk(chunk.i);
+    const callout = session.chunkCallouts.find((entry) => entry.key === `chunk:${chunk.i}`);
+    if (callout) await page.jumpToFile(callout.path);
+  }
+
+  // Lands on a file's first hunk of a layer. A layer that is not the selected one is opened first, which narrows the page;
+  // the selected layer's filter and the tab stay as they are.
+  async function jumpInChunk(session, i, path) {
+    if (session.selectedChunk !== i) await selectChunk(session, i);
+    if (current !== session || !live() || session.selectedChunk !== i) return;
+    const hunk = session.chunks.find((chunk) => chunk.i === i)?.hunks.find((candidate) => candidate.path === path);
+    if (!hunk) return;
+    const target = hunkTarget(hunk);
+    await page.jumpToLine(target.path, target.side, target.line);
+  }
+
+  // Clears the selection: no box or stop selected and no line or box marked. The pane's mode stays as it is.
   function resetReview(session) {
     return change(
       session,
       () => {
         leaveLine();
         deactivate(session);
-        session.mode = "review";
         session.selectedNode = null;
         session.selectedStop = null;
       },
@@ -274,6 +548,7 @@
   async function selectFile(session, path, nodeId = null) {
     const mine = startSelection(session);
     await change(session, () => {
+      showFileOf(session, path);
       leaveLine();
       deactivate(session);
       session.mode = "review";
@@ -304,18 +579,17 @@
           },
         ),
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
-      onSelectFile: (path) => selectFile(session, path),
+      onSelectChunk: (i) => selectChunk(session, i),
+      onSelectFileInChunk: (i, path) => jumpInChunk(session, i, path),
+      onJudged: (i, on) => setJudged(session, i, on),
       onFileSet: (id) => change(session, () => (session.fileSet = id)),
-      onJump: (loc) => jumpToStop(session, loc),
+      onTestsMode: (mode) => setTestsMode(session, mode),
     };
   }
 
   function owned(node) {
     return tree.owns(node) || diagram.owns(node) || page.ownsLine(node);
   }
-
-  // A fragment that names a place in the diff: a file or line (`diff-…`) or a review comment (`r…`, `discussion_r…`).
-  const DIFF_FRAGMENT = /^(?:diff-|r\d+|discussion_r\d+)/;
 
   // A link to a stop, such as the PR brief card's, carries the anchor of that line or file in the URL fragment. Opening
   // the files page on it goes to that stop. Any other fragment is left to the page.
@@ -326,19 +600,14 @@
     return null;
   }
 
-  // What the page shows on load: a linked stop is opened as a click on it would. Otherwise stop 1 is: as a click on it
-  // would, or, when the URL names a diff line that is not a stop's, in the diagram only, so that line stays in view.
-  async function selectInitialStop(session) {
+  // What the page shows on load: nothing is selected, and the diff stays where GitHub put it. A URL fragment that names
+  // a stop's diff line opens that stop, as a click on it would.
+  async function selectLinkedStop(session) {
     if (!session?.review || !live()) return;
     const wanted = location.hash.slice(1);
     const linked = wanted.startsWith("diff-") ? await stopLinkedBy(session, wanted) : null;
     if (current !== session || !live()) return;
-    if (linked) {
-      selectStop(session, linked);
-      return;
-    }
-    const first = session.stops[0];
-    if (first) selectStop(session, first, { scroll: !DIFF_FRAGMENT.test(wanted) });
+    if (linked) selectStop(session, linked);
   }
 
   // A PR with no run: the list's place holds one line that generates the brief, then follows the run. When it is done
@@ -384,14 +653,18 @@
     start();
   }
 
-  function causedByTree(record) {
-    const added = [...record.addedNodes];
-    return owned(record.target) || (added.length > 0 && record.removedNodes.length === 0 && added.every(owned));
+  // Whether a mutation changes what the extension draws: the host adding or removing rows, diff blocks or tree rows, or
+  // dropping one of our own panels from the page. The host's hover toolbars and menus, and changes inside our own
+  // elements, do not.
+  function needsRefresh(record) {
+    if (owned(record.target)) return false;
+    const removed = [...record.removedNodes];
+    return removed.some(owned) || [...record.addedNodes, ...removed].some((node) => !owned(node) && page.isStructural(node));
   }
 
   function onMutations(records) {
     if (!live()) return;
-    if (!records.every(causedByTree)) schedule(SETTLE_MS);
+    if (records.some(needsRefresh)) schedule(SETTLE_MS);
   }
 
   function teardown() {
@@ -402,7 +675,7 @@
     stopObserving = null;
     page.cancelJump();
     page.clearLineTarget();
-    page.filterTree(null);
+    page.filter();
     focus.clearBox();
     tree.remove();
     diagram.remove();
@@ -463,21 +736,30 @@
       key,
       pr,
       review,
-      mode: "review",
+      mode: "github",
       selectedNode: null,
       startedAt: Date.now(),
       stops: tree.stopsOf(review),
       selectedStop: null,
+      chunks: tree.chunksOf(review),
+      selectedChunk: null,
+      judged: new Set(),
       fileSet: "all",
+      tests: tree.testsOf(review),
+      testsMode: loadTestsMode(),
       selection: 0,
       callouts: [],
+      chunkCallouts: [],
+      sizedFor: null,
     };
     const session = current;
+    session.judged = loadJudged(session);
     session.callouts = await calloutsFor(session);
+    session.chunkCallouts = await chunkCalloutsFor(session);
     if (current !== session || !live()) return;
     stopObserving = page.onChange(onMutations);
     refresh();
-    selectInitialStop(current);
+    selectLinkedStop(current);
   }
 
   stopNavigating = page.onNavigate(start);

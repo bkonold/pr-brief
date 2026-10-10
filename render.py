@@ -6,9 +6,10 @@ usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 --config names a TOML to read in place of local.toml (see config.py); run.py passes its own on.
 
 Reads answer.yaml, run.json and pr.json from the run dir.
-Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.
+Writes body.md and body.html, review.json and the diagram's SVG. On broken YAML it writes error.txt and an error page and exits 1.
 The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
-diagram's boxes, the walkthrough stops and the contract and data lines go to review.json.
+diagram's boxes, the walkthrough stops, the layers (the key `chunks`) and the file sets go to review.json. An answer with `chunks` also gets
+a Layers section after the Data section.
 """
 import argparse
 import html
@@ -33,12 +34,13 @@ config.use_config_flag(sys.argv)
 from config import ROOT, load_local  # noqa: E402
 import layout  # noqa: E402
 from diff_lines import file_diff_lines  # noqa: E402
-from context_pack import BlobReader, has_commit  # noqa: E402
+from context_pack import BlobReader, has_commit, is_test_file  # noqa: E402
 from contract_lines import CONTRACT_LEVELS, Line, Source, contract_lines  # noqa: E402
 from data_lines import DATA_LEVELS, data_lines  # noqa: E402
 from hosts import get_host  # noqa: E402
 from hosts.github import GitHub  # noqa: E402
-from sources import CONTROLLER_DIRS, MODEL_DIRS, SourceFinder  # noqa: E402
+from hunks import Hunk, ReadDiff, hunk_json, parse_hunks, read_diff  # noqa: E402
+from sources import SourceFinder  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "vendor"))
 from pr_agent_helpers import apply_diagram_direction, sanitize_diagram  # noqa: E402
@@ -51,10 +53,8 @@ DIAGRAM_WRAPPING_WIDTH = 280
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 CONTEXT_CAPTION = "Dashed boxes are unchanged context"
 # Section headings whose name is not the key's own word.
-HEADINGS: dict[str, str] = {"type": "PR Type", "contract": "API"}
+HEADINGS: dict[str, str] = {"contract": "API"}
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
-MODEL_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("model_dirs", MODEL_DIRS))
-CONTROLLER_DIR_MARKERS: tuple[str, ...] = tuple(load_local().get("controller_dirs", CONTROLLER_DIRS))
 
 
 class AnswerError(Exception):
@@ -77,62 +77,7 @@ def render_diagram(raw: Any) -> str:
     return "\n".join(lines)
 
 
-LINK_TOKEN = re.compile(r'"[^"]*"|\|[^|]*\||(?P<link><?[-=.~]{2,}[->ox]?)|(?P<id>[A-Za-z0-9_]+)|&')
-NODE_SHAPE = re.compile(r'(?<=\w)(?:\[+[^\]]*\]+|\(+[^)]*\)+|\{+[^}]*\}+)')
 NON_EDGE_LINE = re.compile(r"\s*(?:%%|classDef\b|class\b|style\b|linkStyle\b|subgraph\b|click\b|direction\b)")
-# A two-character connector opens a label written between two connectors: `A -- text --> B`.
-LABEL_OPENERS = ("--", "==", "-.")
-
-
-@dataclass(frozen=True)
-class DiagramEdge:
-    source: str
-    target: str
-    labelled: bool
-    link: str  # the connector as written (the opening one of a `A -- text --> B` label): `-->`, `-.->`, `<-->`, `~~~`
-
-
-def parse_diagram_edges(diagram: str) -> list[DiagramEdge]:
-    """Every arrow of a mermaid flowchart, one per source and target pair: chained links (`a --> b --> c`) give one
-    edge per link and `A & B --> C` one per pair. A label is `-- x -->`, `-->|x|`, `-. x .->` or `== x ==>`."""
-    edges: list[DiagramEdge] = []
-    for raw_line in diagram.split("\n"):
-        if NON_EDGE_LINE.match(raw_line):
-            continue
-        line: str = re.sub(r":::\w+", "", NODE_SHAPE.sub("", re.sub(r"(?<=\w)\s*[\[({]+\"(?:[^\"\\]|\\.)*\"[\])}]+", "", raw_line)))
-        groups: list[list[str]] = []
-        link_labelled: list[bool] = []
-        links: list[str] = []
-        current: list[str] = []
-        in_label: bool = False
-        for token in LINK_TOKEN.finditer(line):
-            text: str = token.group(0)
-            if token.group("link"):
-                if in_label:
-                    in_label = False
-                    continue
-                groups.append(current)
-                current = []
-                in_label = text in LABEL_OPENERS
-                link_labelled.append(in_label)
-                links.append(text)
-            elif text.startswith('"') or text.startswith("|"):
-                if link_labelled and not current and len(groups) == len(link_labelled):
-                    link_labelled[-1] = True
-            elif token.group("id") and not in_label:
-                current.append(text)
-        groups.append(current)
-        for index, is_labelled in enumerate(link_labelled):
-            if index + 1 < len(groups):
-                edges.extend(DiagramEdge(source, target, is_labelled, links[index])
-                             for source in groups[index] for target in groups[index + 1])
-    return edges
-
-
-def count_diagram_edges(diagram: str) -> tuple[int, int]:
-    """(labelled, total) arrows of a mermaid flowchart."""
-    edges: list[DiagramEdge] = parse_diagram_edges(diagram)
-    return sum(edge.labelled for edge in edges), len(edges)
 
 
 # ---------------------------------------------------------------- file links
@@ -179,7 +124,6 @@ def matches(globs: list[str], path: str) -> bool:
 
 # ---------------------------------------------------------------- diff lines and walkthrough stops
 
-HUNK_HEADER = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 DIFF_START = "The PR Git Diff:\n=====\n"
 DIFF_END = "\n=====\n\nNote that lines in the diff body"
 
@@ -196,32 +140,25 @@ def diff_from_prompt(prompt: str) -> str:
 
 
 def diff_lines_by_path(diff: str) -> dict[str, list[DiffLine]]:
-    lines_by_path: dict[str, list[DiffLine]] = {}
-    current: list[DiffLine] | None = None
-    old: int = 0
-    new: int = 0
-    in_hunk: bool = False
-    for line in diff.split("\n"):
-        header: re.Match[str] | None = re.match(r"diff --git a/(.*) b/(.*)$", line)
-        if header:
-            current = lines_by_path.setdefault(header.group(2), [])
-            in_hunk = False
-            continue
-        hunk: re.Match[str] | None = HUNK_HEADER.match(line)
-        if hunk:
-            old, new, in_hunk = int(hunk.group(1)), int(hunk.group(2)), True
-        elif current is None or not in_hunk or line.startswith("\\"):
-            continue
-        elif line.startswith("+"):
-            current.append(("R", new, line[1:].strip()))
-            new += 1
-        elif line.startswith("-"):
-            current.append(("L", old, line[1:].strip()))
-            old += 1
-        else:
-            current.append(("R", new, line[1:].strip()))
-            old += 1
-            new += 1
+    read: ReadDiff = read_diff(diff)
+    lines_by_path: dict[str, list[DiffLine]] = {path: [] for path in read.paths}
+    for hunk in read.hunks:
+        target: list[DiffLine] = lines_by_path.setdefault(hunk.path, [])
+        old: int = hunk.old_start
+        new: int = hunk.new_start
+        for line in hunk.lines:
+            if line.startswith("\\"):
+                continue
+            if line.startswith("+"):
+                target.append(("R", new, line[1:].strip()))
+                new += 1
+            elif line.startswith("-"):
+                target.append(("L", old, line[1:].strip()))
+                old += 1
+            else:
+                target.append(("R", new, line[1:].strip()))
+                old += 1
+                new += 1
     return lines_by_path
 
 
@@ -308,6 +245,105 @@ def resolve_stops(raw: Any, files: list[str], diff_lines: dict[str, list[DiffLin
     if not low <= len(stops) <= high:
         notes.append(f"{len(stops)} stops, expected {low} to {high}")
     return stops, notes
+
+
+CHUNK_TITLE_MAX_WORDS = 8
+CHUNKS_RANGE = (1, 7)
+CHUNK_RISKS: tuple[str, ...] = ("low", "medium", "high")
+UNASSIGNED_TITLE = "Unassigned"
+UNASSIGNED_SUMMARY = "Hunks the model left out."
+
+
+def chunk_depends_on(raw: Any, position: int, total: int, kept: dict[int, int], label: str, notes: list[str]) -> list[int]:
+    """The layer numbers `raw` names, as the numbers the kept layers now have. `position` is the layer's place in the model's
+    list and `total` the length of that list; `kept` maps the places of the layers that were kept to their new numbers. An entry
+    that is not a whole number, or that names the layer itself, a later layer, a layer past the end or a layer that was
+    dropped, is dropped with a note."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        notes.append(f"{label}: depends_on is not a list")
+        return []
+    found: set[int] = set()
+    for entry in raw:
+        if not isinstance(entry, int) or isinstance(entry, bool):
+            notes.append(f"{label}: depends_on {entry!r} dropped, it is not a layer number")
+        elif entry == position:
+            notes.append(f"{label}: depends_on {entry} dropped, a layer cannot depend on itself")
+        elif entry > total or entry < 1:
+            notes.append(f"{label}: depends_on {entry} dropped, there is no layer {entry}")
+        elif entry > position:
+            notes.append(f"{label}: depends_on {entry} dropped, it is a later layer")
+        elif entry not in kept:
+            notes.append(f"{label}: depends_on {entry} dropped, that layer was dropped")
+        else:
+            found.add(kept[entry])
+    return sorted(found)
+
+
+def resolve_chunks(raw: Any, hunks: list[Hunk]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The layers (kept under the key `chunks`), numbered from 1 in the model's order, and the notes about what was fixed.
+
+    A layer is `{i, title, summary, risk, risk_reason, depends_on, hunks}`. A hunk the diff does not have is dropped, and so is
+    a hunk an earlier layer already has (the first assignment wins). A layer left with no hunk is dropped and the rest are
+    renumbered, `depends_on` with them. The hunks no layer has end up in a last layer, `Unassigned`. Notes name a layer by its
+    place in the model's list."""
+    if not isinstance(raw, list):
+        return [], ["no layers"]
+    notes: list[str] = []
+    known: set[str] = {hunk.id for hunk in hunks}
+    owner: dict[str, int] = {}
+    chunks: list[dict[str, Any]] = []
+    places: list[int] = []
+    for position, item in enumerate(raw, 1):
+        label: str = f"layer {position}"
+        if not isinstance(item, dict):
+            notes.append(f"{label}: dropped, it is not an object")
+            continue
+        listed: Any = item.get("hunks")
+        mine: list[str] = []
+        for entry in listed if isinstance(listed, list) else []:
+            name: str = str(entry).strip().strip("`'\"[]").lower()
+            if name not in known:
+                notes.append(f"{label}: unknown hunk {name} dropped")
+            elif name in owner:
+                notes.append(f"{label}: {name} dropped, it is already in layer {owner[name]}" if owner[name] != position
+                             else f"{label}: {name} dropped, it is listed twice")
+            else:
+                owner[name] = position
+                mine.append(name)
+        if not mine:
+            notes.append(f"{label}: dropped, no hunks left")
+            continue
+        number: int = len(chunks) + 1
+        title: str = " ".join(str(item.get("title") or "").split())
+        if not title:
+            title = f"Layer {number}"
+            notes.append(f"{label}: no title, using {title}")
+        elif len(title.split()) > CHUNK_TITLE_MAX_WORDS:
+            notes.append(f"{label}: title is longer than {CHUNK_TITLE_MAX_WORDS} words")
+        summary: str = " ".join(str(item.get("summary") or "").split())
+        if not summary:
+            notes.append(f"{label}: no summary")
+        risk: str = str(item.get("risk") or "").strip().lower()
+        if risk not in CHUNK_RISKS:
+            notes.append(f"{label}: no risk, using low" if not risk else f"{label}: risk {risk!r} is not low, medium or high, using low")
+            risk = "low"
+        chunks.append({"i": number, "title": title, "summary": summary, "risk": risk,
+                       "risk_reason": " ".join(str(item.get("risk_reason") or "").split()), "depends_on": [], "hunks": mine})
+        places.append(position)
+    kept: dict[int, int] = {place: chunk["i"] for place, chunk in zip(places, chunks)}
+    for place, chunk in zip(places, chunks):
+        chunk["depends_on"] = chunk_depends_on(raw[place - 1].get("depends_on"), place, len(raw), kept, f"layer {place}", notes)
+    left: list[str] = [hunk.id for hunk in hunks if hunk.id not in owner]
+    if left:
+        chunks.append({"i": len(chunks) + 1, "title": UNASSIGNED_TITLE, "summary": UNASSIGNED_SUMMARY, "risk": "low",
+                       "risk_reason": "", "depends_on": [], "hunks": left})
+        notes.append(f"unassigned hunks gathered into the last layer: {', '.join(left)}")
+    low, high = CHUNKS_RANGE
+    if not low <= len(chunks) <= high:
+        notes.append(f"{len(chunks)} layers, expected {low} to {high}")
+    return chunks, notes
 
 
 NODE_DECLARATION = re.compile(r'(?<![\w-])(?P<id>[A-Za-z0-9_][A-Za-z0-9_-]*)(?P<open>\s*\[")(?:\d+\s*·\s*|\d+[.:)]\s+)?')
@@ -415,8 +451,8 @@ def locate_sources(pr: dict[str, Any], api: list[Line], data: list[Line], diff_t
                    read_file: Callable[[str], str | None] | None = None) -> None:
     """Gives each contract and data line the sources in the PR that declare what it is about (see sources.py);
     `read_file` reads a changed file at the head commit, for what the diff does not show."""
-    finder: SourceFinder = SourceFinder(diff_text, [f["path"] for f in pr["files"]], MODEL_DIR_MARKERS, CONTROLLER_DIR_MARKERS,
-                                        read_file or (lambda path: None))
+    finder: SourceFinder = SourceFinder(diff_text, [f["path"] for f in pr["files"]], read_file or (lambda path: None),
+                                        sdk_dir=load_local().get("sdk_dir"))
     for line in api:
         line.sources = finder.contract(line)
     for line in data:
@@ -424,15 +460,16 @@ def locate_sources(pr: dict[str, Any], api: list[Line], data: list[Line], diff_t
 
 
 def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Line], data: list[Line]) -> dict[str, list[str]]:
-    """The files that make up the PR's contract change and its data change, each sorted without repeats. The contract
-    is the spec when the PR changes it, the source of every contract line and every changed file under a model
-    directory; the data is the migration files and the source of every data line."""
+    """The files that make up the PR's contract change, its data change and its tests, each sorted without repeats. The
+    contract is the spec when the PR changes it and the source of every contract line; the data is the migration files
+    and the source of every data line; the tests are the changed files `is_test_file` recognises, which the Contract
+    and Data sections never list."""
     paths: list[str] = [f["path"] for f in pr["files"]]
     spec: str | None = (contract or {}).get("path") or load_local().get("openapi_path")
-    models: set[str] = {p for p in paths if any(marker in p for marker in MODEL_DIR_MARKERS)}
     migrations: set[str] = {p for p in paths if matches(MIGRATION_GLOBS, p)}
-    return {"contract": sorted(models | {s.path for line in api for s in line.sources} | ({spec} if spec in paths else set())),
-            "data": sorted(migrations | {s.path for line in data for s in line.sources})}
+    return {"contract": sorted({s.path for line in api for s in line.sources} | ({spec} if spec in paths else set())),
+            "data": sorted(migrations | {s.path for line in data for s in line.sources}),
+            "tests": sorted({p for p in paths if is_test_file(p)})}
 
 
 def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str],
@@ -461,19 +498,34 @@ def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: 
             draw("database", "No database changes", DATA_LEVELS, "data", data))
 
 
+def chunks_markdown(run: dict[str, Any], paths: list[str], chunks: list[dict[str, Any]], hunks: list[Hunk]) -> str:
+    """The Layers section of a body. The files of the PR that have no hunk, which no layer can hold, are listed after the
+    layers."""
+    repo: str = run["repo"]
+    number: str = str(run["pr"])
+
+    def link_of(hunk: Hunk) -> str:
+        side, start, _ = layout.hunk_target(hunk)
+        return line_link(repo, number, {"path": hunk.path, "side": side, "line": start})
+
+    with_hunks: set[str] = {hunk.path for hunk in hunks}
+    return layout.chunks_section(chunks, {hunk.id: hunk for hunk in hunks}, link_of,
+                                 [(path, diff_link(repo, number, path)) for path in paths if path not in with_hunks])
+
+
 # ---------------------------------------------------------------- body
 
 @dataclass
 class Brief:
-    """What a run's answer renders to: the body, the diagram's arrow counts, its boxes by id (`title`, `files` and the
-    numbers of the `stops` that land on it, in diagram order), the walkthrough's stops, and the contract and data lines."""
+    """What a run's answer renders to: the body, the diagram's boxes by id (`title`, `files` and the
+    numbers of the `stops` that land on it, in diagram order), the walkthrough's stops, the file sets, and the layers
+    with the hunks they group."""
     body: str
-    edges: tuple[int, int]
     nodes: dict[str, dict[str, Any]]
     stops: list[dict[str, Any]]
-    contract: list[Line]
-    data: list[Line]
-    file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": []})
+    file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": [], "tests": []})
+    chunks: list[dict[str, Any]] | None = None
+    hunks: list[Hunk] = field(default_factory=list)
 
 
 def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
@@ -486,13 +538,19 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
     ordered: dict[str, Any] = {}
     if run["with_body"] and (pr["body"] or "").strip():
         ordered["User Description"] = pr["body"].strip()
-    for key in ("type", "description"):
-        if key in data:
-            ordered[key] = data[key]
+    if "description" in data:
+        ordered["description"] = data["description"]
     api, rows = build_lines(pr, contract, diff_text)
     locate_sources(pr, api, rows, diff_text, read_file)
     sets: dict[str, list[str]] = file_sets(pr, contract, api, rows)
     ordered["contract"], ordered["data"] = sections(run, api, rows, unchecked_sides(run, contract), sets)
+    hunks: list[Hunk] = parse_hunks(diff_text)
+    chunks: list[dict[str, Any]] | None = None
+    chunk_notes: list[str] = []
+    if "chunks" in data:
+        chunks, chunk_notes = resolve_chunks(data["chunks"], hunks)
+        if chunks:
+            ordered["chunks"] = chunks_markdown(run, paths, chunks, hunks)
     diagram: str = render_diagram(data.get("changes_diagram"))
     node_files: dict[str, list[str]] = {}
     titles: dict[str, str] = {}
@@ -502,10 +560,10 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
     else:
         notes.append("no changes_diagram")
     stops, stop_notes = resolve_stops(data.get("walkthrough"), paths, diff_lines, node_files)
-    notes.extend(stop_notes)
+    notes.extend(stop_notes + chunk_notes)
     if not stops:
         raise AnswerError("The walkthrough has no stop left, so there is nothing to guide a reviewer through:\n"
-                          + "\n".join(f"- {note}" for note in stop_notes))
+                          + "\n".join(f"- {note}" for note in stop_notes + chunk_notes))
     stops_on: dict[str, list[int]] = {node: [stop["i"] for stop in stops if stop["node"] == node] for node in node_files}
     nodes: dict[str, dict[str, Any]] = {node: {"title": titles.get(node, node), "files": files, "stops": stops_on[node]}
                                         for node, files in node_files.items()}
@@ -521,48 +579,43 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key == "changes_diagram":
             body += f"### Diagram Walkthrough\n\n{value}\n\n{caption + chr(10) * 2 if caption else ''}"
             continue
-        if key in ("contract", "data") and value.startswith("<details"):
+        if key == "chunks" or (key in ("contract", "data") and value.startswith("<details")):
             body += f"{value}\n"
         else:
-            body += f"### **{HEADINGS.get(key) or key.replace('_', ' ').capitalize()}**\n"
+            body += f"### {HEADINGS.get(key) or key.replace('_', ' ').capitalize()}\n"
             if isinstance(value, list):
                 value = ", ".join(str(v).rstrip() for v in value)
             if key == "description":
                 value = value.replace("\n-", "\n\n-").strip()
             body += f"{value}\n"
         if idx < len(ordered) - 1:
-            body += "\n\n" if key in ("contract", "data") else "\n\n___\n\n"
+            body += "\n\n" if key in ("contract", "data", "chunks") else "\n\n___\n\n"
     body += "\n\n___\n\n"
-    return Brief(f"# {pr['title']}\n\n<!-- pr-agent-generated -->\n{body}", count_diagram_edges(diagram), nodes, stops, api, rows, sets)
+    return Brief(f"# {pr['title']}\n\n{body}", nodes, stops, sets, chunks, hunks)
 
 
 # ---------------------------------------------------------------- review.json
 
-def line_json(line: Line) -> dict[str, Any]:
-    """A contract or data line for review.json: its level (null when it has none), text, the parts of that text (what
-    changed, on what, and for a contract line the side it reaches), where its diff line is in the spec or migration, and
-    `source`, where the PR's own code declares it (null when the PR has none)."""
-    side, number = line.loc if line.loc else (None, None)
-    source: Source | None = line.sources[0] if line.sources else None
-    return {"impact": line.impact, "text": line.text, "change": line.change, "on": line.on, "reaches": line.side,
-            "path": line.path, "side": side, "line": number,
-            "source": {"path": source.path, "side": source.side, "line": source.line} if source else None}
+def chunks_json(brief: Brief) -> list[dict[str, Any]]:
+    """The layers of review.json, under the key `chunks`: each layer as resolved, with its hunks as `hunk_json` objects."""
+    by_id: dict[str, Hunk] = {hunk.id: hunk for hunk in brief.hunks}
+    return [{**chunk, "hunks": [hunk_json(by_id[name]) for name in chunk["hunks"]]} for chunk in brief.chunks or []]
 
 
 def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[str, Any]:
     """What the browser extension reads: the diagram's boxes with the stops that land on each, the walkthrough's stops
-    in reading order, and the contract and data lines of the tables."""
+    in reading order, the layers (`chunks`) when the answer has them, and the file sets."""
     return {
         "schema": 4,
         "repo": run["repo"],
         "pr": run["pr"],
         "head_sha": run["pr_head_sha"],
         "variant": run["variant"],
+        "model": run.get("model"),
         **({"diagram": DIAGRAM_SVG} if has_diagram else {}),
         "nodes": brief.nodes,
         "walkthrough": brief.stops,
-        "contract": [line_json(line) for line in brief.contract],
-        "data": [line_json(line) for line in brief.data],
+        **({"chunks": chunks_json(brief)} if brief.chunks is not None else {}),
         "file_sets": brief.file_sets,
     }
 
@@ -584,22 +637,24 @@ DIAGRAM_STYLE = r"""
 const DIAGRAM_CONFIG = {
   themeVariables: { fontFamily: '-apple-system, "Segoe UI", sans-serif' },
   themeCSS: `
+    .root { --prd-text: var(--fgColor-default, #26215c); --prd-sub: var(--fgColor-muted, #5f5e5a); --prd-bg: var(--bgColor-default, #fff); --prd-cluster: var(--borderColor-muted, #e5e3f0); --prd-context: var(--borderColor-default, #b4b2a9); --prd-cluster-text: var(--fgColor-muted, #8a8a99); }
+    @media (prefers-color-scheme: dark) { .root { --prd-text: var(--fgColor-default, #e6eaf2); --prd-sub: var(--fgColor-muted, #a3acbd); --prd-bg: var(--bgColor-default, #0d1117); --prd-cluster: var(--borderColor-muted, #3d3f4a); --prd-context: var(--borderColor-default, #6e7681); --prd-cluster-text: var(--fgColor-muted, #a3acbd); } }
     .node rect.label-container { rx: 14px; ry: 14px; fill: none; stroke: #9370db; stroke-width: 1px; }
-    .node.context rect.label-container { fill: none; stroke: #b4b2a9; stroke-dasharray: 4 4; }
+    .node.context rect.label-container { fill: none; stroke: var(--prd-context); stroke-dasharray: 4 4; }
     .label { padding: 0; font: inherit; white-space: normal; border: 0; border-radius: 0; }
     .nodeLabel, .edgeLabel, .edgeLabel p { font-size: __FONT_SIZE__px; line-height: 1.5; }
-    .node .nodeLabel, .node .label div { color: #26215c; text-align: center; }
+    .node .nodeLabel, .node .label div { color: var(--prd-text); text-align: center; }
     .node .nodeLabel p { margin: 0; }
     .nodeLabel .badge { display: inline-block; margin-right: .25em; padding: 0 .5em; font-size: .75em; line-height: 1.4; font-weight: 600; letter-spacing: normal; white-space: nowrap; color: #fff; background: #7f77dd; border-radius: 1em; }
-    .nodeLabel .t { font-weight: 600; }
-    .nodeLabel .s { color: #5f5e5a; font-weight: 400; }
-    .context .nodeLabel, .context .label div { color: #5f5e5a; }
+    .nodeLabel .t { color: inherit; font-weight: 600; }
+    .nodeLabel .s { color: var(--prd-sub); font-weight: 400; }
+    .context .nodeLabel, .context .label div { color: var(--prd-sub); }
     path.flowchart-link { stroke: #9370db; stroke-width: 1px; fill: none; }
     .marker, .arrowMarkerPath { fill: none !important; stroke: #9370db !important; stroke-width: 1px; }
     .edgeLabel rect { fill: transparent !important; opacity: 0; }
-    .edgeLabel, .edgeLabel p, .edgeLabel span, .labelBkg { background-color: transparent !important; color: #7f77dd !important; font-weight: 400; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
-    .cluster rect { fill: none; stroke: #e5e3f0; stroke-width: 1px; rx: 8px; ry: 8px; }
-    .cluster-label .nodeLabel, .cluster-label span, .cluster-label p { color: #8a8a99; font-size: __CLUSTER_FONT_SIZE__px; font-weight: 400; }
+    .edgeLabel, .edgeLabel p, .edgeLabel span, .labelBkg { background-color: transparent !important; color: #7f77dd !important; font-weight: 400; text-shadow: 0 0 3px var(--prd-bg), 0 0 3px var(--prd-bg), 0 0 3px var(--prd-bg); }
+    .cluster rect { fill: none; stroke: var(--prd-cluster); stroke-width: 1px; rx: 8px; ry: 8px; }
+    .cluster-label .nodeLabel, .cluster-label span, .cluster-label p { color: var(--prd-cluster-text); font-size: __CLUSTER_FONT_SIZE__px; font-weight: 400; }
   `,
 };
 
@@ -745,7 +800,7 @@ def write_diagram_svg(md: str, run_dir: Path) -> str | None:
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.css">
 <style>
  body { background: #fff; margin: 0; }
  .markdown-body { box-sizing: border-box; max-width: 980px; margin: 0 auto; padding: 32px 16px; }
@@ -755,6 +810,13 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .pill.p1 { border-color: #1f2328; font-weight: 600; }
  details > summary .pill { margin: 0 4px; }
  .muted { color: #59636e; font-size: 12px; }
+ @media (prefers-color-scheme: dark) {
+  body, pre.mermaid { background: #0d1117; }
+  .pill { border-color: #9198a1; }
+  .pill.p0 { background: #f0f6fc; border-color: #f0f6fc; color: #0d1117; }
+  .pill.p1 { border-color: #f0f6fc; }
+  .muted { color: #9198a1; }
+ }
  .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
  .table-wrap table { display: table; margin: 0; }
  .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }
@@ -829,8 +891,6 @@ def main() -> int:
         print(f"{run_dir}: {e}", file=sys.stderr)
         return 1
 
-    labelled, total = brief.edges
-    run["diagram_edges"] = {"labelled": labelled, "total": total}
     if mermaid is not None:
         run["mermaid"] = mermaid
     (run_dir / "run.json").write_text(json.dumps(run, indent=2) + "\n")
