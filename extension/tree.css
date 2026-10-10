@@ -77,8 +77,39 @@
   border-color: var(--controlKnob-borderColor-rest, #818b98);
 }
 
-.prf-mode-icon {
+.prf-mode-icon,
+.prf-tests-icon {
   flex: none;
+}
+
+/* The Tests switch stands alone at the right end of the toggle line, as tall as the toggle and drawn like one of its
+   segments: raised while it narrows the page. */
+.prf-tests {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  align-self: stretch;
+  box-sizing: border-box;
+  margin-left: auto;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fgColor-default, #1f2328);
+  cursor: pointer;
+  background: var(--controlTrack-bgColor-rest, #eff2f5);
+  border: 1px solid var(--controlTrack-borderColor-rest, transparent);
+  border-radius: 8px;
+}
+
+.prf-tests:hover {
+  background: var(--controlTrack-bgColor-hover, #e6eaef);
+}
+
+.prf-tests[aria-pressed="true"],
+.prf-tests[aria-pressed="true"]:hover {
+  background: var(--controlKnob-bgColor-rest, #ffffff);
+  border-color: var(--controlKnob-borderColor-rest, #818b98);
 }
 
 .prf-banner {
@@ -192,6 +223,11 @@
   font-weight: 400;
   color: var(--fgColor-muted, #59636e);
   content: "\00b7";
+}
+
+.prf-stop.prf-dimmed .prf-name,
+.prf-stop.prf-dimmed .prf-num {
+  color: var(--fgColor-muted, #59636e);
 }
 
 .prf-title {
@@ -384,6 +420,11 @@
 
 .prf-chunk-file:hover {
   background: var(--bgColor-muted, #f6f8fa);
+}
+
+.prf-chunk-file.prf-dimmed {
+  color: var(--fgColor-muted, #59636e);
+  text-decoration: line-through;
 }
 
 .prf-chunk-file-name {

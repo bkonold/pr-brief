@@ -267,6 +267,11 @@
     }
 
     // A line callout is a full-width table row directly above its stop's line, so the host's columns stay as they are.
+    // A callout is rebuilt when its entry's `version` changes, so content that depends on state outside the entry follows it.
+    function versionOf(entry) {
+      return String(entry.version ?? "");
+    }
+
     function placeLineCallout(entry) {
       const row = findRow(entry.anchor);
       if (!row || calloutRowOf(row)) return;
@@ -276,6 +281,7 @@
       const callout = document.createElement("tr");
       callout.className = CALLOUT_ROW;
       callout.dataset.key = String(entry.key);
+      callout.dataset.version = versionOf(entry);
       callout.append(cell);
       row.before(callout);
     }
@@ -288,18 +294,19 @@
       const callout = document.createElement("div");
       callout.className = `${CALLOUT_ROW} ${FILE_CALLOUT}`;
       callout.dataset.key = String(entry.key);
+      callout.dataset.version = versionOf(entry);
       callout.dataset.anchor = entry.anchor;
       callout.append(entry.render());
       host.prepend(callout);
     }
 
     // Each entry's place is found again on every call: it keeps the callout it has, makes one the host dropped, and
-    // removes a callout that no longer sits at its place or belongs to no entry.
+    // removes a callout that no longer sits at its place, is of another version or belongs to no entry.
     function placeCallouts() {
       const wanted = new Map(callouts.map((entry) => [String(entry.key), entry]));
       for (const element of document.querySelectorAll(`.${CALLOUT_ROW}`)) {
         const entry = wanted.get(element.dataset.key);
-        if (!entry || !isPlaced(element, entry)) element.remove();
+        if (!entry || !isPlaced(element, entry) || element.dataset.version !== versionOf(entry)) element.remove();
       }
       for (const entry of callouts) {
         if (entry.file) placeFileCallout(entry);
@@ -309,7 +316,7 @@
 
     // Shows a callout for each stop: entries are { key, anchor, file?, render() }. `anchor` is a line's anchor, or, with
     // `file: true`, a file's diff id, whose callout goes above that file's header. `render` builds the content of one
-    // callout. An empty list removes them all. Calling again with the same entries changes nothing.
+    // callout; an optional `version` makes the callout be built again when it changes. An empty list removes them all. Calling again with the same entries changes nothing.
     function showCallouts(entries) {
       callouts = entries;
       placeCallouts();
@@ -588,6 +595,10 @@
     // [{ side, start, count }] of its file that stay, and `loading` the diffs whose load control was clicked.
     let hunkFilter = null;
     let hunkToken = 0;
+    // The diff ids of the files that stay hidden whatever the filters above keep, keyed by the paths they came from; null
+    // when none is.
+    let excluded = null;
+    let excludeToken = 0;
 
     // The diff ids the active filter keeps: the hunk filter's files when it is set, else the file filter's; null when no
     // file is hidden.
@@ -595,26 +606,27 @@
       return hunkFilter ? new Set(hunkFilter.byId.keys()) : (fileFilter?.ids ?? null);
     }
 
-    // Hides the diff blocks whose id is not in the filter and the tree's file rows whose diff is not, then the directory
-    // rows left with no visible file. A row with no diff link is left alone, as is a directory whose files are not in the
+    // Hides the diff blocks whose id is not in the filter or is excluded, and the tree's file rows whose diff is, then the
+    // directory rows left with no visible file. A row with no diff link is left alone, as is a directory whose files are not in the
     // page (collapsed). The host re-renders its tree and loads diffs as the page scrolls, so this runs again on every
     // refresh.
     function applyFileFilter() {
       const ids = shownIds();
+      const hidden = (id) => (Boolean(ids) && !ids.has(id)) || Boolean(excluded?.ids.has(id));
       for (const block of document.querySelectorAll(spec.blockSelector)) {
-        block.classList.toggle(FILE_HIDDEN, Boolean(ids) && !ids.has(block.id));
+        block.classList.toggle(FILE_HIDDEN, hidden(block.id));
       }
       const host = spec.treeHost();
       if (!host) return;
       const files = [...host.querySelectorAll(spec.treeFileSelector)];
       for (const row of files) {
-        const id = ids ? treeRowId(row) : null;
-        row.classList.toggle(FILE_HIDDEN, id !== null && !ids.has(id));
+        const id = ids || excluded ? treeRowId(row) : null;
+        row.classList.toggle(FILE_HIDDEN, id !== null && hidden(id));
       }
       if (!spec.treeDirSelector) return;
       for (const dir of host.querySelectorAll(spec.treeDirSelector)) {
         const inside = files.filter((row) => dir.contains(row));
-        dir.classList.toggle(FILE_HIDDEN, Boolean(ids) && inside.length > 0 && inside.every((row) => row.classList.contains(FILE_HIDDEN)));
+        dir.classList.toggle(FILE_HIDDEN, Boolean(ids || excluded) && inside.length > 0 && inside.every((row) => row.classList.contains(FILE_HIDDEN)));
       }
     }
 
@@ -631,7 +643,7 @@
       if (!hunkFilter) return;
       for (const block of document.querySelectorAll(spec.blockSelector)) {
         const ranges = hunkFilter.byId.get(block.id);
-        if (!ranges) continue;
+        if (!ranges || excluded?.ids.has(block.id)) continue;
         if (!hunkFilter.loading.has(block.id) && spec.loadDiff?.(block.id)) hunkFilter.loading.add(block.id);
         const rows = [...block.querySelectorAll("tr")];
         let nextHidden = false;
@@ -684,6 +696,21 @@
         hunkFilter = { key, byId, loading: new Set() };
       } else if (key === null) {
         hunkFilter = null;
+      }
+      applyFilters();
+    }
+
+    // Hides the files at `paths` from the diff and the host's tree, whatever the file filter and the hunk filter keep; null
+    // hides none. Calling again with the same paths only re-applies the filters.
+    async function excludeFiles(paths) {
+      const mine = ++excludeToken;
+      const key = paths ? paths.join("\n") : null;
+      if (key !== null && excluded?.key !== key) {
+        const ids = new Set(await Promise.all(paths.map((path) => spec.diffId(path))));
+        if (mine !== excludeToken) return;
+        excluded = { key, ids };
+      } else if (key === null) {
+        excluded = null;
       }
       applyFilters();
     }
@@ -748,6 +775,7 @@
       showCallouts,
       filterFiles,
       filterHunks,
+      excludeFiles,
       changedFileCount,
       ownsLine,
       cancelJump,

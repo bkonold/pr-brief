@@ -142,13 +142,17 @@
     page.restoreLineTarget();
     page.showCallouts(calloutsShown(session));
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
+    const mode = testsMode(session);
+    const exempt = exemptPaths(session);
     if (session.mode === "chunks") {
       const chunk = selectedChunkOf(session);
       page.filterFiles(null);
-      page.filterHunks(chunk ? rangesOf(chunk) : null);
+      page.filterHunks(chunk ? chunkRanges(session, chunk) : null);
+      page.excludeFiles(mode === "hide" ? session.tests.filter((path) => !exempt.has(path)) : null);
     } else {
-      page.filterFiles(fileSet?.paths ?? null);
+      page.filterFiles(mode === "only" ? onlyTestPaths(session, fileSet, exempt) : (fileSet?.paths ?? null));
       page.filterHunks(null);
+      page.excludeFiles(mode === "hide" ? session.tests.filter((path) => !exempt.has(path)) : null);
     }
 
     const waited = Date.now() - session.startedAt;
@@ -166,6 +170,8 @@
         pageSha: page.headSha(),
         chips: tree.fileChips(session.review, page.changedFileCount()),
         fileSet,
+        tests: session.tests,
+        testsMode: mode,
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
       handlersFor(session),
@@ -239,7 +245,7 @@
               key: stop.i,
               anchor: anchors[index],
               ...(isFileStop(stop) ? { file: true } : {}),
-              render: () => tree.stopCallout(stop, stops, (target) => selectStop(session, target, { pulse: false }), review.nodes),
+              render: () => tree.stopCallout(stop, stops, (target) => selectStop(session, target, { pulse: false }), review.nodes, (other) => isExcluded(session, other.path)),
             },
           ]
         : [],
@@ -250,7 +256,7 @@
   // Its buttons open a chunk, and its checkbox records the chunk as judged.
   async function chunkCalloutsFor(session) {
     const { chunks } = session;
-    const targets = chunks.map(chunkTarget);
+    const targets = chunks.map((chunk) => chunkTarget(session, chunk));
     const anchors = await Promise.all(targets.map((target) => (target ? page.lineAnchor(target.path, target.side, target.line) : null)));
     return chunks.flatMap((chunk, index) =>
       anchors[index]
@@ -265,9 +271,10 @@
     );
   }
 
-  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected chunk's in the chunks tab.
+  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected chunk's in the chunks tab. A
+  // stop's callout is built again when the Tests mode changes, since its Previous and Next pass over the stops that mode hides.
   function calloutsShown(session) {
-    if (session.mode === "review") return session.callouts;
+    if (session.mode === "review") return session.callouts.map((entry) => ({ ...entry, version: testsMode(session) }));
     if (session.mode !== "chunks") return [];
     return session.chunkCallouts.filter((entry) => entry.key === `chunk:${session.selectedChunk}`);
   }
@@ -276,11 +283,18 @@
     return session.chunks.find((chunk) => chunk.i === session.selectedChunk) ?? null;
   }
 
-  // The first line a chunk shows: its first hunk's first new line, or, for a hunk with no new lines (a deleted file,
-  // a pure deletion), its first old line; null for a chunk with no hunks.
-  function chunkTarget(chunk) {
-    const hunk = chunk.hunks[0];
+  // The first line a chunk shows: its first shown hunk's first new line, or, for a hunk with no new lines (a deleted
+  // file, a pure deletion), its first old line; null for a chunk with no hunks.
+  function chunkTarget(session, chunk) {
+    const hunk = shownHunks(session, chunk)[0];
     return hunk ? hunkTarget(hunk) : null;
+  }
+
+  // The hunks of a chunk the Tests mode leaves in view. A chunk whose hunks are all kept out is shown whole instead, so
+  // that opening it still shows its callout and its lines.
+  function shownHunks(session, chunk) {
+    const kept = chunk.hunks.filter((hunk) => !isExcluded(session, hunk.path));
+    return kept.length > 0 ? kept : chunk.hunks;
   }
 
   // The first line a hunk shows: its first new line, or its first old line when it has no new lines.
@@ -295,6 +309,11 @@
       ...(after[1] > 0 ? [{ path, side: "R", start: after[0], count: after[1] }] : []),
       ...(before[1] > 0 ? [{ path, side: "L", start: before[0], count: before[1] }] : []),
     ]);
+  }
+
+  // The lines the page is narrowed to for a chunk: its shown hunks' ranges.
+  function chunkRanges(session, chunk) {
+    return rangesOf({ hunks: shownHunks(session, chunk) });
   }
 
   // The chunks the reader has judged, kept in this browser per PR head: the viewer's own marks, not part of the review.
@@ -326,6 +345,71 @@
       else session.judged.delete(i);
       saveJudged(session);
     });
+  }
+
+  const TESTS_MODE_KEY = "prf-tests-mode";
+  const TESTS_MODES = ["all", "hide", "only"];
+
+  // The Tests switch's mode is the reader's preference across PRs, kept in this browser.
+  function loadTestsMode() {
+    try {
+      const stored = localStorage.getItem(TESTS_MODE_KEY);
+      return TESTS_MODES.includes(stored) ? stored : "all";
+    } catch {
+      return "all";
+    }
+  }
+
+  function saveTestsMode(mode) {
+    try {
+      localStorage.setItem(TESTS_MODE_KEY, mode);
+    } catch {
+      // The mode stays for this page's life when storage is unavailable.
+    }
+  }
+
+  // The mode in effect: a review with no test files shows every file whatever the preference.
+  function testsMode(session) {
+    return session.tests.length > 0 ? session.testsMode : "all";
+  }
+
+  // Whether the Tests mode keeps a file out of view: a test file when tests are hidden, any other file when only tests show.
+  function isExcluded(session, path) {
+    const mode = testsMode(session);
+    if (mode === "all") return false;
+    return session.tests.includes(path) === (mode === "hide");
+  }
+
+  // The files the mode must keep in view although it would not: in the walkthrough, the selected stop's file and the
+  // active one, so that a stop or a box can always be opened; in the chunks tab, the files of a selected chunk that
+  // is shown whole.
+  function exemptPaths(session) {
+    const paths = new Set();
+    if (session.mode === "chunks") {
+      const chunk = selectedChunkOf(session);
+      if (chunk && chunk.hunks.every((hunk) => isExcluded(session, hunk.path))) for (const hunk of chunk.hunks) paths.add(hunk.path);
+      return paths;
+    }
+    if (session.mode !== "review") return paths;
+    const stop = session.stops.find((candidate) => candidate.i === session.selectedStop);
+    if (stop) paths.add(stop.path);
+    for (const path of session.activeBox?.paths ?? []) paths.add(path);
+    return paths;
+  }
+
+  // The files shown in "only" mode: the PR's test files, and the exempt ones, within the file set when one is chosen.
+  function onlyTestPaths(session, fileSet, exempt) {
+    const wanted = new Set([...session.tests, ...exempt]);
+    return (fileSet?.paths ?? [...wanted]).filter((path) => wanted.has(path));
+  }
+
+  // Changes the mode, saves it and builds the chunk callouts again, whose places depend on which hunks it keeps in view.
+  async function setTestsMode(session, mode) {
+    if (current !== session || !live() || !TESTS_MODES.includes(mode)) return;
+    session.testsMode = mode;
+    saveTestsMode(mode);
+    session.chunkCallouts = await chunkCalloutsFor(session);
+    return change(session, () => {});
   }
 
   // Each selection takes the next number, so that a selection a later one has overtaken stops before it jumps: clicking
@@ -381,7 +465,7 @@
     });
     if (current !== session || !live() || session.selection !== mine) return;
     tree.revealChunk(chunk.i);
-    const target = chunkTarget(chunk);
+    const target = chunkTarget(session, chunk);
     if (target) await page.jumpToLine(target.path, target.side, target.line, jump);
   }
 
@@ -465,6 +549,7 @@
       onSelectFileInChunk: (i, path) => jumpInChunk(session, i, path),
       onJudged: (i, on) => setJudged(session, i, on),
       onFileSet: (id) => change(session, () => (session.fileSet = id)),
+      onTestsMode: (mode) => setTestsMode(session, mode),
     };
   }
 
@@ -554,6 +639,7 @@
     page.clearLineTarget();
     page.filterFiles(null);
     page.filterHunks(null);
+    page.excludeFiles(null);
     focus.clearBox();
     tree.remove();
     diagram.remove();
@@ -623,6 +709,8 @@
       selectedChunk: null,
       judged: new Set(),
       fileSet: "all",
+      tests: tree.testsOf(review),
+      testsMode: loadTestsMode(),
       selection: 0,
       callouts: [],
       chunkCallouts: [],
