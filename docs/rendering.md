@@ -41,9 +41,10 @@ re-run it instead.
   box, in diagram order, whose files include the stop's file, with a note, and when no box holds the file `node` is null
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
 - **Contract and Data** are two sections after the description, built
-  without a model call. Each is one closed `<details>` (class `section`) whose summary holds the section's name in bold,
-  one chip for each level present, worst first (`callers must change` `additive`; no counts), and the number of table
-  rows as muted text (`3 changes`, `1 change`), so they show while it is collapsed. Opened, it holds one GitHub markdown
+  without a model call. Each is one closed `<details>` (class `section`) whose two-line summary holds the section's name
+  in bold on the first line and, after a `<br>`, one chip for each level present, worst first (`callers must change`
+  `additive`; no counts), and the number of table rows as muted text (`3 changes`, `1 change`), so they show while it is
+  collapsed. Opened, it holds one GitHub markdown
   table with a row per line of the whole PR. Contract rows are sorted
   by worst level, then request before response before both (then no side), then On alphabetically; Data rows by worst
   level, then table, then the document's order; rows with equal keys keep the document's order. With no lines a section
@@ -56,7 +57,7 @@ re-run it instead.
   `added_required` (the newly required properties that the base schema did not declare, including in an inline `allOf`
   member; they read `added (required)`, and the others `now required`).
 
-  Each section ends with its file set as a short list of links to the files' diffs, `Contract files` and `Data files`
+  Each section ends with its file set as a bold label over a bulleted list of links, one file per line, to the files' diffs, `Contract files` and `Data files`
   (see Sources and file sets below); a set with no files draws no list.
 
   The Contract table has the columns Impact, Side, Change, On and ↗. The Data table has Impact, Change, Table and ↗.
