@@ -121,7 +121,7 @@ class BodyTest(RunFolderTest):
         self.assertEqual(len(payload["walkthrough"]), 2)
 
     def test_a_contract_table_in_the_brief_is_kept(self) -> None:
-        table = "<details><summary>Contract</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
+        table = "<details><summary>API</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
         body = BODY.replace("### **API**\nNo API changes\n", table)
         comment = post.build_comment(self.run_dir([stop(1)], body))
         self.assertIn(table, comment)

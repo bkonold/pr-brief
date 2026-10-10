@@ -30,7 +30,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 - A toggle, "Walkthrough" / "Files". "Files" brings the host's own file tree back (GitHub's, or Forgejo's); the toggle
   stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
-- Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "Contract N" and
+- Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
   (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, and clicking one never
   moves the diagram. See "File sets" below.
@@ -39,7 +39,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 ## File sets
 
-"Contract" and "Data" narrow the pane to the files that make up the PR's API contract change and its data change.
+"API" and "Data" narrow the pane to the files that make up the PR's API contract change and its data change.
 
 - In "Walkthrough" mode the list is the stops whose file is in the set, in walkthrough order, each with its file's name
   under its title, then a "no stop" row for every file of the set that has no stop, which jumps to the file's header.
@@ -236,9 +236,9 @@ view. Without a brief it is the "Generate brief" bar described above, and only w
   "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
   description's bullets, with the caption about dashed boxes under it, on a white panel in both themes. The
   card is one column, and each top-level bullet in the description has a blank line's space after it.
-- The brief's "Contract" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
+- The brief's "API" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
   in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is
-  collapsed. Opened it is one table of every line (Contract: Impact, Side, Change, On, ↗; Data: Impact, Change, Table,
+  collapsed. Opened it is one table of every line (API: Impact, Side, Change, On, ↗; Data: Impact, Change, Table,
   ↗), for the whole PR. The body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its
   own container, and a name cut in the middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's
   files view like the others. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a

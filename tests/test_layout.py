@@ -47,7 +47,7 @@ class Drawing(unittest.TestCase):
         self.assertEqual(pill(None, DATA_LEVELS), "")
 
     def draw(self, lines, kind="contract", levels=CONTRACT_LEVELS) -> str:
-        return section(kind, kind.capitalize(), levels, list(lines), lambda l: f"https://example.test/{l.loc[1]}")
+        return section(kind, "API" if kind == "contract" else kind.capitalize(), levels, list(lines), lambda l: f"https://example.test/{l.loc[1]}")
 
     def lines(self, count: int, impact: str = ADDITIVE) -> list[Line]:
         return [line(f"t{n}", impact, change=f"`+ p{n}` optional", on=f"`S{n}`", side="request", loc=("R", n)) for n in range(count)]
@@ -58,10 +58,10 @@ class Drawing(unittest.TestCase):
     def test_a_section_is_one_closed_details_with_its_name_and_chips_in_the_summary(self) -> None:
         text = self.draw([line("a", CALLERS), line("b", ADDITIVE), line("c", ADDITIVE)])
         self.assertEqual(text.count("<details"), 1)
-        self.assertTrue(text.startswith('<details class="section">\n<summary><strong>Contract</strong> <span class="pill p0">'))
+        self.assertTrue(text.startswith('<details class="section">\n<summary><strong>API</strong> <span class="pill p0">'))
         self.assertNotIn("open", text.split("\n")[0])
         summary = re.search(r"<summary>(.*?)</summary>", text).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Contract callers must change additive 3 changes")
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API callers must change additive 3 changes")
         self.assertEqual(pills(summary), ["callers must change", "additive"])
         self.assertTrue(summary.endswith(' <span class="muted">3 changes</span>'))
         self.assertTrue(text.endswith("</div>\n\n</details>"))
