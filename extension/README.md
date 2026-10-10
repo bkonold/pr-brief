@@ -113,7 +113,7 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Chunks" ent
   amber or red for low, medium and high), its hunk count, and a tick once it is judged. The selected row is marked as a
   stop's is, and scrolled into view when a chunk is opened from its callout.
 - The selected row, and only it, lists the files its chunk touches under its title: one button per file, in the order of
-  each file's first hunk, with the file's name (its full path as the tooltip) and its hunk count in the chunk. A click
+  each file's first hunk, with the file's name and its full path as the tooltip. A click
   jumps to that file's first hunk of the chunk, at the line the chunk's own jump would use, and stays in the tab: the
   selection and the page filter do not change. A click on a file of a chunk that is not selected opens that chunk first.
 - Selecting a chunk narrows the page to it: the diffs of the chunk's files only, and in each only the rows that show a

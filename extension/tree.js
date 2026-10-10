@@ -237,13 +237,13 @@
     return [...files.values()];
   }
 
-  // One button per file the chunk touches: the file's name, its full path as the tooltip, and its hunk count.
+  // One button per file the chunk touches: the file's name, with its full path as the tooltip.
   function chunkFiles(chunk, handlers) {
     const list = make("div", "prf-chunk-files");
-    for (const { path, hunks } of filesOf(chunk)) {
+    for (const { path } of filesOf(chunk)) {
       const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, path));
       file.title = path;
-      file.append(make("span", "prf-chunk-file-name", baseName(path)), make("span", "prf-chunk-file-count", String(hunks.length)));
+      file.append(make("span", "prf-chunk-file-name", baseName(path)));
       list.append(file);
     }
     return list;

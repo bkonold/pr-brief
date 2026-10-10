@@ -363,15 +363,11 @@
 }
 
 .prf-chunk-file {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  justify-content: space-between;
+  display: block;
   padding: 1px 4px;
   font: inherit;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
-  color: var(--fgColor-default, #1f2328);
+  color: var(--fgColor-muted, #59636e);
   text-align: left;
   cursor: pointer;
   background: none;
@@ -386,11 +382,6 @@
 .prf-chunk-file-name {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.prf-chunk-file-count {
-  flex: none;
-  color: var(--fgColor-muted, #59636e);
 }
 
 .prf-risk {

@@ -1434,7 +1434,7 @@ test("filesOf groups a chunk's hunks by path, in the order of each path's first 
   assert.deepEqual(filesOf(CHUNKS[2]), []);
 });
 
-test("only the selected chunk's row lists its files, by name with the path as the tooltip and the hunk count, and a click opens the file in the chunk", () => {
+test("only the selected chunk's row lists its files, by name with the path as the tooltip, and a click opens the file in the chunk", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
@@ -1445,11 +1445,11 @@ test("only the selected chunk's row lists its files, by name with the path as th
     assert.deepEqual(rows(2).map((row) => byClass(row, "prf-chunk-files").length), [0, 1, 0]);
     const files = byClass(rows(2)[1], "prf-chunk-file");
     assert.deepEqual(
-      files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title, byClass(file, "prf-chunk-file-count")[0].textContent]),
-      [["b.js", "b.js", "2"], ["c.js", "c.js", "1"]],
+      files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title]),
+      [["b.js", "b.js"], ["c.js", "c.js"]],
     );
     const nested = byClass(rows(1)[0], "prf-chunk-file");
-    assert.deepEqual(nested.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title, byClass(file, "prf-chunk-file-count")[0].textContent]), [["a.js", "src/deep/a.js", "1"]]);
+    assert.deepEqual(nested.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.title]), [["a.js", "src/deep/a.js"]]);
     assert.equal(byClass(rows(3)[2], "prf-chunk-files")[0].children.length, 0);
     for (const file of files) file.listeners.click();
     nested[0].listeners.click();
