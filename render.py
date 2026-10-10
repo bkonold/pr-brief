@@ -8,8 +8,8 @@ usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 Reads answer.yaml, run.json and pr.json from the run dir.
 Writes body.md and body.html, review.json and the diagram's SVG, and records the diagram's labelled and total arrows in run.json. On broken YAML it writes error.txt and an error page and exits 1.
 The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
-diagram's boxes, the walkthrough stops, the chunks and the contract and data lines go to review.json. An answer with `chunks` also gets
-a Chunks section after the Data section.
+diagram's boxes, the walkthrough stops, the layers (the key `chunks`) and the contract and data lines go to review.json. An answer with `chunks` also gets
+a Layers section after the Data section.
 """
 import argparse
 import html
@@ -310,9 +310,9 @@ UNASSIGNED_SUMMARY = "Hunks the model left out."
 
 
 def chunk_depends_on(raw: Any, position: int, total: int, kept: dict[int, int], label: str, notes: list[str]) -> list[int]:
-    """The chunk numbers `raw` names, as the numbers the kept chunks now have. `position` is the chunk's place in the model's
-    list and `total` the length of that list; `kept` maps the places of the chunks that were kept to their new numbers. An entry
-    that is not a whole number, or that names the chunk itself, a later chunk, a chunk past the end or a chunk that was
+    """The layer numbers `raw` names, as the numbers the kept layers now have. `position` is the layer's place in the model's
+    list and `total` the length of that list; `kept` maps the places of the layers that were kept to their new numbers. An entry
+    that is not a whole number, or that names the layer itself, a later layer, a layer past the end or a layer that was
     dropped, is dropped with a note."""
     if raw is None:
         return []
@@ -322,36 +322,36 @@ def chunk_depends_on(raw: Any, position: int, total: int, kept: dict[int, int], 
     found: set[int] = set()
     for entry in raw:
         if not isinstance(entry, int) or isinstance(entry, bool):
-            notes.append(f"{label}: depends_on {entry!r} dropped, it is not a chunk number")
+            notes.append(f"{label}: depends_on {entry!r} dropped, it is not a layer number")
         elif entry == position:
-            notes.append(f"{label}: depends_on {entry} dropped, a chunk cannot depend on itself")
+            notes.append(f"{label}: depends_on {entry} dropped, a layer cannot depend on itself")
         elif entry > total or entry < 1:
-            notes.append(f"{label}: depends_on {entry} dropped, there is no chunk {entry}")
+            notes.append(f"{label}: depends_on {entry} dropped, there is no layer {entry}")
         elif entry > position:
-            notes.append(f"{label}: depends_on {entry} dropped, it is a later chunk")
+            notes.append(f"{label}: depends_on {entry} dropped, it is a later layer")
         elif entry not in kept:
-            notes.append(f"{label}: depends_on {entry} dropped, that chunk was dropped")
+            notes.append(f"{label}: depends_on {entry} dropped, that layer was dropped")
         else:
             found.add(kept[entry])
     return sorted(found)
 
 
 def resolve_chunks(raw: Any, hunks: list[Hunk]) -> tuple[list[dict[str, Any]], list[str]]:
-    """The chunks, numbered from 1 in the model's order, and the notes about what was fixed.
+    """The layers (kept under the key `chunks`), numbered from 1 in the model's order, and the notes about what was fixed.
 
-    A chunk is `{i, title, summary, risk, risk_reason, depends_on, hunks}`. A hunk the diff does not have is dropped, and so is
-    a hunk an earlier chunk already has (the first assignment wins). A chunk left with no hunk is dropped and the rest are
-    renumbered, `depends_on` with them. The hunks no chunk has end up in a last chunk, `Unassigned`. Notes name a chunk by its
+    A layer is `{i, title, summary, risk, risk_reason, depends_on, hunks}`. A hunk the diff does not have is dropped, and so is
+    a hunk an earlier layer already has (the first assignment wins). A layer left with no hunk is dropped and the rest are
+    renumbered, `depends_on` with them. The hunks no layer has end up in a last layer, `Unassigned`. Notes name a layer by its
     place in the model's list."""
     if not isinstance(raw, list):
-        return [], ["no chunks"]
+        return [], ["no layers"]
     notes: list[str] = []
     known: set[str] = {hunk.id for hunk in hunks}
     owner: dict[str, int] = {}
     chunks: list[dict[str, Any]] = []
     places: list[int] = []
     for position, item in enumerate(raw, 1):
-        label: str = f"chunk {position}"
+        label: str = f"layer {position}"
         if not isinstance(item, dict):
             notes.append(f"{label}: dropped, it is not an object")
             continue
@@ -362,7 +362,7 @@ def resolve_chunks(raw: Any, hunks: list[Hunk]) -> tuple[list[dict[str, Any]], l
             if name not in known:
                 notes.append(f"{label}: unknown hunk {name} dropped")
             elif name in owner:
-                notes.append(f"{label}: {name} dropped, it is already in chunk {owner[name]}" if owner[name] != position
+                notes.append(f"{label}: {name} dropped, it is already in layer {owner[name]}" if owner[name] != position
                              else f"{label}: {name} dropped, it is listed twice")
             else:
                 owner[name] = position
@@ -373,7 +373,7 @@ def resolve_chunks(raw: Any, hunks: list[Hunk]) -> tuple[list[dict[str, Any]], l
         number: int = len(chunks) + 1
         title: str = " ".join(str(item.get("title") or "").split())
         if not title:
-            title = f"Chunk {number}"
+            title = f"Layer {number}"
             notes.append(f"{label}: no title, using {title}")
         elif len(title.split()) > CHUNK_TITLE_MAX_WORDS:
             notes.append(f"{label}: title is longer than {CHUNK_TITLE_MAX_WORDS} words")
@@ -389,15 +389,15 @@ def resolve_chunks(raw: Any, hunks: list[Hunk]) -> tuple[list[dict[str, Any]], l
         places.append(position)
     kept: dict[int, int] = {place: chunk["i"] for place, chunk in zip(places, chunks)}
     for place, chunk in zip(places, chunks):
-        chunk["depends_on"] = chunk_depends_on(raw[place - 1].get("depends_on"), place, len(raw), kept, f"chunk {place}", notes)
+        chunk["depends_on"] = chunk_depends_on(raw[place - 1].get("depends_on"), place, len(raw), kept, f"layer {place}", notes)
     left: list[str] = [hunk.id for hunk in hunks if hunk.id not in owner]
     if left:
         chunks.append({"i": len(chunks) + 1, "title": UNASSIGNED_TITLE, "summary": UNASSIGNED_SUMMARY, "risk": "low",
                        "risk_reason": "", "depends_on": [], "hunks": left})
-        notes.append(f"unassigned hunks gathered into the last chunk: {', '.join(left)}")
+        notes.append(f"unassigned hunks gathered into the last layer: {', '.join(left)}")
     low, high = CHUNKS_RANGE
     if not low <= len(chunks) <= high:
-        notes.append(f"{len(chunks)} chunks, expected {low} to {high}")
+        notes.append(f"{len(chunks)} layers, expected {low} to {high}")
     return chunks, notes
 
 
@@ -554,8 +554,8 @@ def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: 
 
 
 def chunks_markdown(run: dict[str, Any], paths: list[str], chunks: list[dict[str, Any]], hunks: list[Hunk]) -> str:
-    """The Chunks section of a body. The files of the PR that have no hunk, which no chunk can hold, are listed after the
-    chunks."""
+    """The Layers section of a body. The files of the PR that have no hunk, which no layer can hold, are listed after the
+    layers."""
     repo: str = run["repo"]
     number: str = str(run["pr"])
 
@@ -667,14 +667,14 @@ def line_json(line: Line) -> dict[str, Any]:
 
 
 def chunks_json(brief: Brief) -> list[dict[str, Any]]:
-    """The chunks of review.json: each chunk as resolved, with its hunks as `hunk_json` objects."""
+    """The layers of review.json, under the key `chunks`: each layer as resolved, with its hunks as `hunk_json` objects."""
     by_id: dict[str, Hunk] = {hunk.id: hunk for hunk in brief.hunks}
     return [{**chunk, "hunks": [hunk_json(by_id[name]) for name in chunk["hunks"]]} for chunk in brief.chunks or []]
 
 
 def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[str, Any]:
     """What the browser extension reads: the diagram's boxes with the stops that land on each, the walkthrough's stops
-    in reading order, the chunks when the answer has them, and the contract and data lines of the tables."""
+    in reading order, the layers (`chunks`) when the answer has them, and the contract and data lines of the tables."""
     return {
         "schema": 4,
         "repo": run["repo"],

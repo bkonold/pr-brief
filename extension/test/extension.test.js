@@ -1392,10 +1392,10 @@ test("the chunks filter line counts the chunks and how many are judged, singular
   globalThis.document = fakeDom();
   try {
     const lede = (chunks, judged) => byClass(filters({ mode: "chunks", chunks, selectedChunk: null, judged: new Set(judged) }, {}), "prf-lede")[0].textContent;
-    assert.equal(lede(CHUNKS, [2]), "3 chunks · 1 judged");
-    assert.equal(lede(CHUNKS, []), "3 chunks · 0 judged");
-    assert.equal(lede(CHUNKS.slice(0, 1), [1]), "1 chunk · 1 judged");
-    assert.equal(lede(CHUNKS, [2, 99]), "3 chunks · 1 judged");
+    assert.equal(lede(CHUNKS, [2]), "3 layers · 1 judged");
+    assert.equal(lede(CHUNKS, []), "3 layers · 0 judged");
+    assert.equal(lede(CHUNKS.slice(0, 1), [1]), "1 layer · 1 judged");
+    assert.equal(lede(CHUNKS, [2, 99]), "3 layers · 1 judged");
     assert.deepEqual(byClass(chunkList({ chunks: CHUNKS, selectedChunk: null, judged: new Set() }, {}), "prf-lede"), []);
   } finally {
     delete globalThis.document;
@@ -1473,7 +1473,7 @@ test("a chunk callout names the chunk, its risk and why, its summary and what it
     const card = chunkCallout(CHUNKS[1], CHUNKS, (i) => went.push(i), () => {});
     const head = byClass(card, "prf-callout-head")[0];
     assert.deepEqual(head.children.map((child) => child.className), ["prf-callout-icon", "prf-callout-where", "prf-callout-sep", "prf-callout-name"]);
-    assert.deepEqual([head.children[1].tag, head.children[1].textContent, head.children[3].textContent], ["strong", "Chunk 2 of 3", "Callers follow"]);
+    assert.deepEqual([head.children[1].tag, head.children[1].textContent, head.children[3].textContent], ["strong", "Layer 2 of 3", "Callers follow"]);
     const risk = byClass(card, "prf-callout-risk")[0];
     assert.deepEqual([byClass(risk, "prf-risk")[0].textContent, byClass(risk, "prf-callout-reason-text")[0].textContent, byClass(risk, "code").length], ["high", "Touches the upload path.", 0]);
     assert.equal(walk(risk).filter((element) => element.tag === "code")[0].textContent, "upload");
@@ -1551,7 +1551,7 @@ test("the mode toggle offers Chunks between the walkthrough and the host's tree 
   try {
     const chips = [{ id: "all", label: "All", count: 9 }, { id: "contract", label: "API", count: 4 }];
     const labels = (state) => byClass(bar(state, { onMode() {} }), "prf-mode").map((choice) => choice.children[1].textContent);
-    assert.deepEqual(labels({ mode: "github", chips: [], chunks: CHUNKS }), ["Walkthrough", "Chunks", "Files"]);
+    assert.deepEqual(labels({ mode: "github", chips: [], chunks: CHUNKS }), ["Walkthrough", "Layers", "Files"]);
     assert.deepEqual(labels({ mode: "github", chips: [], chunks: [] }), ["Walkthrough", "Files"]);
     assert.deepEqual(labels({ mode: "github", chips: [] }), ["Walkthrough", "Files"]);
     const modes = [];

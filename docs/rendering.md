@@ -11,7 +11,7 @@ cannot change them. [prompt.md](prompt.md) shows how the variant's rules and fie
 
 | Variant | What it is |
 | --- | --- |
-| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR; and the diff's hunks, each assigned by its `[hNN]` tag to one of an ordered stack of 2 to 7 chunks with a title, a summary, the earlier chunks it depends on and a risk |
+| `brief` | One main path of at most 10 diagram boxes, each box the changed files of one step; a walkthrough of 3 to 10 stops in reading order, each stop on one box; a Contract and a Data section for the whole PR; and the diff's hunks, each assigned by its `[hNN]` tag to one of an ordered stack of 2 to 7 layers with a title, a summary, the earlier layers it depends on and a risk |
 
 The prompt no longer asks for the per-file summaries (`pr_files`), which the renderer never used; the vendored prompt has
 no switch for its `title` field, which is still asked for and discarded.
@@ -42,21 +42,21 @@ re-run it instead.
   A stop's `node` must be a box of the diagram that covers files; when it is missing or is not, the stop takes the first
   box, in diagram order, whose files include the stop's file, with a note, and when no box holds the file `node` is null
   with a note. A title over 6 words, a `why` over 20 and a count outside 3 to 10 leave a note in `error.txt`.
-- **Chunks.** A chunk is a set of hunks that tells one story a reviewer can judge on its own, and the chunks are an ordered
-  stack. In the `brief` variant, which sets `hunk_ids`, `hunks.py` numbers every hunk of the diff `h01`, `h02`, ... in diff order and tags its
+- **Layers.** The JSON key and the code call them `chunks`. A layer is a set of hunks that tells one story a reviewer can judge on its own, and the layers are an ordered
+  stack, each layer sitting on the ones below it. In the `brief` variant, which sets `hunk_ids`, `hunks.py` numbers every hunk of the diff `h01`, `h02`, ... in diff order and tags its
   `@@` line; the answer's `chunks` is `[{title, summary, hunks, depends_on, risk, risk_reason}]` where `hunks` holds only
   those ids, so the model never copies code. The prompt's repository context also lists the hunks that hold one contract or
   data line (the spec line and the code that declares it, the migration statement and its entity) as hunks that belong
-  together. The renderer drops an unknown hunk id and one an earlier chunk already has (the first assignment wins), drops a
-  chunk left with no hunk and renumbers the rest, resets a `risk` that is not low, medium or high to low, drops a
-  `depends_on` entry that is not a whole number or does not name an earlier chunk (and renumbers the rest after drops), and
-  gathers the hunks no chunk has into a last chunk, `Unassigned`; each fix, a title over 8 words, a missing summary and a
-  count outside 1 to 7 leave a note in `error.txt`. The `### Chunks` section of `body.md` follows the Data section: a
-  `<details>` per chunk whose summary has its number, title, risk and risk reason, then its summary sentence and a link to
+  together. The renderer drops an unknown hunk id and one an earlier layer already has (the first assignment wins), drops a
+  layer left with no hunk and renumbers the rest, resets a `risk` that is not low, medium or high to low, drops a
+  `depends_on` entry that is not a whole number or does not name an earlier layer (and renumbers the rest after drops), and
+  gathers the hunks no layer has into a last layer, `Unassigned`; each fix, a title over 8 words, a missing summary and a
+  count outside 1 to 7 leave a note in `error.txt`. The `### Layers` section of `body.md` follows the Data section: a
+  `<details>` per layer whose summary has its number, title, risk and risk reason, then its summary sentence and a link to
   each hunk (`path:first–last`, the old lines for a deleted file) with its id; files with no hunk (a pure rename, a binary
-  file) are listed after the chunks. `review.json` gets `chunks: [{i, title, summary, risk, risk_reason, depends_on, hunks:
+  file) are listed after the layers. `review.json` gets `chunks: [{i, title, summary, risk, risk_reason, depends_on, hunks:
   [{id, path, change, old: [start, count], new: [start, count]}]}]` only when the answer has a `chunks` key; the schema is
-  still 4. Chunks are additive: a missing diagram or walkthrough is noted, and no stop left is an error, chunks or
+  still 4. Layers are additive: a missing diagram or walkthrough is noted, and no stop left is an error, layers or
   not. `scripts/eval_chunks.py` scores a run against `eval/<pr>.toml`.
 - **Contract and Data** are two sections after the description, built
   without a model call. Each is one closed `<details>` (class `section`) whose two-line summary holds the section's name
@@ -163,7 +163,7 @@ re-run it instead.
 - **`review.json` is schema 4:** `schema`, `repo`, `pr`, `head_sha`, `variant`, `diagram` (when there is one),
   `nodes: {id: {title, files, stops}}` (every box of the diagram in order; `title` is the first line of its label,
   `files` the paths it covers and `stops` the numbers of the stops that land on it), `walkthrough: [{i, title, why, path,
-  side, line, node}]`, `chunks` (see Chunks, only when the answer has them), the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
+  side, line, node}]`, `chunks` (see Layers, only when the answer has them), the table lines `contract` and `data`: `[{impact, text, change, on, reaches, path, side,
   line, source, sources}]`, where `text` is the whole sentence, `change` and `on` its table cells and `reaches` the Side cell;
   `impact` is null for a line with no impact, `side` and `line` are null when the diff does not settle the line, and
   `source` is `{path, side, line}` in the PR's own code or null (`side` is `L` for a removed line) and `sources` is every

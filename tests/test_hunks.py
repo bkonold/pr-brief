@@ -263,7 +263,7 @@ class Pins(unittest.TestCase):
     def test_markdown_lists_one_group_per_line_under_a_heading(self) -> None:
         self.assertEqual(pins_markdown([["h03", "h07", "h12"], ["h20", "h21"]]),
                          "### Hunks that belong together\n"
-                         "These hunks declare the same API or database change, so they must be in the same chunk.\n\n"
+                         "These hunks declare the same API or database change, so they must be in the same layer.\n\n"
                          "- h03, h07, h12\n- h20, h21")
 
     def test_markdown_is_empty_without_a_group(self) -> None:

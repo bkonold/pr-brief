@@ -6,7 +6,7 @@ and GitHub-flavoured markdown tables, so it survives both GitHub and the extensi
 `class` attributes, which leaves the top level bold and the others plain. The section's name is an `<h3>` inside the
 summary, the same heading size as the brief's other sections.
 
-`chunks_section` draws the Chunks section: one `<details>` per chunk, in review order, with a link to each of its hunks.
+`chunks_section` draws the Layers section: one `<details>` per layer, in review order, with a link to each of its hunks.
 """
 import html
 import re
@@ -138,17 +138,17 @@ def hunk_target(hunk: Hunk) -> tuple[str, int, int]:
 
 
 def chunk_summary(chunk: dict[str, Any]) -> str:
-    """A chunk's `<summary>`: its number and title in bold, its risk and, when it has one, the reason in italics."""
+    """A layer's `<summary>`: its number and title in bold, its risk and, when it has one, the reason in italics."""
     reason: str = f" · <i>{html.escape(chunk['risk_reason'], quote=False)}</i>" if chunk["risk_reason"] else ""
     return f"<summary><b>{chunk['i']}. {html.escape(chunk['title'], quote=False)}</b> · {chunk['risk']}{reason}</summary>"
 
 
 def chunks_section(chunks: list[dict[str, Any]], hunks: dict[str, Hunk], link_of: Callable[[Hunk], str],
                    unplaced: list[tuple[str, str]] | None = None) -> str:
-    """The `### Chunks` section: a line with the number of chunks, then one closed `<details>` per chunk, in order. A chunk's
+    """The `### Layers` section: a line with the number of layers, then one closed `<details>` per layer, in order. A layer's
     summary holds its number, title, risk and risk reason; inside it are its summary sentence and one bullet per hunk, a link
     to the hunk's lines (`path:first–last`) and its id. `hunks` maps ids to hunks, and `link_of` gives the URL of a hunk's first
-    line. `unplaced` is `(path, url)` for each file of the PR with no hunk, listed after the chunks. Empty for no chunk."""
+    line. `unplaced` is `(path, url)` for each file of the PR with no hunk, listed after the layers. Empty for no layer."""
     if not chunks:
         return ""
     blocks: list[str] = []
@@ -159,7 +159,7 @@ def chunks_section(chunks: list[dict[str, Any]], hunks: dict[str, Hunk], link_of
             bullets.append(f"- [`{hunks[name].path}:{first}–{last}`]({link_of(hunks[name])}) ({name})")
         sentence: str = f"{html.escape(chunk['summary'], quote=False)}\n\n" if chunk["summary"] else ""
         blocks.append(f"<details>\n{chunk_summary(chunk)}\n\n{sentence}" + "\n".join(bullets) + "\n\n</details>")
-    out: str = f"### Chunks\n\n{plural(len(chunks), 'chunk')}, in review order.\n\n" + "\n\n".join(blocks)
+    out: str = f"### Layers\n\n{plural(len(chunks), 'layer')}, in review order.\n\n" + "\n\n".join(blocks)
     if unplaced:
         out += "\n\nAlso in this PR, with no hunks to assign:\n\n" + "\n".join(f"- [{path}]({url})" for path, url in unplaced)
     return out

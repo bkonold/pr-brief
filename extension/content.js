@@ -256,8 +256,8 @@
     );
   }
 
-  // The callouts of the chunks, one per chunk, each at its first hunk's first line: each is built when its place is found.
-  // Its buttons open a chunk, and its checkbox records the chunk as judged.
+  // The callouts of the layers, one per layer, each at its first hunk's first line: each is built when its place is found.
+  // Its buttons open a layer, and its checkbox records the layer as judged.
   async function chunkCalloutsFor(session) {
     const { chunks } = session;
     const targets = chunks.map((chunk) => chunkTarget(session, chunk));
@@ -275,7 +275,7 @@
     );
   }
 
-  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected chunk's in the chunks tab.
+  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected layer's in the layers tab.
   function calloutsShown(session) {
     if (session.mode === "review") return session.callouts;
     if (session.mode !== "chunks") return [];
@@ -286,14 +286,14 @@
     return session.chunks.find((chunk) => chunk.i === session.selectedChunk) ?? null;
   }
 
-  // The first line a chunk shows: its first shown hunk's first new line, or, for a hunk with no new lines (a deleted
-  // file, a pure deletion), its first old line; null for a chunk with no hunks.
+  // The first line a layer shows: its first shown hunk's first new line, or, for a hunk with no new lines (a deleted
+  // file, a pure deletion), its first old line; null for a layer with no hunks.
   function chunkTarget(session, chunk) {
     const hunk = shownHunks(session, chunk)[0];
     return hunk ? hunkTarget(hunk) : null;
   }
 
-  // The hunks of a chunk the Tests mode leaves in view. A chunk whose hunks are all kept out is shown whole instead, so
+  // The hunks of a layer the Tests mode leaves in view. A layer whose hunks are all kept out is shown whole instead, so
   // that opening it still shows its callout and its lines.
   function shownHunks(session, chunk) {
     const kept = chunk.hunks.filter((hunk) => !isExcluded(session, hunk.path));
@@ -305,7 +305,7 @@
     return hunk.new[1] > 0 ? { path: hunk.path, side: "R", line: hunk.new[0] } : { path: hunk.path, side: "L", line: hunk.old[0] };
   }
 
-  // The lines the page is narrowed to for a chunk: each hunk's new lines on the right and its old lines on the left, so
+  // The lines the page is narrowed to for a layer: each hunk's new lines on the right and its old lines on the left, so
   // that removed lines stay.
   function rangesOf(chunk) {
     return chunk.hunks.flatMap(({ path, old: before, new: after }) => [
@@ -314,12 +314,12 @@
     ]);
   }
 
-  // The lines the page is narrowed to for a chunk: its shown hunks' ranges.
+  // The lines the page is narrowed to for a layer: its shown hunks' ranges.
   function chunkRanges(session, chunk) {
     return rangesOf({ hunks: shownHunks(session, chunk) });
   }
 
-  // The chunks the reader has judged, kept in this browser per PR head: the viewer's own marks, not part of the review.
+  // The layers the reader has judged, kept in this browser per PR head: the viewer's own marks, not part of the review.
   function judgedKey(session) {
     const { pr, review } = session;
     return `prf-judged:${location.host}/${pr.owner}/${pr.repo}#${pr.pr}@${review.head_sha}`;
@@ -371,7 +371,7 @@
     }
   }
 
-  // The mode in effect in "Files" and "Chunks": a review with no test files shows every file whatever the preference.
+  // The mode in effect in "Files" and "Layers": a review with no test files shows every file whatever the preference.
   function testsMode(session) {
     return session.tests.length > 0 ? session.testsMode : "all";
   }
@@ -383,7 +383,7 @@
     return session.tests.includes(path) === (mode === "hide");
   }
 
-  // The files the mode must keep in view although it would not: in the chunks tab, the files of a selected chunk that
+  // The files the mode must keep in view although it would not: in the layers tab, the files of a selected layer that
   // is shown whole.
   function exemptPaths(session) {
     const paths = new Set();
@@ -399,7 +399,7 @@
     return (fileSet?.paths ?? [...wanted]).filter((path) => wanted.has(path));
   }
 
-  // Changes the mode, saves it and builds the chunk callouts again, whose places depend on which hunks it keeps in view.
+  // Changes the mode, saves it and builds the layer callouts again, whose places depend on which hunks it keeps in view.
   async function setTestsMode(session, mode) {
     if (current !== session || !live() || !TESTS_MODES.includes(mode)) return;
     session.testsMode = mode;
@@ -443,8 +443,8 @@
     if (scroll) await jumpToStop(session, stop, Object.keys(jump).length ? jump : undefined);
   }
 
-  // Opens a chunk: the tab shows chunks, no stop or box is selected, and the page narrows to the chunk's hunks. The view
-  // lands on the chunk's first line, where its callout is. `jump` options pass on to that jump; the callout's buttons
+  // Opens a layer: the tab shows layers, no stop or box is selected, and the page narrows to the layer's hunks. The view
+  // lands on the layer's first line, where its callout is. `jump` options pass on to that jump; the callout's buttons
   // pass `{ pulse: false }`, as a stop's do.
   async function selectChunk(session, i, jump) {
     const chunk = session.chunks.find((candidate) => candidate.i === i);
@@ -465,8 +465,8 @@
     if (target) await page.jumpToLine(target.path, target.side, target.line, jump);
   }
 
-  // Lands on a file's first hunk of a chunk. A chunk that is not the selected one is opened first, which narrows the page;
-  // the selected chunk's filter and the tab stay as they are.
+  // Lands on a file's first hunk of a layer. A layer that is not the selected one is opened first, which narrows the page;
+  // the selected layer's filter and the tab stay as they are.
   async function jumpInChunk(session, i, path) {
     if (session.selectedChunk !== i) await selectChunk(session, i);
     if (current !== session || !live() || session.selectedChunk !== i) return;

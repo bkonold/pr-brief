@@ -30,7 +30,7 @@ For changes_diagram:
 - Label an arrow only when the two boxes alone don't say what moves along it or why it fires. Use one to four words for one of these: a user action (`pick report type`), a condition (`flag on`, `no match`, `on POST`), the data handed over (`value or null`), a write (`insert row`), or a return to an earlier box (`redirect back`). Leave the arrow unlabelled when it is a plain call to the next box and that box's name already says what happens. Never use filler labels such as "calls", "uses" or "then". Each arrow joins two boxes that are really connected in the flow.
 - Do not number the nodes.
 
-The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each chunk's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each layer's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
 
 For walkthrough:
 - Give a top-level `walkthrough`: 3 to 10 stops, in the order a reader should follow the change from where it enters to where it lands. Stops may return to a file or a box already visited.
@@ -39,16 +39,16 @@ For walkthrough:
 - `line_text` is a line such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. A method signature or a route declaration is often right. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit `line_text` and the reader is pointed at the file instead.
 - Never stop on a generated file (an OpenAPI spec, a generated SDK). Do not stop twice on the same line, or twice on the same file without a line.
 
-For chunks:
-- Give a top-level `chunks`: the diff's hunks grouped into an ordered stack of chunks. A chunk is a set of hunks that tells one coherent story a reviewer can judge on its own. A file may contribute hunks to several chunks.
-- Every hunk ID in the diff (`[hNN]` at the end of each `@@` line) goes in exactly one chunk. Never invent an ID. You only assign IDs to chunks; never copy code.
-- One idea per chunk; if its title needs "and", consider splitting it.
+For chunks (the layers of the change):
+- Give a top-level `chunks`: the diff's hunks grouped into an ordered stack of layers, each layer sitting on the ones below it. A layer is a set of hunks that tells one coherent story a reviewer can judge on its own. A file may contribute hunks to several layers.
+- Every hunk ID in the diff (`[hNN]` at the end of each `@@` line) goes in exactly one layer. Never invent an ID. You only assign IDs to layers; never copy code.
+- One idea per layer; if its title needs "and", consider splitting it.
 - Tests go with the code they test. Generated code (an SDK, the OpenAPI spec) goes with its source.
-- Hunks listed together under "Hunks that belong together" in the Repository context stay in one chunk.
-- Renames, formatting and import cleanup go in a final chunk titled "Also in this PR", unless something in an earlier chunk depends on them.
-- Order the chunks so each depends only on earlier ones: applying chunks 1 to k on top of the base should ideally compile and pass its tests, for every k.
-- Prefer 2 to 7 chunks. A small, single-purpose PR may be one chunk.
-- Each chunk has a `title` (at most 8 words, phrased as what the reviewer is judging), a `summary` (one sentence), `hunks` (the IDs), `depends_on` (the numbers of earlier chunks it needs, counting from 1; empty when it needs none) and a `risk` (low, medium or high) with, for medium or high, a one-line `risk_reason`.
+- Hunks listed together under "Hunks that belong together" in the Repository context stay in one layer.
+- Renames, formatting and import cleanup go in a final layer titled "Also in this PR", unless something in an earlier layer depends on them.
+- Order the layers so each depends only on earlier ones: applying layers 1 to k on top of the base should ideally compile and pass its tests, for every k.
+- Prefer 2 to 7 layers. A small, single-purpose PR may be one layer.
+- Each layer has a `title` (at most 8 words, phrased as what the reviewer is judging), a `summary` (one sentence), `hunks` (the IDs), `depends_on` (the numbers of earlier layers it needs, counting from 1; empty when it needs none) and a `risk` (low, medium or high) with, for medium or high, a one-line `risk_reason`.
 ```
 
 ## The answer's shape
@@ -69,7 +69,7 @@ class PRDescription(BaseModel):
 '
     walkthrough: List[dict] = Field(description="3 to 10 stops, in the order a reader should follow the change. Stops may return to a file or a box already visited. Stops follow what a reviewer needs to understand. Each stop is an object with the keys: node (str: the id of the changes_diagram box the stop belongs to, normally the box whose node_files lists the stop's file); file (str: the full path of one changed file, never a generated file); title (str: at most 6 words on what this stop shows); why (str: at most 20 words on what to look at here and how it follows from the previous stop; for the first stop, why the reader begins there); line_text (str, optional: include it ONLY when a single line clearly anchors the stop, such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit line_text and the reader is pointed at the file instead).")
     node_files: Dict[str, List[str]] = Field(description="for every node id of changes_diagram, the full paths of the changed files that box covers, as an object from node id to a list of paths. Use an empty list for a box that is unchanged context. Use only paths that appear in the diff. Every changed file is listed under exactly one box; test files go with the box whose code they test.")
-    chunks: List[dict] = Field(description="the diff's hunks grouped into an ordered stack of chunks, 2 to 7 of them (one for a small single-purpose PR). Every hunk ID in the diff goes in exactly one chunk; never invent an ID. Each chunk is an object with the keys: title (str: at most 8 words, phrased as what the reviewer is judging); summary (str: one sentence); hunks (list of str: the hunk IDs, such as h03); depends_on (list of int: the numbers of earlier chunks it needs, counting from 1; may be empty); risk (str: low, medium or high); risk_reason (str: one line, only for medium or high risk).")
+    chunks: List[dict] = Field(description="the diff's hunks grouped into an ordered stack of layers, 2 to 7 of them (one for a small single-purpose PR). Every hunk ID in the diff goes in exactly one layer; never invent an ID. Each layer is an object with the keys: title (str: at most 8 words, phrased as what the reviewer is judging); summary (str: one sentence); hunks (list of str: the hunk IDs, such as h03); depends_on (list of int: the numbers of earlier layers it needs, counting from 1; may be empty); risk (str: low, medium or high); risk_reason (str: one line, only for medium or high risk).")
 ```
 
 ## Repository context
@@ -170,7 +170,7 @@ For changes_diagram:
 - Label an arrow only when the two boxes alone don't say what moves along it or why it fires. Use one to four words for one of these: a user action (`pick report type`), a condition (`flag on`, `no match`, `on POST`), the data handed over (`value or null`), a write (`insert row`), or a return to an earlier box (`redirect back`). Leave the arrow unlabelled when it is a plain call to the next box and that box's name already says what happens. Never use filler labels such as "calls", "uses" or "then". Each arrow joins two boxes that are really connected in the flow.
 - Do not number the nodes.
 
-The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each chunk's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each layer's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
 
 For walkthrough:
 - Give a top-level `walkthrough`: 3 to 10 stops, in the order a reader should follow the change from where it enters to where it lands. Stops may return to a file or a box already visited.
@@ -179,16 +179,16 @@ For walkthrough:
 - `line_text` is a line such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. A method signature or a route declaration is often right. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit `line_text` and the reader is pointed at the file instead.
 - Never stop on a generated file (an OpenAPI spec, a generated SDK). Do not stop twice on the same line, or twice on the same file without a line.
 
-For chunks:
-- Give a top-level `chunks`: the diff's hunks grouped into an ordered stack of chunks. A chunk is a set of hunks that tells one coherent story a reviewer can judge on its own. A file may contribute hunks to several chunks.
-- Every hunk ID in the diff (`[hNN]` at the end of each `@@` line) goes in exactly one chunk. Never invent an ID. You only assign IDs to chunks; never copy code.
-- One idea per chunk; if its title needs "and", consider splitting it.
+For chunks (the layers of the change):
+- Give a top-level `chunks`: the diff's hunks grouped into an ordered stack of layers, each layer sitting on the ones below it. A layer is a set of hunks that tells one coherent story a reviewer can judge on its own. A file may contribute hunks to several layers.
+- Every hunk ID in the diff (`[hNN]` at the end of each `@@` line) goes in exactly one layer. Never invent an ID. You only assign IDs to layers; never copy code.
+- One idea per layer; if its title needs "and", consider splitting it.
 - Tests go with the code they test. Generated code (an SDK, the OpenAPI spec) goes with its source.
-- Hunks listed together under "Hunks that belong together" in the Repository context stay in one chunk.
-- Renames, formatting and import cleanup go in a final chunk titled "Also in this PR", unless something in an earlier chunk depends on them.
-- Order the chunks so each depends only on earlier ones: applying chunks 1 to k on top of the base should ideally compile and pass its tests, for every k.
-- Prefer 2 to 7 chunks. A small, single-purpose PR may be one chunk.
-- Each chunk has a `title` (at most 8 words, phrased as what the reviewer is judging), a `summary` (one sentence), `hunks` (the IDs), `depends_on` (the numbers of earlier chunks it needs, counting from 1; empty when it needs none) and a `risk` (low, medium or high) with, for medium or high, a one-line `risk_reason`.
+- Hunks listed together under "Hunks that belong together" in the Repository context stay in one layer.
+- Renames, formatting and import cleanup go in a final layer titled "Also in this PR", unless something in an earlier layer depends on them.
+- Order the layers so each depends only on earlier ones: applying layers 1 to k on top of the base should ideally compile and pass its tests, for every k.
+- Prefer 2 to 7 layers. A small, single-purpose PR may be one layer.
+- Each layer has a `title` (at most 8 words, phrased as what the reviewer is judging), a `summary` (one sentence), `hunks` (the IDs), `depends_on` (the numbers of earlier layers it needs, counting from 1; empty when it needs none) and a `risk` (low, medium or high) with, for medium or high, a one-line `risk_reason`.
 =====
 
 
@@ -225,7 +225,7 @@ class PRDescription(BaseModel):
 '
     walkthrough: List[dict] = Field(description="3 to 10 stops, in the order a reader should follow the change. Stops may return to a file or a box already visited. Stops follow what a reviewer needs to understand. Each stop is an object with the keys: node (str: the id of the changes_diagram box the stop belongs to, normally the box whose node_files lists the stop's file); file (str: the full path of one changed file, never a generated file); title (str: at most 6 words on what this stop shows); why (str: at most 20 words on what to look at here and how it follows from the previous stop; for the first stop, why the reader begins there); line_text (str, optional: include it ONLY when a single line clearly anchors the stop, such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit line_text and the reader is pointed at the file instead).")
     node_files: Dict[str, List[str]] = Field(description="for every node id of changes_diagram, the full paths of the changed files that box covers, as an object from node id to a list of paths. Use an empty list for a box that is unchanged context. Use only paths that appear in the diff. Every changed file is listed under exactly one box; test files go with the box whose code they test.")
-    chunks: List[dict] = Field(description="the diff's hunks grouped into an ordered stack of chunks, 2 to 7 of them (one for a small single-purpose PR). Every hunk ID in the diff goes in exactly one chunk; never invent an ID. Each chunk is an object with the keys: title (str: at most 8 words, phrased as what the reviewer is judging); summary (str: one sentence); hunks (list of str: the hunk IDs, such as h03); depends_on (list of int: the numbers of earlier chunks it needs, counting from 1; may be empty); risk (str: low, medium or high); risk_reason (str: one line, only for medium or high risk).")
+    chunks: List[dict] = Field(description="the diff's hunks grouped into an ordered stack of layers, 2 to 7 of them (one for a small single-purpose PR). Every hunk ID in the diff goes in exactly one layer; never invent an ID. Each layer is an object with the keys: title (str: at most 8 words, phrased as what the reviewer is judging); summary (str: one sentence); hunks (list of str: the hunk IDs, such as h03); depends_on (list of int: the numbers of earlier layers it needs, counting from 1; may be empty); risk (str: low, medium or high); risk_reason (str: one line, only for medium or high risk).")
 =====
 
 

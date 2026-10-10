@@ -27,18 +27,18 @@ earliest block in the page.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
-- A toggle, "Walkthrough" / "Chunks" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
-  swaps in the stop list, "Chunks" (only for a brief that has chunks, see "Chunks tab") the chunk list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a chunk, which narrows the page to its hunks, and the Tests control in "Files" and "Chunks", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
+- A toggle, "Walkthrough" / "Layers" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
+  swaps in the stop list, "Layers" (only for a brief that has layers, see "Layers tab") the layer list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a layer, which narrows the page to its hunks, and the Tests control in "Files" and "Layers", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
 - Under the toggle, a filter line. In "Walkthrough" and "Files" its left side holds chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
   (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, stays through a switch of the toggle, and clicking one never
   moves the diagram. See "File sets" below.
-  In "Chunks" it holds the chunk count instead (see "Chunks tab"). At its right end, when the brief lists test files, sits the Tests control (see "Tests control"). A line with nothing to show is not drawn.
+  In "Layers" it holds the layer count instead (see "Layers tab"). At its right end, when the brief lists test files, sits the Tests control (see "Tests control"). A line with nothing to show is not drawn.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
   diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout. A muted line above
   the stops counts them, `6 stops, in reading order` (`1 stop`; with a file set, the stops listed), and says in its tooltip what the list is for; a run with no stops has none.
-  The selected row, in this list and in the chunk list, has an inset 2px bar and a faint tint of the guide purple (the callout's), and every row's number sits in a fixed two-digit column so titles line up.
+  The selected row, in this list and in the layer list, has an inset 2px bar and a faint tint of the guide purple (the callout's), and every row's number sits in a fixed two-digit column so titles line up.
 
 ## File sets
 
@@ -54,7 +54,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 ## Tests control
 
 `review.json`'s `file_sets.tests` lists the PR's test files, as full paths. When it is not empty, the filter line (under the
-toggle, in "Files" and "Chunks" only) ends with the Tests control: a muted label "Tests" followed by three text buttons,
+toggle, in "Files" and "Layers" only) ends with the Tests control: a muted label "Tests" followed by three text buttons,
 `all · hidden · only`, 12px, with no border or background. The choices other than the one in effect are in the secondary colour; the
 one in effect is in the default colour, underlined, and has `aria-pressed="true"`. A click picks that mode directly. A brief
 without `file_sets.tests` (an older run, or a PR with no test files) has no control and shows every file. The "Walkthrough"
@@ -67,15 +67,15 @@ has no Tests control and no test behaviour: it shows the files its file set choo
 | only | `only` | the test files only |
 
 - **Diff and tree.** In "Files", in "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
-  with none, whatever the chip or the chunk keeps (`page.excludeFiles`, a third filter that only subtracts). In "only" the
+  with none, whatever the chip or the layer keeps (`page.excludeFiles`, a third filter that only subtracts). In "only" the
   page is narrowed to the test files by the file filter (within the chosen chip, if any), so no list of the PR's other files is
   needed. Either way the host's own tree rows follow, as with a chip.
-- **Dimming.** In the selected chunk's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
+- **Dimming.** In the selected layer's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
   its name muted and struck through.
-- **Chunks.** The selected chunk's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
-  hunks in "only". The chunk's callout and its jump use the first hunk still in view, not the chunk's first hunk. A chunk
-  whose hunks are all kept out by the mode (a chunk of tests only, with tests hidden) is shown whole instead, so that opening
-  it still shows its lines and its callout. A click on a struck-through file in the chunk's list has no row to land on.
+- **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
+  hunks in "only". The layer's callout and its jump use the first hunk still in view, not the layer's first hunk. A layer
+  whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
+  it still shows its lines and its callout. A click on a struck-through file in the layer's list has no row to land on.
 - **Preference.** The mode is kept in this browser's `localStorage` under `prf-tests-mode` as the string `all`, `hide` or `only`
   (absent means `all`), across PRs, read and written in a try/catch. A review with no test files ignores it.
 
@@ -128,44 +128,44 @@ variant) is not shown: see "Older runs".
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-Nothing about the review's state is remembered, except which chunks are judged (see "Chunks tab") and the Tests control's mode (see "Tests control"): every load and every navigation into the files page opens as GitHub would,
+Nothing about the review's state is remembered, except which layers are judged (see "Layers tab") and the Tests control's mode (see "Tests control"): every load and every navigation into the files page opens as GitHub would,
 in "Files" mode with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
 link to a stop's line selects that stop. The one thing kept is whether the diagram panel is expanded (see below).
 
-## Chunks tab
+## Layers tab
 
-`review.json`'s `chunks`, when the brief has them, is an ordered list of `{i, title, summary, risk, risk_reason, depends_on,
+`review.json`'s `chunks` (the layers; the code calls them chunks), when the brief has them, is an ordered list of `{i, title, summary, risk, risk_reason, depends_on,
 hunks}`: the change cut into pieces to judge one at a time. `risk` is `"low"`, `"medium"` or `"high"`, `depends_on` the
-numbers of the chunks this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count]}`.
-A brief with no `chunks` (an older run; `schema` is still 4) has no "Chunks" entry in the toggle.
+numbers of the layers this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count]}`.
+A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" entry in the toggle.
 
-- The filter line has a muted line at its left, `6 chunks · 1 judged`; the list has one row per chunk, on one line: its number and its title, and
+- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer, on one line: its number and its title, and
   at the end a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
-  stop's is, and scrolled into view when a chunk is opened from its callout.
-- The selected row, and only it, lists the files its chunk touches, their names starting under its title: one button per file, in the order of
+  stop's is, and scrolled into view when a layer is opened from its callout.
+- The selected row, and only it, lists the files its layer touches, their names starting under its title: one button per file, in the order of
   each file's first hunk, with the file's name and its full path as the tooltip. A click
-  jumps to that file's first hunk of the chunk, at the line the chunk's own jump would use, and stays in the tab: the
-  selection and the page filter do not change. A click on a file of a chunk that is not selected opens that chunk first.
-- Selecting a chunk narrows the page to it: the diffs of the chunk's files only, and in each only the rows that show a
-  line inside one of the chunk's hunks. A hunk's new range filters the right side and its old range the left, so removed
+  jumps to that file's first hunk of the layer, at the line the layer's own jump would use, and stays in the tab: the
+  selection and the page filter do not change. A click on a file of a layer that is not selected opens that layer first.
+- Selecting a layer narrows the page to it: the diffs of the layer's files only, and in each only the rows that show a
+  line inside one of the layer's hunks. A hunk's new range filters the right side and its old range the left, so removed
   lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own
   tree is behind the sidebar in this tab, but its rows for the other files are hidden as in a file set. The view then
-  lands on the chunk's first hunk, at its first new line (its first old line for a deleted file or a hunk with no new
+  lands on the layer's first hunk, at its first new line (its first old line for a deleted file or a hunk with no new
   lines), the way a stop does, and the selection clears any stop, box or chip. Selecting a stop, a box or a file leaves the
-  tab and shows the whole diff again; opening the tab with a chunk already selected narrows to it again, and with none
+  tab and shows the whole diff again; opening the tab with a layer already selected narrows to it again, and with none
   selects nothing and filters nothing.
-- The chunk's callout sits above that first line. Its header is shaped like a stop's: `Chunk 2 of 6` in bold, a small muted chevron, then the title in
+- The layer's callout sits above that first line. Its header is shaped like a stop's: `Layer 2 of 6` in bold, a small muted chevron, then the title in
   normal weight; under it are the risk pill and `risk_reason` (muted) when there is one, the summary, and `Needs 1, 3` with a
-  button per number that opens that chunk. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening
-  the neighbouring chunk without the pulse, with the "Judged" checkbox under them. Only the selected chunk's callout is shown, and none in the other tabs.
+  button per number that opens that layer. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening
+  the neighbouring layer without the pulse, with the "Judged" checkbox under them. Only the selected layer's callout is shown, and none in the other tabs.
 - "Judged" is the reader's own mark, kept in this browser's `localStorage` under `prf-judged:<host>/<owner>/<repo>#<pr>@<head_sha>`
-  as a JSON array of chunk numbers, so it is per PR head and comes back on reload; a new head starts empty. It is read and
-  written in a try/catch, and without storage the marks last until the page is left. Nothing else about chunks is remembered.
-- The chip row ("All", "API", "Data") is not drawn in this tab: the selected chunk owns the page filter, and a chip
+  as a JSON array of layer numbers, so it is per PR head and comes back on reload; a new head starts empty. It is read and
+  written in a try/catch, and without storage the marks last until the page is left. Nothing else about layers is remembered.
+- The chip row ("All", "API", "Data") is not drawn in this tab: the selected layer owns the page filter, and a chip
   is not applied while the tab is open.
 - Known limit: the host renders rows as the page scrolls, and a row it has not rendered yet is filtered when it appears
   (the filter runs again on every change of the document), so a row can show for an instant first. A diff the host holds
-  back behind its load control is loaded, once, when its chunk is selected.
+  back behind its load control is loaded, once, when its layer is selected.
 
 ## When the page server is down
 
@@ -352,8 +352,8 @@ Run the pure tests with `node --test test/*.test.js`.
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Marks the active file's header, and scrolls to a diff. It hides nothing |
-| `tree.js`, `tree.css`, `focus.css` | The stop list and the chunk list, the stop and chunk callout cards with their previous and next, and the classes `focus.js` and the line jump toggle |
-| `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state, the chunk selection and the judged marks |
+| `tree.js`, `tree.css`, `focus.css` | The stop list and the layer list, the stop and layer callout cards with their previous and next, and the classes `focus.js` and the line jump toggle |
+| `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state, the layer selection and the judged marks |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
 | `comment_source.js` | Reads the brief from the PR's "Brief data" comment block (inflate, split, fetch the conversation page). Loaded before `source.js` |

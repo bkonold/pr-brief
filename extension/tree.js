@@ -68,7 +68,7 @@
     return review.walkthrough;
   }
 
-  // The review's chunks, in order: review.json's `chunks`, absent on a run made before chunks existed.
+  // The review's layers, in order: review.json's `chunks`, absent on a run made before layers existed.
   function chunksOf(review) {
     return review.chunks ?? [];
   }
@@ -152,7 +152,7 @@
   function modeToggle(state, handlers) {
     const toggle = make("div", "prf-modes");
     const modes = [["review", "Walkthrough", LIST_ORDERED_ICON]];
-    if (state.chunks?.length) modes.push(["chunks", "Chunks", LAYERS_ICON]);
+    if (state.chunks?.length) modes.push(["chunks", "Layers", LAYERS_ICON]);
     modes.push(["github", ns.page.treeLabel, DIRECTORY_ICON]);
     for (const [mode, label, icon] of modes) {
       const choice = button("prf-mode", undefined, () => handlers.onMode(mode));
@@ -201,8 +201,8 @@
     return control;
   }
 
-  // The line under the toggle: the file chips in "Walkthrough" and "Files" or the chunk count in "Chunks" at its left,
-  // and in "Files" and "Chunks" the Tests control, when the review has test files, at its right. Null when the line
+  // The line under the toggle: the file chips in "Walkthrough" and "Files" or the layer count in "Layers" at its left,
+  // and in "Files" and "Layers" the Tests control, when the review has test files, at its right. Null when the line
   // would be empty.
   function filters(state, handlers) {
     const line = make("div", "prf-filters");
@@ -271,7 +271,7 @@
     return make("span", `prf-risk prf-risk-${risk}`, risk);
   }
 
-  // The files a chunk touches, each with its hunks in the chunk's order, listed in the order of each file's first hunk.
+  // The files a layer touches, each with its hunks in the layer's order, listed in the order of each file's first hunk.
   function filesOf(chunk) {
     const files = new Map();
     for (const hunk of chunk.hunks) {
@@ -281,7 +281,7 @@
     return [...files.values()];
   }
 
-  // One button per file the chunk touches: the file's name, with its full path as the tooltip. A file the Tests
+  // One button per file the layer touches: the file's name, with its full path as the tooltip. A file the Tests
   // control keeps out of view is struck through.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
@@ -295,8 +295,8 @@
     return list;
   }
 
-  // One row per chunk, on one line: its number and title, then at the end its risk and a tick once it is judged. The
-  // current chunk is marked and, as the only one, lists the files it touches under its title.
+  // One row per layer, on one line: its number and title, then at the end its risk and a tick once it is judged. The
+  // current layer is marked and, as the only one, lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
@@ -320,31 +320,31 @@
     return element;
   }
 
-  // The line counting the chunks and how many are judged.
+  // The line counting the layers and how many are judged.
   function chunksLede(state) {
     const judged = state.chunks.filter((chunk) => state.judged?.has(chunk.i)).length;
-    return make("p", "prf-lede", `${state.chunks.length} ${state.chunks.length === 1 ? "chunk" : "chunks"} \u00b7 ${judged} judged`);
+    return make("p", "prf-lede", `${state.chunks.length} ${state.chunks.length === 1 ? "layer" : "layers"} \u00b7 ${judged} judged`);
   }
 
-  // The chunks in order.
+  // The layers in order.
   function chunkList(state, handlers) {
     const list = make("div", "prf-groups");
     for (const chunk of state.chunks) list.append(chunkRow(chunk, state, handlers));
     return list;
   }
 
-  // The card shown above a chunk's first line in the diff: which chunk of how many this is and its title, its risk and
-  // why, what it summarises, the chunks it builds on (each a button that opens that chunk), and, in a column beside
-  // them, buttons to the previous and the next chunk, each in a slot that is kept, hidden, when there is no such
-  // chunk, with a Judged checkbox under them. `onGo(i)` opens a chunk by its number, `onJudged(i, checked)` records the checkbox, and `judged`
-  // is whether the chunk is judged already.
+  // The card shown above a layer's first line in the diff: which layer of how many this is and its title, its risk and
+  // why, what it summarises, the layers it builds on (each a button that opens that layer), and, in a column beside
+  // them, buttons to the previous and the next layer, each in a slot that is kept, hidden, when there is no such
+  // layer, with a Judged checkbox under them. `onGo(i)` opens a layer by its number, `onJudged(i, checked)` records the checkbox, and `judged`
+  // is whether the layer is judged already.
   function chunkCallout(chunk, chunks, onGo, onJudged, judged = false) {
     const card = make("div", "prf-callout");
     const main = make("div", "prf-callout-main");
     const head = make("div", "prf-callout-head");
     head.append(
       outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"),
-      make("strong", "prf-callout-where", `Chunk ${chunk.i} of ${chunks.length}`),
+      make("strong", "prf-callout-where", `Layer ${chunk.i} of ${chunks.length}`),
       outlineIcon(CHEVRON_ICON, 14, "prf-callout-sep"),
       make("span", "prf-callout-name", chunk.title),
     );
@@ -410,8 +410,8 @@
   }
 
   // state: { mode: "review" | "chunks" | "github", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
-  // fileSet, tests, testsMode }, `judged` being a Set of chunk numbers, `tests` the PR's test files' paths and `testsMode`
-  // "all" | "hide" | "only", which of the PR's files the Tests control shows in "Files" and "Chunks"
+  // fileSet, tests, testsMode }, `judged` being a Set of layer numbers, `tests` the PR's test files' paths and `testsMode`
+  // "all" | "hide" | "only", which of the PR's files the Tests control shows in "Files" and "Layers"
   // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onSelectFileInChunk(i, path), onFileSet(id), onTestsMode(mode)
   function render(review, state, handlers) {
     const mount = mountPoint();

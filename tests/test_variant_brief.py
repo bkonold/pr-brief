@@ -71,8 +71,8 @@ class VariantBRIEF(unittest.TestCase):
 
     def test_the_rules_are_in_the_prompt(self) -> None:
         system, _ = build_prompts(self.brief, PR, tag_headers(DIFF), False)
-        for rule in ("exactly one chunk", "Never invent an ID", "One idea per chunk", "Tests go with the code they test",
-                     "Hunks that belong together", "Also in this PR", "depends only on earlier ones", "2 to 7 chunks",
+        for rule in ("exactly one layer", "Never invent an ID", "One idea per layer", "Tests go with the code they test",
+                     "Hunks that belong together", "Also in this PR", "depends only on earlier ones", "2 to 7 layers",
                      "caller list is partial", "Do not summarize the Repository context"):
             self.assertIn(rule, system)
         self.assertNotIn("do not write a walkthrough", system)
@@ -172,7 +172,7 @@ class HunkIdsInThePrompt(unittest.TestCase):
         for tag in ("h01", "h02", "h03", "h04", "h05"):
             self.assertRegex(text, rf"(?m)^@@ .* \[{tag}\]$")
         self.assertIn("- one\n\n### Hunks that belong together\nThese hunks declare the same API or database change, "
-                      "so they must be in the same chunk.\n\n- h01, h02, h03\n- h04, h05\n", text)
+                      "so they must be in the same layer.\n\n- h01, h02, h03\n- h04, h05\n", text)
 
 
 if __name__ == "__main__":

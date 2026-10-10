@@ -11,7 +11,7 @@
   font-size: 13px;
   line-height: 1.4;
   /* Where a row's title starts: the row's left padding (6px), the button's (4px), the number column (2ch) and its gap
-     (8px). The files listed under a chunk start here too. */
+     (8px). The files listed under a layer start here too. */
   --prf-gutter: calc(6px + 4px + 2ch + 8px);
 }
 

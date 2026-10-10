@@ -1,4 +1,4 @@
-"""Tests for the chunks of a brief: how the answer's chunks resolve against the diff's hunks, how the Chunks section draws and
+"""Tests for the chunks of a brief: how the answer's chunks resolve against the diff's hunks, how the Layers section draws and
 how review.json lists them. All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import sys
 import unittest
@@ -74,22 +74,22 @@ class ResolveChunks(unittest.TestCase):
 
     def test_something_that_is_not_a_list_gives_no_chunks_and_a_note(self) -> None:
         for raw in (None, "text", {"title": "t", "hunks": ["h01"]}):
-            self.assertEqual(resolve(raw), ([], ["no chunks"]))
+            self.assertEqual(resolve(raw), ([], ["no layers"]))
 
     def test_an_unknown_hunk_is_dropped_with_a_note(self) -> None:
         chunks, notes = resolve([chunk(hunks=["h01", "h99", "nonsense"]), chunk("B", ["h02", "h03", "h04"])])
         self.assertEqual(chunks[0]["hunks"], ["h01"])
-        self.assertEqual(notes, ["chunk 1: unknown hunk h99 dropped", "chunk 1: unknown hunk nonsense dropped"])
+        self.assertEqual(notes, ["layer 1: unknown hunk h99 dropped", "layer 1: unknown hunk nonsense dropped"])
 
     def test_a_hunk_an_earlier_chunk_has_stays_there_and_is_dropped_from_the_later_one(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01", "h02"]), chunk("B", ["h02", "h03", "h04"])])
         self.assertEqual([c["hunks"] for c in chunks], [["h01", "h02"], ["h03", "h04"]])
-        self.assertEqual(notes, ["chunk 2: h02 dropped, it is already in chunk 1"])
+        self.assertEqual(notes, ["layer 2: h02 dropped, it is already in layer 1"])
 
     def test_a_hunk_listed_twice_in_one_chunk_is_kept_once(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01", "h01", "h02", "h03", "h04"])])
         self.assertEqual(chunks[0]["hunks"], ["h01", "h02", "h03", "h04"])
-        self.assertEqual(notes, ["chunk 1: h01 dropped, it is listed twice"])
+        self.assertEqual(notes, ["layer 1: h01 dropped, it is listed twice"])
 
     def test_a_hunk_id_in_brackets_or_capitals_is_read(self) -> None:
         chunks, notes = resolve([chunk(hunks=["[h01]", "H02", " h03 ", "`h04`"])])
@@ -98,34 +98,34 @@ class ResolveChunks(unittest.TestCase):
     def test_a_chunk_left_with_no_hunk_is_dropped_and_the_rest_are_renumbered(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01", "h02"]), chunk("Empty", ["h99"]), chunk("C", ["h03", "h04"])])
         self.assertEqual([(c["i"], c["title"]) for c in chunks], [(1, "A"), (2, "C")])
-        self.assertIn("chunk 2: dropped, no hunks left", notes)
+        self.assertIn("layer 2: dropped, no hunks left", notes)
 
     def test_a_chunk_with_no_hunks_key_or_one_that_is_not_an_object_is_dropped(self) -> None:
         chunks, notes = resolve([{"title": "t"}, "text", chunk("A", ALL)])
         self.assertEqual([c["title"] for c in chunks], ["A"])
-        self.assertIn("chunk 1: dropped, no hunks left", notes)
-        self.assertIn("chunk 2: dropped, it is not an object", notes)
+        self.assertIn("layer 1: dropped, no hunks left", notes)
+        self.assertIn("layer 2: dropped, it is not an object", notes)
 
     def test_a_missing_title_is_numbered_by_its_place_after_the_drops(self) -> None:
         chunks, notes = resolve([chunk("Gone", ["h99"]), chunk("", ["h01", "h02"]), {"summary": "s", "hunks": ["h03", "h04"]}])
-        self.assertEqual([c["title"] for c in chunks], ["Chunk 1", "Chunk 2"])
-        self.assertIn("chunk 2: no title, using Chunk 1", notes)
-        self.assertIn("chunk 3: no title, using Chunk 2", notes)
+        self.assertEqual([c["title"] for c in chunks], ["Layer 1", "Layer 2"])
+        self.assertIn("layer 2: no title, using Layer 1", notes)
+        self.assertIn("layer 3: no title, using Layer 2", notes)
 
     def test_a_title_over_8_words_is_noted_and_kept(self) -> None:
         chunks, notes = resolve([chunk("one two three four five six seven eight nine", ALL)])
         self.assertEqual(chunks[0]["title"], "one two three four five six seven eight nine")
-        self.assertEqual(notes, ["chunk 1: title is longer than 8 words"])
+        self.assertEqual(notes, ["layer 1: title is longer than 8 words"])
         self.assertEqual(resolve([chunk("one two three four five six seven eight", ALL)])[1], [])
 
     def test_a_missing_summary_is_noted(self) -> None:
         chunks, notes = resolve([{**chunk(hunks=ALL), "summary": ""}])
-        self.assertEqual((chunks[0]["summary"], notes), ("", ["chunk 1: no summary"]))
+        self.assertEqual((chunks[0]["summary"], notes), ("", ["layer 1: no summary"]))
 
     def test_a_risk_that_is_not_low_medium_or_high_is_low_with_a_note(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01"], risk="severe"), chunk("B", ["h02"], risk=None), chunk("C", ["h03", "h04"], risk="High")])
         self.assertEqual([c["risk"] for c in chunks], ["low", "low", "high"])
-        self.assertEqual(notes, ["chunk 1: risk 'severe' is not low, medium or high, using low", "chunk 2: no risk, using low"])
+        self.assertEqual(notes, ["layer 1: risk 'severe' is not low, medium or high, using low", "layer 2: no risk, using low"])
 
     def test_the_risk_reason_is_one_line_and_empty_when_there_is_none(self) -> None:
         chunks, _ = resolve([chunk("A", ["h01"], risk_reason="  A\n  reason. "), chunk("B", ["h02", "h03", "h04"])])
@@ -134,39 +134,39 @@ class ResolveChunks(unittest.TestCase):
     def test_depends_on_entries_that_are_not_whole_numbers_are_dropped(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01"]), chunk("B", ["h02", "h03", "h04"], depends_on=["1", 1.0, None, True, 1])])
         self.assertEqual(chunks[1]["depends_on"], [1])
-        self.assertEqual(without(notes, "2 chunks"), [
-            "chunk 2: depends_on '1' dropped, it is not a chunk number", "chunk 2: depends_on 1.0 dropped, it is not a chunk number",
-            "chunk 2: depends_on None dropped, it is not a chunk number", "chunk 2: depends_on True dropped, it is not a chunk number"])
+        self.assertEqual(without(notes, "2 layers"), [
+            "layer 2: depends_on '1' dropped, it is not a layer number", "layer 2: depends_on 1.0 dropped, it is not a layer number",
+            "layer 2: depends_on None dropped, it is not a layer number", "layer 2: depends_on True dropped, it is not a layer number"])
 
     def test_depends_on_that_points_at_itself_forward_or_past_the_end_is_dropped(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01"], depends_on=[1, 2, 9, 0]), chunk("B", ["h02", "h03", "h04"], depends_on=[1, 2, 3])])
         self.assertEqual([c["depends_on"] for c in chunks], [[], [1]])
-        self.assertEqual(without(notes, "2 chunks"), [
-            "chunk 1: depends_on 1 dropped, a chunk cannot depend on itself", "chunk 1: depends_on 2 dropped, it is a later chunk",
-            "chunk 1: depends_on 9 dropped, there is no chunk 9", "chunk 1: depends_on 0 dropped, there is no chunk 0",
-            "chunk 2: depends_on 2 dropped, a chunk cannot depend on itself", "chunk 2: depends_on 3 dropped, there is no chunk 3"])
+        self.assertEqual(without(notes, "2 layers"), [
+            "layer 1: depends_on 1 dropped, a layer cannot depend on itself", "layer 1: depends_on 2 dropped, it is a later layer",
+            "layer 1: depends_on 9 dropped, there is no layer 9", "layer 1: depends_on 0 dropped, there is no layer 0",
+            "layer 2: depends_on 2 dropped, a layer cannot depend on itself", "layer 2: depends_on 3 dropped, there is no layer 3"])
 
     def test_depends_on_is_renumbered_after_a_chunk_is_dropped_and_a_dependency_on_a_dropped_chunk_is_dropped(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01"]), chunk("Gone", ["h99"]), chunk("C", ["h02"], depends_on=[1, 2]),
                                  chunk("D", ["h03", "h04"], depends_on=[3, 1])])
         self.assertEqual([(c["i"], c["depends_on"]) for c in chunks], [(1, []), (2, [1]), (3, [1, 2])])
-        self.assertIn("chunk 3: depends_on 2 dropped, that chunk was dropped", notes)
+        self.assertIn("layer 3: depends_on 2 dropped, that layer was dropped", notes)
 
     def test_depends_on_that_is_not_a_list_is_empty_with_a_note_and_duplicates_collapse(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01"]), chunk("B", ["h02"], depends_on=1), chunk("C", ["h03", "h04"], depends_on=[2, 1, 2])])
         self.assertEqual([c["depends_on"] for c in chunks], [[], [], [1, 2]])
-        self.assertIn("chunk 2: depends_on is not a list", notes)
+        self.assertIn("layer 2: depends_on is not a list", notes)
 
     def test_hunks_no_chunk_has_are_gathered_into_a_final_unassigned_chunk(self) -> None:
         chunks, notes = resolve([chunk("A", ["h01", "h03"])])
         self.assertEqual(chunks[-1], {"i": 2, "title": "Unassigned", "summary": "Hunks the model left out.", "risk": "low",
                                       "risk_reason": "", "depends_on": [], "hunks": ["h02", "h04"]})
-        self.assertIn("unassigned hunks gathered into the last chunk: h02, h04", notes)
+        self.assertIn("unassigned hunks gathered into the last layer: h02, h04", notes)
 
     def test_an_empty_list_leaves_every_hunk_unassigned(self) -> None:
         chunks, notes = resolve([])
         self.assertEqual([(c["title"], c["hunks"]) for c in chunks], [("Unassigned", ALL)])
-        self.assertIn("unassigned hunks gathered into the last chunk: h01, h02, h03, h04", notes)
+        self.assertIn("unassigned hunks gathered into the last layer: h01, h02, h03, h04", notes)
 
     def test_every_hunk_assigned_gives_no_unassigned_chunk(self) -> None:
         chunks, _ = resolve([chunk("A", ["h01"]), chunk("B", ["h02", "h03", "h04"])])
@@ -177,8 +177,8 @@ class ResolveChunks(unittest.TestCase):
         self.assertEqual(resolve(many)[1], [])
         eight = parse_hunks("diff --git a/f b/f\n" + "".join(f"@@ -{n} +{n} @@\n-a\n+b\n" for n in range(1, 9)))
         raw = [chunk(f"C{n}", [f"h{n:02d}"]) for n in range(1, 9)]
-        self.assertEqual(resolve(raw, eight)[1], ["8 chunks, expected 1 to 7"])
-        self.assertEqual(resolve([], [])[1], ["0 chunks, expected 1 to 7"])
+        self.assertEqual(resolve(raw, eight)[1], ["8 layers, expected 1 to 7"])
+        self.assertEqual(resolve([], [])[1], ["0 layers, expected 1 to 7"])
 
 
 class HunkTarget(unittest.TestCase):
@@ -200,9 +200,9 @@ class ChunksSection(unittest.TestCase):
 
     def test_it_draws_a_count_then_one_details_per_chunk_with_a_link_per_hunk(self) -> None:
         self.assertEqual(chunks_section(self.CHUNKS, self.BY_ID, link_of), "\n".join([
-            "### Chunks",
+            "### Layers",
             "",
-            "2 chunks, in review order.",
+            "2 layers, in review order.",
             "",
             "<details>",
             "<summary><b>1. The &lt;item&gt; model</b> · medium · <i>Key changes.</i></summary>",
@@ -225,7 +225,7 @@ class ChunksSection(unittest.TestCase):
             "</details>"]))
 
     def test_one_chunk_is_counted_in_the_singular(self) -> None:
-        self.assertIn("\n1 chunk, in review order.\n", chunks_section(self.CHUNKS[:1], self.BY_ID, link_of))
+        self.assertIn("\n1 layer, in review order.\n", chunks_section(self.CHUNKS[:1], self.BY_ID, link_of))
 
     def test_files_with_no_hunk_are_listed_after_the_chunks(self) -> None:
         found = chunks_section(self.CHUNKS, self.BY_ID, link_of, [("api/After.java", "https://x/after"), ("img/logo.png", "https://x/logo")])
@@ -256,10 +256,10 @@ class ChunksInTheBody(unittest.TestCase):
 
     def test_the_chunks_section_comes_after_the_data_section_and_before_the_closing_rule(self) -> None:
         brief, _ = self.build(ANSWER)
-        self.assertLess(brief.body.index("### Data"), brief.body.index("### Chunks"))
-        self.assertLess(brief.body.index("### Chunks"), brief.body.index("Also in this PR, with no hunks to assign:"))
+        self.assertLess(brief.body.index("### Data"), brief.body.index("### Layers"))
+        self.assertLess(brief.body.index("### Layers"), brief.body.index("Also in this PR, with no hunks to assign:"))
         self.assertTrue(brief.body.endswith(")\n\n\n___\n\n"))
-        self.assertIn("2 chunks, in review order.", brief.body)
+        self.assertIn("2 layers, in review order.", brief.body)
         self.assertEqual([chunk["title"] for chunk in brief.chunks or []], ["The model", "Tests"])
 
     def test_the_hunk_links_point_at_the_hunks_lines_in_the_pr(self) -> None:
@@ -280,13 +280,13 @@ class ChunksInTheBody(unittest.TestCase):
 
     def test_the_resolution_notes_are_kept(self) -> None:
         _, notes = self.build({**ANSWER, "chunks": [chunk("A", ["h01", "h99"])]})
-        self.assertEqual(notes, ["no changes_diagram", "chunk 1: unknown hunk h99 dropped",
-                                 "unassigned hunks gathered into the last chunk: h02, h03, h04"])
+        self.assertEqual(notes, ["no changes_diagram", "layer 1: unknown hunk h99 dropped",
+                                 "unassigned hunks gathered into the last layer: h02, h03, h04"])
 
     def test_an_answer_with_no_chunks_key_has_no_chunks_section(self) -> None:
         data = {"description": "d", "walkthrough": [{"file": "api/Item.java", "title": "t", "why": "w"}]}
         brief, notes = self.build(data)
-        self.assertNotIn("### Chunks", brief.body)
+        self.assertNotIn("### Layers", brief.body)
         self.assertIsNone(brief.chunks)
         self.assertEqual(notes, ["no changes_diagram", "1 stops, expected 3 to 10"])
 
@@ -297,7 +297,7 @@ class ChunksInTheBody(unittest.TestCase):
             self.assertIn("The walkthrough has no stop left", str(caught.exception))
         with self.assertRaises(AnswerError) as caught:
             self.build({"description": "d", "chunks": "text"})
-        self.assertIn("- no chunks", str(caught.exception))
+        self.assertIn("- no layers", str(caught.exception))
 
     def test_stops_are_enough_without_chunks(self) -> None:
         self.assertEqual(self.build({"description": "d", "walkthrough": STOPS, "chunks": "text"})[0].chunks, [])

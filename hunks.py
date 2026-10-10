@@ -4,8 +4,8 @@ hunks a contract or data line is declared in.
 `parse_hunks` is the one reader of hunk headers; `diff_lines.file_diff_lines` and `render.diff_lines_by_path` take their lines
 from it. A hunk is named `h01`, `h02`, and so on, in the order the diff shows them, across all of its files. `tag_headers` writes
 those names at the end of each hunk header so a model can refer to a hunk by name, and `parse_hunks` reads a tagged diff and an
-untagged one alike. A chunk groups hunks (see render.py's `resolve_chunks`); `pins` finds the hunks that the deterministic
-analysis says belong in the same chunk.
+untagged one alike. A layer (called a chunk in the code) groups hunks (see render.py's `resolve_chunks`); `pins` finds the hunks that the deterministic
+analysis says belong in the same layer.
 """
 import re
 from dataclasses import dataclass
@@ -20,7 +20,7 @@ HUNK_TAG = re.compile(r" \[h\d+\]$")
 HUNK_ID = re.compile(r"h(\d+)$")
 
 PINS_HEADING = "### Hunks that belong together"
-PINS_INTRO = "These hunks declare the same API or database change, so they must be in the same chunk."
+PINS_INTRO = "These hunks declare the same API or database change, so they must be in the same layer."
 
 
 @dataclass
