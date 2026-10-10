@@ -141,12 +141,13 @@
     return Boolean(runSha && pageSha && String(runSha).toLowerCase() !== String(pageSha).toLowerCase());
   }
 
-  function badge(key, variant, label) {
+  // The badge names where the brief came from and, for a run that records it, the model that wrote it.
+  function badge(key, variant, label, model = null) {
     const where = variant ? `Run ${escapeHtml(key)}, variant ${escapeHtml(variant)}` : "No run yet";
-    return `<span class="badge" title="${where}">${escapeHtml(label)}</span>`;
+    return `<span class="badge" title="${where}">${escapeHtml(model ? `${label} · ${model}` : label)}</span>`;
   }
 
-  const TITLE = '<span class="title">PR brief</span>';
+  const TITLE = '<span class="title" title="Written by an AI from the diff; check it before trusting it.">PR Brief · AI-generated</span>';
 
   function bar(inner) {
     return `<div class="brief"><div class="bar">${TITLE}${inner}</div>`;
@@ -156,7 +157,7 @@
   //   { kind: "none", canGenerate }                         no run yet
   //   { kind: "running", stage, elapsed }                   a run is going
   //   { kind: "error", message }                            the call or the run failed
-  //   { kind: "brief", variant, bodyHtml, diagramSvg, runSha, pageSha, canGenerate, origin }   a run, closed; `origin` is
+  //   { kind: "brief", variant, model, bodyHtml, diagramSvg, runSha, pageSha, canGenerate, origin }   a run, closed; `origin` is
   //                                                         "comment" for a brief read from the PR's comment, else "server".
   //                                                         A comment's brief offers Regenerate only when `canGenerate`
   //                                                         is true, which is when a run server is set
@@ -193,7 +194,7 @@
           : '<button class="link quiet" type="button" data-action="generate">Regenerate</button>';
     return (
       '<details class="brief">' +
-      `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label)}${regenerate}` +
+      `<summary><span class="chevron"></span>${TITLE}${badge(key, view.variant, label, view.model)}${regenerate}` +
       `<a class="files-link" href="${escapeHtml(filesUrl)}">Review in files view</a></summary>` +
       `<div class="content"><div class="text">${html}</div>${diagram}</div></details>`
     );

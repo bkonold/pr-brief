@@ -108,6 +108,7 @@ class Sections(unittest.TestCase):
         brief, _ = render_body()
         data = review_json(RUN, brief, True)
         self.assertEqual(data["schema"], 4)
+        self.assertEqual(data["model"], RUN.get("model"))
         self.assertNotIn("chunks", data)
         self.assertNotIn("unchunked", data)
         first = next(line for line in data["contract"] if line["on"] == "`ItemRequest`")

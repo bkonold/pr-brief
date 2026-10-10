@@ -128,7 +128,7 @@ class ReviewJson(unittest.TestCase):
         stops = [{"i": 1, "title": "t", "why": "w", "path": "web/Page.tsx", "side": "R", "line": 5, "node": "Screen"}]
         nodes = {"Screen": {"title": "Screen", "files": ["web/Page.tsx"], "stops": [1]}}
         data = review_json(self.RUN, Brief("", (0, 0), nodes, stops, [], []), True)
-        self.assertEqual(data, {"schema": 4, "repo": "acme/widgets", "pr": 7, "head_sha": "a" * 40, "variant": "v",
+        self.assertEqual(data, {"schema": 4, "repo": "acme/widgets", "pr": 7, "head_sha": "a" * 40, "variant": "v", "model": None,
                                 "diagram": "diagram.svg", "nodes": nodes, "walkthrough": stops, "contract": [], "data": [],
                                 "file_sets": {"contract": [], "data": []}})
 

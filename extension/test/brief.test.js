@@ -163,10 +163,10 @@ test("the card is a closed details that reads and writes no storage", () => {
     const outer = /<details class="brief"[^>]*>/.exec(shadow)[0];
     assert.equal(outer, '<details class="brief">');
     assert.doesNotMatch(shadow, /<details[^>]*\bopen\b/);
-    assert.match(shadow, /<span class="title">PR brief<\/span>/);
+    assert.match(shadow, /<span class="title"[^>]*>PR Brief · AI-generated<\/span>/);
     assert.match(shadow, /<span class="badge"[^>]*>local, not posted<\/span>/);
     assert.match(shadow, /<a class="files-link" href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files">Review in files view<\/a>/);
-    const diagramBox = /<details class="diagram-box"><summary>Diagram<\/summary>(.*?)<\/details>/s.exec(shadow);
+    const diagramBox = /<details class="diagram-box"><summary><h3>Diagram<\/h3><\/summary>(.*?)<\/details>/s.exec(shadow);
     assert.ok(diagramBox, "the diagram is in its own details headed Diagram");
     assert.match(diagramBox[1], /^<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<p class="caption">Dashed boxes are unchanged context<\/p><\/figure>$/s);
     const at = (needle) => shadow.indexOf(needle);
@@ -474,7 +474,7 @@ const CARD = { key: "fj-7", filesUrl: FILES_URL };
 
 test("with no run the card is a bar with the badge and a Generate brief button", () => {
   const html = cardHtml({ kind: "none", canGenerate: true }, CARD);
-  assert.match(html, /<span class="title">PR brief<\/span><span class="badge"[^>]*>local, not posted<\/span><button class="btn" type="button" data-action="generate">Generate brief<\/button>/);
+  assert.match(html, /<span class="title"[^>]*>PR Brief · AI-generated<\/span><span class="badge"[^>]*>local, not posted<\/span><button class="btn" type="button" data-action="generate">Generate brief<\/button>/);
   assert.doesNotMatch(html, /<details|<ol/);
   assert.doesNotMatch(cardHtml({ kind: "none", canGenerate: false }, CARD), /<button/);
 });
@@ -535,6 +535,7 @@ test("a brief read from the PR's comment says so, and offers Regenerate only whe
   assert.match(stale, /<span class="badge"[^>]*>for a1b2c3d, PR is at 9f8e7d6<\/span><a class="files-link"/);
   assert.doesNotMatch(stale, /Regenerate/);
   assert.match(cardHtml({ ...BRIEF, origin: "server" }, CARD), /local, not posted/);
+  assert.match(cardHtml({ ...BRIEF, origin: "comment", pageSha: null, model: "claude-opus-5.5" }, CARD), /from the PR's comment · claude-opus-5\.5<\/span>/);
 });
 
 test("clicking Regenerate in the header runs the action and does not toggle the card", () => {

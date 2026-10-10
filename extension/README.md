@@ -189,7 +189,7 @@ which only the background script sends.
 `run_control.js` owns one run's progress for a PR page: it starts the run, asks `/api/status` every 3 seconds, ticks
 a one-second clock between polls and reports to the page. The card and the files view's line both draw from it.
 
-- **Conversation page, no run:** the card is a bar with "PR brief", "local, not posted" and a "Generate brief" button
+- **Conversation page, no run:** the card is a bar with "PR Brief · AI-generated", "local, not posted" and a "Generate brief" button
   (nothing at all when no server URL is set).
 - **Running:** "Writing brief · m:ss", a pill per stage (Fetch PR, Gather context, Write, Render; done ones green, the
   current one in the accent colour) and a Cancel link. Leaving the page does not stop the run; the next visit asks

@@ -556,6 +556,7 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
         "pr": run["pr"],
         "head_sha": run["pr_head_sha"],
         "variant": run["variant"],
+        "model": run.get("model"),
         **({"diagram": DIAGRAM_SVG} if has_diagram else {}),
         "nodes": brief.nodes,
         "walkthrough": brief.stops,
