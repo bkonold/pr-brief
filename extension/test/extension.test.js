@@ -670,6 +670,32 @@ test("a walkthrough row shows the stop's number and its title, and marks the cur
   }
 });
 
+test("the walkthrough list opens with a line saying what the stops are for", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const list = stopList({ stops: WALK_STOPS, selectedStop: null }, {});
+    assert.equal(list.children[0].className, "prf-lede");
+    assert.equal(
+      list.children[0].textContent,
+      "Read the change in this order. A stop opens its lines in the diff and lights its box in the diagram.",
+    );
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a run with no stops has no lede line", () => {
+  const { stopList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const list = stopList({ stops: [], selectedStop: null }, {});
+    assert.deepEqual(byClass(list, "prf-lede"), []);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test("a run with no stops says so instead of listing rows", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
@@ -1206,7 +1232,8 @@ test("with a set chosen the list is its stops in walkthrough order, then its fil
       rows.map((row) => [byClass(row, "prf-num")[0].textContent, byClass(row, "prf-name")[0].textContent, byClass(row, "prf-file")[0].textContent]),
       [["2", "Query filters", "b.js"], ["3", "Docs", "c.md"], ["–", "no stop", "api.json"]],
     );
-    assert.deepEqual(list.children.map((row) => row.className.split(" ")[1]), ["prf-stop", "prf-stop", "prf-nostop"]);
+    assert.equal(list.children[0].className, "prf-lede");
+    assert.deepEqual(list.children.slice(1).map((row) => row.className.split(" ")[1]), ["prf-stop", "prf-stop", "prf-nostop"]);
     for (const row of byClass(list, "prf-nostop")) byClass(row, "prf-head-main")[0].listeners.click();
     assert.deepEqual(picked, ["api.json"]);
   } finally {
