@@ -8,7 +8,7 @@ where it describes the page, and the Forgejo selectors are in their own table at
 
 A reviewer needs the extension and nothing else: no server and no token.
 
-1. **The PR's comment.** The GitHub Action (`post.py`) ends its comment with a collapsed "Brief data" block, a code fence
+1. **The PR's comment.** The GitHub Action (`post.py`) closes its collapsed "PR Brief" comment with a nested, collapsed "Brief data" block, a code fence
    holding the base64 of the gzip of `review.json` plus the run's `diagram.svg` and `body.html` (as `diagram_svg` and
    `body_html`). `comment_source.js` finds the earliest such block in the page's rendered comments, inflates it
    (`DecompressionStream`) and hands `source.js` the review, the body page and the diagram. On the PR's conversation page

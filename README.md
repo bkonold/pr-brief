@@ -17,7 +17,7 @@ A brief runs three ways:
 
 A comment run uses the workflow on the default branch, so the workflow must be merged there before `/brief` works. The Action skips a pull request from a fork whatever the trigger, ending the job successfully before it installs anything.
 The workflow queues runs for one pull request instead of cancelling them, so a push during a `/brief` run waits for the brief to post and then refreshes it; a cancelled start would leave the pull request with no brief for that push to refresh. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
-to the diff lines. The comment ends with a collapsed "Brief data" block, the run's `review.json`, diagram and
+to the diff lines. The comment is one collapsed "PR Brief" block (its summary names the variant and the head commit) that ends with a collapsed "Brief data" block, the run's `review.json`, diagram and
 body page gzipped and base64-encoded, which the browser extension reads so that a reviewer needs no server; a comment over
 GitHub's size limit loses that block first. Pin
 `bkonold/pr-brief` to a full commit SHA, and store a fine-grained personal access token with the "Copilot Requests"
