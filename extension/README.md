@@ -190,7 +190,7 @@ which only the background script sends.
 `run_control.js` owns one run's progress for a PR page: it starts the run, asks `/api/status` every 3 seconds, ticks
 a one-second clock between polls and reports to the page. The card and the files view's line both draw from it.
 
-- **Conversation page, no run:** the card is a bar with "PR brief", "local, not posted" and a "Generate brief" button
+- **Conversation page, no run:** the card is a bar with "PR Brief · AI-generated", "local, not posted" and a "Generate brief" button
   (nothing at all when no server URL is set).
 - **Running:** "Writing brief · m:ss", a pill per stage (Fetch PR, Gather context, Write, Render; done ones green, the
   current one in the accent colour) and a Cancel link. Leaving the page does not stop the run; the next visit asks
@@ -220,11 +220,13 @@ else of the old run is shown.
 
 ## The PR brief card
 
-On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR brief"
+On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR Brief · AI-generated"
 card above the PR's description when the PR has a brief (`prFromUrl` returns `view: "conversation"`; the files page is
-`view: "files"` and behaves as before). Its badge says "from the PR's comment" for a brief read from the comment and "local,
-not posted" for one the local server holds, nothing is written to the page's data, and its header links to the files
-view. Without a brief it is the "Generate brief" bar described above, and only where a server URL is set.
+`view: "files"` and behaves as before). Its title's tooltip says the brief is written by an AI from the diff and should be checked.
+Its badge says "from the PR's comment" for a brief read from the comment and "local,
+not posted" for one the local server holds, followed by the model that wrote the run when `review.json` records it, nothing is written to the page's data, and its header links to the files
+view. Without a brief it is the "Generate brief" bar described above, and only where a server URL is set. When the page has no brief comment yet (the host is still rendering the timeline), the card is mounted as soon as
+the comment appears.
 
 - It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
   are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.

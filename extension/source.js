@@ -58,14 +58,14 @@
     }
   }
 
-  // The run behind the PR brief card: { variant, bodyHtml, diagramSvg, headSha, origin }, or null when the PR has
+  // The run behind the PR brief card: { variant, model, bodyHtml, diagramSvg, headSha, origin }, or null when the PR has
   // none. `origin` is "comment" or "server". With `{ server: true }` the comment is skipped, which is how a run the
   // local server has just written is read.
   async function loadBrief(owner, repo, pr, key = String(pr), { server = false } = {}) {
     if (!alive()) return null;
     const posted = server ? null : await commentBrief(owner, repo, pr);
     if (posted?.bodyHtml != null) {
-      return { variant: posted.review.variant ?? null, bodyHtml: posted.bodyHtml, diagramSvg: posted.diagramSvg, headSha: posted.review.head_sha ?? null, origin: "comment" };
+      return { variant: posted.review.variant ?? null, model: posted.review.model ?? null, bodyHtml: posted.bodyHtml, diagramSvg: posted.diagramSvg, headSha: posted.review.head_sha ?? null, origin: "comment" };
     }
     try {
       const brief = await chrome.runtime.sendMessage({ type: "loadBrief", owner, repo, pr, key });

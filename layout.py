@@ -3,7 +3,8 @@
 `section` draws one section (Contract or Data) of the brief: a closed `<details>` whose summary holds the section's name
 and the count at each impact level, and whose body is one table with a row per line of the whole PR. The markup is HTML
 and GitHub-flavoured markdown tables, so it survives both GitHub and the extension's brief pane; GitHub drops the
-`class` attributes, which leaves the top level bold and the others plain.
+`class` attributes, which leaves the top level bold and the others plain. The section's name is an `<h3>` inside the
+summary, the same heading size as the brief's other sections.
 """
 import html
 import re
@@ -118,7 +119,7 @@ def section(kind: str, heading: str, levels: tuple[str, ...], lines: list[Line],
     under it the section's files as a bulleted list of links (`files` holds `(path, url)`)."""
     ordered: list[Line] = sorted(lines, key=lambda line: sort_key(kind, line, levels))
     listed: str = files_list(f"{heading} files", files or [])
-    return (f'<details class="section">\n<summary><strong>{html.escape(heading)}</strong><br>\n{glance(lines, levels)} '
+    return (f'<details class="section">\n<summary><h3>{html.escape(heading)}</h3><br>\n{glance(lines, levels)} '
             f'<span class="muted">{plural(len(lines), "change")}</span></summary>\n\n'
             f'<div class="table-wrap">\n\n{table(kind, levels, ordered, link_of, source_link_of)}\n\n</div>\n\n'
             f'{listed + chr(10) * 2 if listed else ""}</details>')

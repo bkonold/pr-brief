@@ -92,7 +92,7 @@ async function loadBrief(request) {
     loadRunFile(baseUrl, variant, key, "body.html"),
     loadDiagram(baseUrl, variant, key, review.diagram),
   ]);
-  return bodyHtml === null ? null : { variant, bodyHtml, diagramSvg, headSha: review.head_sha ?? null, origin: "server" };
+  return bodyHtml === null ? null : { variant, model: review.model ?? null, bodyHtml, diagramSvg, headSha: review.head_sha ?? null, origin: "server" };
 }
 
 // One call to serve.py's /api/ with the token; see describeResponse for the shapes that come back, and

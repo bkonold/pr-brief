@@ -51,7 +51,7 @@ DIAGRAM_WRAPPING_WIDTH = 280
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
 CONTEXT_CAPTION = "Dashed boxes are unchanged context"
 # Section headings whose name is not the key's own word.
-HEADINGS: dict[str, str] = {"type": "PR Type", "contract": "API"}
+HEADINGS: dict[str, str] = {"contract": "API"}
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
 
 
@@ -483,9 +483,8 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
     ordered: dict[str, Any] = {}
     if run["with_body"] and (pr["body"] or "").strip():
         ordered["User Description"] = pr["body"].strip()
-    for key in ("type", "description"):
-        if key in data:
-            ordered[key] = data[key]
+    if "description" in data:
+        ordered["description"] = data["description"]
     api, rows = build_lines(pr, contract, diff_text)
     locate_sources(pr, api, rows, diff_text, read_file)
     sets: dict[str, list[str]] = file_sets(pr, contract, api, rows)
@@ -521,7 +520,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key in ("contract", "data") and value.startswith("<details"):
             body += f"{value}\n"
         else:
-            body += f"### **{HEADINGS.get(key) or key.replace('_', ' ').capitalize()}**\n"
+            body += f"### {HEADINGS.get(key) or key.replace('_', ' ').capitalize()}\n"
             if isinstance(value, list):
                 value = ", ".join(str(v).rstrip() for v in value)
             if key == "description":
@@ -557,6 +556,7 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
         "pr": run["pr"],
         "head_sha": run["pr_head_sha"],
         "variant": run["variant"],
+        "model": run.get("model"),
         **({"diagram": DIAGRAM_SVG} if has_diagram else {}),
         "nodes": brief.nodes,
         "walkthrough": brief.stops,

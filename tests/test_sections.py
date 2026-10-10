@@ -61,22 +61,22 @@ class Sections(unittest.TestCase):
         self.addCleanup(patch.stop)
 
     def section_of(self, text: str, name: str) -> str:
-        return re.search(rf'(?s)<details class="section">\n<summary><strong>{name}</strong>.*?</details>', text).group()
+        return re.search(rf'(?s)<details class="section">\n<summary><h3>{name}</h3>.*?</details>', text).group()
 
     def test_two_closed_sections_follow_the_description_and_no_rule_separates_them(self) -> None:
         brief, _ = render_body()
         text = brief.body
-        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>API</strong><br>\n'
-                               r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong><br>\n')
+        self.assertRegex(text, r'(?s)### Description\n.*___\n\n<details class="section">\n<summary><h3>API</h3><br>\n'
+                               r'.*</details>\n+<details class="section">\n<summary><h3>Data</h3><br>\n')
         self.assertNotIn("Contract and data", text)
-        self.assertNotIn("### **Contract**", text)
+        self.assertNotIn("### Contract", text)
         self.assertEqual(text.count('<details class="section">'), 2)
-        contract_to_data = text[text.index("<summary><strong>API</strong>"):text.index("<summary><strong>Data</strong>")]
+        contract_to_data = text[text.index("<summary><h3>API</h3>"):text.index("<summary><h3>Data</h3>")]
         self.assertNotIn("___", contract_to_data)
-        after_data = text[text.index("<summary><strong>Data</strong>"):]
+        after_data = text[text.index("<summary><h3>Data</h3>"):]
         self.assertEqual(after_data.count("___"), 1)
         self.assertTrue(after_data.rstrip().endswith("___"))
-        self.assertEqual(text.count("___"), 3)
+        self.assertEqual(text.count("___"), 2)
 
     def test_the_contract_summary_has_the_chips_and_the_table_every_line_worst_first(self) -> None:
         brief, _ = render_body()
@@ -108,6 +108,7 @@ class Sections(unittest.TestCase):
         brief, _ = render_body()
         data = review_json(RUN, brief, True)
         self.assertEqual(data["schema"], 4)
+        self.assertEqual(data["model"], RUN.get("model"))
         self.assertNotIn("chunks", data)
         self.assertNotIn("unchunked", data)
         first = next(line for line in data["contract"] if line["on"] == "`ItemRequest`")
@@ -156,16 +157,16 @@ class Sections(unittest.TestCase):
     def test_no_changes_keeps_the_old_sentences(self) -> None:
         brief, _ = render_body(contract=document({}, {}) | {"path": SPEC}, text="")
         text = brief.body
-        self.assertIn("### **API**\nNo API changes\n", text)
-        self.assertIn("### **Data**\nNo database changes\n", text)
+        self.assertIn("### API\nNo API changes\n", text)
+        self.assertIn("### Data\nNo database changes\n", text)
 
     def test_a_side_that_could_not_be_checked_is_named(self) -> None:
         unchecked = {**RUN, "context": {"sections": {}, "dropped": {}}}
         with mock.patch.object(render, "MIGRATION_GLOBS", []):
             brief, _ = build_body_for(unchecked)
             text = brief.body
-        self.assertIn("### **API**\nAPI changes not checked\n", text)
-        self.assertIn("### **Data**\nDatabase changes not checked\n", text)
+        self.assertIn("### API\nAPI changes not checked\n", text)
+        self.assertIn("### Data\nDatabase changes not checked\n", text)
 
     def test_the_page_styles_the_three_chip_levels(self) -> None:
         page = render.markdown_page("# T")
@@ -182,9 +183,9 @@ class Sections(unittest.TestCase):
     def test_the_body_ends_after_the_diagram(self) -> None:
         brief, _ = render_body()
         text = brief.body
-        headings = re.findall(r"^### (?:\*\*)?(.*?)(?:\*\*)?$", text, re.M)
-        self.assertEqual(headings, ["PR Type", "Description", "Diagram Walkthrough"])
-        self.assertEqual(text.count("<summary><strong>"), 2)
+        headings = re.findall(r"^### (.*?)$", text, re.M)
+        self.assertEqual(headings, ["Description", "Diagram Walkthrough"])
+        self.assertEqual(text.count("<summary><h3>"), 2)
         self.assertTrue(text.rstrip().endswith("___"))
 
 

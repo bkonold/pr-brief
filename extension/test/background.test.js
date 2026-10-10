@@ -98,5 +98,5 @@ test("the stored server URL is the only one asked, with its trailing slashes dro
 
 test("a brief from the server names the server as its origin", async () => {
   const { answer } = await send(REQUESTS[1], { ...REVIEW_BASE, schema: 4, nodes: {}, diagram: "diagram.svg" });
-  assert.deepEqual(answer, { variant: "brief", bodyHtml: "<p>brief</p>", diagramSvg: "<svg/>", headSha: "a".repeat(40), origin: "server" });
+  assert.deepEqual(answer, { variant: "brief", model: null, bodyHtml: "<p>brief</p>", diagramSvg: "<svg/>", headSha: "a".repeat(40), origin: "server" });
 });

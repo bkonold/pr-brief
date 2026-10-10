@@ -17,12 +17,11 @@ const MARKDOWN = [
   "# Example title",
   "",
   "<!-- pr-agent-generated -->",
-  "### **PR Type**",
   "Enhancement",
   "",
   "___",
   "",
-  "### **Description**",
+  "### Description",
   "- Adds `thing` to the pipeline",
   "  - nested **point**",
   "",
@@ -109,7 +108,7 @@ test("sanitize in svg mode keeps a diagram's style and drops what can run script
 test("renderBody renders the description and leaves the title, the mermaid source and its heading out", () => {
   const { html, caption } = briefText.renderBody(bodyHtml(), FILES_URL);
   assert.doesNotMatch(html, /Example title|mermaid|flowchart|Diagram Walkthrough|pr-agent-generated|Dashed boxes/);
-  assert.match(html, /<h3><strong>PR Type<\/strong><\/h3>/);
+  assert.match(html, /<h3>Description<\/h3>/);
   assert.match(html, /<li>Adds <code>thing<\/code> to the pipeline\n<ul>\n<li>nested <strong>point<\/strong>/);
   assert.equal(caption, "Dashed boxes are unchanged context");
 });
@@ -164,10 +163,10 @@ test("the card is a closed details that reads and writes no storage", () => {
     const outer = /<details class="brief"[^>]*>/.exec(shadow)[0];
     assert.equal(outer, '<details class="brief">');
     assert.doesNotMatch(shadow, /<details[^>]*\bopen\b/);
-    assert.match(shadow, /<span class="title">PR brief<\/span>/);
+    assert.match(shadow, /<span class="title"[^>]*>PR Brief · AI-generated<\/span>/);
     assert.match(shadow, /<span class="badge"[^>]*>local, not posted<\/span>/);
     assert.match(shadow, /<a class="files-link" href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files">Review in files view<\/a>/);
-    const diagramBox = /<details class="diagram-box"><summary>Diagram<\/summary>(.*?)<\/details>/s.exec(shadow);
+    const diagramBox = /<details class="diagram-box"><summary><h3>Diagram<\/h3><\/summary>(.*?)<\/details>/s.exec(shadow);
     assert.ok(diagramBox, "the diagram is in its own details headed Diagram");
     assert.match(diagramBox[1], /^<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<p class="caption">Dashed boxes are unchanged context<\/p><\/figure>$/s);
     const at = (needle) => shadow.indexOf(needle);
@@ -201,7 +200,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, startState = "running" }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, startState = "running", runs = null, payloads = null }) {
   const log = [];
   const description = {
     name: "description",
@@ -211,6 +210,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     },
   };
   const navigations = [];
+  const changes = [];
+  const nav = { away: false };
   const built = [];
   const calls = [];
   const lines = [];
@@ -232,13 +233,13 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     page: {
       name: "Fake",
       hostId: "forgejo",
-      prFromUrl: () => ({ owner: "acme", repo: "widgets", pr: 7, view }),
+      prFromUrl: () => (nav.away ? null : { owner: "acme", repo: "widgets", pr: 7, view }),
       runKey: (pr) => `fj-${pr.pr}`,
       filesUrl: () => FILES_URL,
       currentHeadSha: async () => pageSha,
       descriptionHost: () => (hostPresent ? description : null),
       onNavigate: (callback) => (navigations.push(callback), () => {}),
-      onChange: () => () => {},
+      onChange: (callback) => (changes.push(callback), () => {}),
       cancelJump: () => lineEvents.push("cancelJump"),
       clearLineTarget: () => lineEvents.push("clearLineTarget"),
       fileBlocks: () => new Map(),
@@ -254,7 +255,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       jumpToFile: async (...args) => fileJumps.push(args),
     },
     source: {
-      loadBrief: async (...args) => (briefArgs.push(args), run),
+      loadBrief: async (...args) => (briefArgs.push(args), runs ? runs.shift() : run),
       loadReview: async () => review,
       runStatus: async (target) => (calls.push(["status", target]), status),
       startRun: async (target) => (calls.push(["start", target]), { ok: true, key: target.key, state: startState }),
@@ -289,6 +290,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       owns: () => false,
     },
     alive: () => true,
+    ...(payloads ? { commentSource: { extractPayload: () => payloads.shift() } } : {}),
   };
   const output = [];
   const consoleSpy = { log: (...a) => output.push(a), warn: (...a) => output.push(a), error: (...a) => output.push(a), info: (...a) => output.push(a), debug: (...a) => output.push(a) };
@@ -298,10 +300,10 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     return timer;
   };
   const sessionStorage = { getItem: (key) => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
-  const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise };
+  const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, ...(payloads ? { document: {} } : {}) };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { briefArgs, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
+  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -344,6 +346,45 @@ test("a run in progress on the server is followed when the page opens, and its f
   const { built } = loadContent({ run: null, status: { ok: true, state: "running", stage: "write", elapsed: 41, allowed: true } });
   await settle();
   assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }, { kind: "running", stage: "write", elapsed: 41 }]);
+});
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("the card is mounted once the brief comment appears after the first lookup", async () => {
+  const { built, briefArgs, changes } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false } });
+  await settle();
+  assert.equal(built.length, 0);
+  assert.equal(changes.length, 1);
+  changes[0]();
+  await wait(350);
+  assert.equal(built.length, 1);
+  assert.equal(briefArgs.length, 2);
+});
+
+test("the lookup is not repeated while the page still has no brief block", async () => {
+  const { built, briefArgs, changes } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false }, payloads: [null, "data"] });
+  await settle();
+  changes[0]();
+  await wait(350);
+  assert.equal(briefArgs.length, 1);
+  assert.equal(built.length, 0);
+  changes[0]();
+  await wait(350);
+  assert.equal(briefArgs.length, 2);
+  assert.equal(built.length, 1);
+});
+
+test("navigating away stops waiting for the comment", async () => {
+  const { built, briefArgs, changes, nav, navigations } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false } });
+  await settle();
+  changes[0]();
+  nav.away = true;
+  for (const navigate of navigations) navigate();
+  await wait(350);
+  changes[0]();
+  await wait(350);
+  assert.equal(briefArgs.length, 1);
+  assert.equal(built.length, 0);
 });
 
 test("one card is built for a run, however many times the page announces a navigation", async () => {
@@ -433,7 +474,7 @@ const CARD = { key: "fj-7", filesUrl: FILES_URL };
 
 test("with no run the card is a bar with the badge and a Generate brief button", () => {
   const html = cardHtml({ kind: "none", canGenerate: true }, CARD);
-  assert.match(html, /<span class="title">PR brief<\/span><span class="badge"[^>]*>local, not posted<\/span><button class="btn" type="button" data-action="generate">Generate brief<\/button>/);
+  assert.match(html, /<span class="title"[^>]*>PR Brief · AI-generated<\/span><span class="badge"[^>]*>local, not posted<\/span><button class="btn" type="button" data-action="generate">Generate brief<\/button>/);
   assert.doesNotMatch(html, /<details|<ol/);
   assert.doesNotMatch(cardHtml({ kind: "none", canGenerate: false }, CARD), /<button/);
 });
@@ -494,6 +535,7 @@ test("a brief read from the PR's comment says so, and offers Regenerate only whe
   assert.match(stale, /<span class="badge"[^>]*>for a1b2c3d, PR is at 9f8e7d6<\/span><a class="files-link"/);
   assert.doesNotMatch(stale, /Regenerate/);
   assert.match(cardHtml({ ...BRIEF, origin: "server" }, CARD), /local, not posted/);
+  assert.match(cardHtml({ ...BRIEF, origin: "comment", pageSha: null, model: "claude-opus-5.5" }, CARD), /from the PR's comment · claude-opus-5\.5<\/span>/);
 });
 
 test("clicking Regenerate in the header runs the action and does not toggle the card", () => {
@@ -575,7 +617,7 @@ const V22_MARKDOWN = [
   "# T",
   "",
   '<details class="section">',
-  '<summary><strong>Contract</strong> <span class="pill p0"><strong>callers must change</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
+  '<summary><h3>Contract</h3> <span class="pill p0"><strong>callers must change</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
   "",
   '<div class="table-wrap">',
   "",
@@ -591,7 +633,7 @@ const V22_MARKDOWN = [
   "",
   "___",
   "",
-  "### **Data**",
+  "### Data",
   "No database changes",
   "",
   "### Diagram Walkthrough",
@@ -606,7 +648,7 @@ test("a v22 section is one closed details with its name and chips in the summary
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
   assert.equal((html.match(/<details class="section">/g) ?? []).length, 1);
   assert.doesNotMatch(html, /<details class="section" open/);
-  assert.match(html, /<summary><strong>Contract<\/strong> <span class="pill p0"><strong>callers must change<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
+  assert.match(html, /<summary><h3>Contract<\/h3> <span class="pill p0"><strong>callers must change<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
   assert.equal((html.match(/<table>/g) ?? []).length, 1);
   assert.match(html, /<thead><tr><th>Impact<\/th><th>Side<\/th><th>Change<\/th><th>On<\/th><th>↗<\/th><\/tr><\/thead>/);
   assert.match(html, /<td><span class="pill p0"><strong>callers must change<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
@@ -620,8 +662,8 @@ test("a v22 section is one closed details with its name and chips in the summary
 test("a v22 brief keeps the diagram after the Data section", () => {
   const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
   const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
-  const contract = html.indexOf("<strong>Contract</strong>");
-  const data = html.indexOf("<h3><strong>Data</strong></h3>");
+  const contract = html.indexOf("<h3>Contract</h3>");
+  const data = html.indexOf("<h3>Data</h3>");
   const diagram = html.indexOf('class="diagram-box"');
   assert.ok(contract !== -1 && data > contract && diagram > data, [contract, data, diagram].join());
   assert.equal(html.slice(contract, data).includes("diagram-box"), false);
