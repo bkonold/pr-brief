@@ -300,7 +300,6 @@
             leaveLine();
             deactivate(session);
             session.mode = mode;
-            session.fileSet = "all";
           },
         ),
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),

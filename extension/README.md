@@ -32,7 +32,7 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   and page-down work across the whole change.
 - Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
-  (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, switching the toggle resets it to "All", and clicking one never
+  (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, stays through a switch of the toggle, and clicking one never
   moves the diagram. See "File sets" below.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
   diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout. A muted line above

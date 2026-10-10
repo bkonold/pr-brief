@@ -940,16 +940,14 @@ test("choosing a chip narrows the pane and the tree to the set without moving th
   assert.equal(filters.at(-1), null);
 });
 
-test("switching the mode resets the chip to All and shows the whole tree again", async () => {
+test("switching the mode keeps the chip and its filter", async () => {
   const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
   await settle();
   await renders.at(-1).handlers.onFileSet("contract");
-  assert.equal(renders.at(-1).state.fileSet.id, "contract");
   await renders.at(-1).handlers.onMode("review");
-  assert.equal(renders.at(-1).state.fileSet, null);
-  assert.equal(filters.at(-1), null);
-  await renders.at(-1).handlers.onFileSet("contract");
+  assert.equal(renders.at(-1).state.fileSet.id, "contract");
+  assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
   await renders.at(-1).handlers.onMode("github");
-  assert.equal(renders.at(-1).state.fileSet, null);
-  assert.equal(filters.at(-1), null);
+  assert.equal(renders.at(-1).state.fileSet.id, "contract");
+  assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
 });
