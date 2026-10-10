@@ -344,3 +344,92 @@
   font-size: 12px;
   color: var(--fgColor-muted, #59636e);
 }
+
+.prf-hunk-hidden {
+  display: none;
+}
+
+.prf-chunk-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.prf-risk {
+  display: inline-block;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--prf-risk, var(--fgColor-muted, #59636e));
+  background: color-mix(in srgb, var(--prf-risk, #59636e) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--prf-risk, #59636e) 45%, transparent);
+  border-radius: 999px;
+}
+
+.prf-risk-low {
+  --prf-risk: var(--fgColor-success, #1a7f37);
+}
+
+.prf-risk-medium {
+  --prf-risk: var(--fgColor-attention, #9a6700);
+}
+
+.prf-risk-high {
+  --prf-risk: var(--fgColor-danger, #cf222e);
+}
+
+.prf-judged-tick {
+  color: var(--fgColor-success, #1a7f37);
+  font-weight: 700;
+}
+
+.prf-callout-risk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.prf-callout-risk code,
+.prf-callout-reason-text code {
+  padding: 0 4px;
+  background: var(--bgColor-neutral-muted, #818b981f);
+  border-radius: 4px;
+}
+
+.prf-callout-risk + .prf-callout-reason,
+.prf-callout-needs,
+.prf-callout-judged {
+  margin-top: 8px;
+}
+
+.prf-callout-needs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.prf-callout-need {
+  padding: 0 8px;
+  font: inherit;
+  cursor: pointer;
+  color: var(--fgColor-default, #1f2328);
+  background: var(--bgColor-default, #ffffff);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 6px;
+}
+
+.prf-callout-need:hover {
+  background: var(--bgColor-neutral-muted, #818b981f);
+}
+
+.prf-callout-judged {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: fit-content;
+  cursor: pointer;
+}

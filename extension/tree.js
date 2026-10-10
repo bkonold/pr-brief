@@ -10,6 +10,8 @@
   const DIRECTORY_ICON =
     "M0 2.75C0 1.784.784 1 1.75 1H5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 0 0 .2.1h6.75c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 0 0-.2-.1Z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
+  // Three stacked layers, filled.
+  const LAYERS_ICON = "M8 1 15 4.5 8 8 1 4.5ZM1 7.4 8 10.9 15 7.4V8.9L8 12.4 1 8.9ZM1 10.4 8 13.9 15 10.4V11.9L8 15.4 1 11.9Z";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
   function staleMessage(review, pageSha) {
     if (!review.head_sha || !pageSha || review.head_sha.toLowerCase() === pageSha.toLowerCase()) return null;
@@ -62,6 +64,11 @@
   // The walkthrough's stops, in reading order: review.json's `walkthrough`.
   function stopsOf(review) {
     return review.walkthrough;
+  }
+
+  // The review's chunks, in order: review.json's `chunks`, absent on a run made before chunks existed.
+  function chunksOf(review) {
+    return review.chunks ?? [];
   }
 
   const FILE_SET_LABELS = { contract: "API", data: "Data" };
@@ -137,7 +144,10 @@
 
   function modeToggle(state, handlers) {
     const toggle = make("div", "prf-modes");
-    for (const [mode, label, icon] of [["review", "Walkthrough", LIST_ORDERED_ICON], ["github", ns.page.treeLabel, DIRECTORY_ICON]]) {
+    const modes = [["review", "Walkthrough", LIST_ORDERED_ICON]];
+    if (state.chunks?.length) modes.push(["chunks", "Chunks", LAYERS_ICON]);
+    modes.push(["github", ns.page.treeLabel, DIRECTORY_ICON]);
+    for (const [mode, label, icon] of modes) {
       const choice = button("prf-mode", undefined, () => handlers.onMode(mode));
       choice.append(filledIcon(icon, 14, "prf-mode-icon"), make("span", undefined, label));
       choice.setAttribute("aria-pressed", String(state.mode === mode));
@@ -161,7 +171,7 @@
   function bar(state, handlers) {
     const element = make("div", "prf-bar");
     element.append(modeToggle(state, handlers));
-    if (state.chips?.length) element.append(chipRow(state, handlers));
+    if (state.mode !== "chunks" && state.chips?.length) element.append(chipRow(state, handlers));
     return element;
   }
 
@@ -208,6 +218,109 @@
     return list;
   }
 
+  function riskPill(risk) {
+    return make("span", `prf-risk prf-risk-${risk}`, risk);
+  }
+
+  function hunkCount(chunk) {
+    const count = chunk.hunks.length;
+    return `${count} ${count === 1 ? "hunk" : "hunks"}`;
+  }
+
+  // One row per chunk: its number and title, then its risk, its hunk count and a tick once it is judged. The current
+  // chunk is marked.
+  function chunkRow(chunk, state, handlers) {
+    const current = chunk.i === state.selectedChunk;
+    const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
+    if (current) main.setAttribute("aria-current", "step");
+    const meta = make("span", "prf-chunk-meta");
+    if (chunk.risk) meta.append(riskPill(chunk.risk));
+    meta.append(make("span", "prf-file", hunkCount(chunk)));
+    if (state.judged?.has(chunk.i)) {
+      const tick = make("span", "prf-judged-tick", "\u2713");
+      tick.title = "Judged";
+      meta.append(tick);
+    }
+    const title = make("span", "prf-title");
+    title.append(make("span", "prf-name", chunk.title), meta);
+    main.append(make("span", "prf-num", String(chunk.i)), title);
+    const header = make("div", "prf-head");
+    header.append(main);
+    const element = make("section", "prf-group prf-chunk");
+    element.classList.toggle("prf-selected", current);
+    element.dataset.chunk = String(chunk.i);
+    element.append(header);
+    return element;
+  }
+
+  // The chunks in order, under a line counting them and how many are judged.
+  function chunkList(state, handlers) {
+    const list = make("div", "prf-groups");
+    const judged = state.chunks.filter((chunk) => state.judged?.has(chunk.i)).length;
+    list.append(make("p", "prf-lede", `${state.chunks.length} ${state.chunks.length === 1 ? "chunk" : "chunks"} \u00b7 ${judged} judged`));
+    for (const chunk of state.chunks) list.append(chunkRow(chunk, state, handlers));
+    return list;
+  }
+
+  // The card shown above a chunk's first line in the diff: which chunk of how many this is and its title, its risk and
+  // why, what it summarises, the chunks it builds on (each a button that opens that chunk), a Judged checkbox, and, in
+  // a column beside them, buttons to the previous and the next chunk, each in a slot that is kept, hidden, when there
+  // is no such chunk. `onGo(i)` opens a chunk by its number, `onJudged(i, checked)` records the checkbox, and `judged`
+  // is whether the chunk is judged already.
+  function chunkCallout(chunk, chunks, onGo, onJudged, judged = false) {
+    const card = make("div", "prf-callout");
+    const main = make("div", "prf-callout-main");
+    const head = make("div", "prf-callout-head");
+    head.append(outlineIcon(ROUTE_ICON, 18, "prf-callout-icon"), make("strong", "prf-callout-where", `Chunk ${chunk.i} of ${chunks.length} \u00b7 ${chunk.title}`));
+    main.append(head);
+    if (chunk.risk) {
+      const risk = make("div", "prf-callout-risk");
+      risk.append(riskPill(chunk.risk));
+      if (chunk.risk_reason) {
+        const reason = make("span", "prf-callout-reason-text");
+        reason.append(...messageNodes(chunk.risk_reason));
+        risk.append(reason);
+      }
+      main.append(risk);
+    }
+    if (chunk.summary) {
+      const summary = make("div", "prf-callout-reason");
+      summary.append(...messageNodes(chunk.summary));
+      main.append(summary);
+    }
+    if (chunk.depends_on?.length) {
+      const needs = make("div", "prf-callout-needs");
+      needs.append("Needs ");
+      chunk.depends_on.forEach((n, index) => {
+        if (index > 0) needs.append(", ");
+        needs.append(button("prf-callout-need", String(n), () => onGo(n)));
+      });
+      main.append(needs);
+    }
+    const label = make("label", "prf-callout-judged");
+    const box = make("input");
+    box.type = "checkbox";
+    box.checked = judged;
+    box.addEventListener("change", () => onJudged(chunk.i, box.checked));
+    label.append(box, make("span", undefined, "Judged"));
+    main.append(label);
+    card.append(main);
+
+    const nav = make("div", "prf-callout-nav");
+    const at = chunks.findIndex((other) => other.i === chunk.i);
+    const previous = chunks[at - 1];
+    const following = chunks[at + 1];
+    const back = button(previous ? "prf-callout-prev" : "prf-callout-prev prf-callout-empty", "\u2191 Previous", () => previous && onGo(previous.i));
+    if (previous) back.title = previous.title;
+    else inertSlot(back);
+    const next = button(following ? "prf-callout-next" : "prf-callout-next prf-callout-empty", "Next \u2193", () => following && onGo(following.i));
+    if (following) next.title = following.title;
+    else inertSlot(next);
+    nav.append(back, next);
+    card.append(nav);
+    return card;
+  }
+
   // Our list sits just before GitHub's tree in the same column; GitHub's tree is hidden while ours shows.
   function mountPoint() {
     const host = ns.page.treeHost();
@@ -221,23 +334,25 @@
     return { root, host };
   }
 
-  // state: { mode: "review" | "github", stops, selectedStop, pageSha, note, chips, fileSet }
-  // handlers: onMode(mode), onSelectStop(i), onFileSet(id)
+  // state: { mode: "review" | "chunks" | "github", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
+  // fileSet }, `judged` being a Set of chunk numbers
+  // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onFileSet(id)
   function render(review, state, handlers) {
     const mount = mountPoint();
     if (!mount) return;
     const { root, host } = mount;
     const reviewMode = state.mode === "review";
+    const listMode = reviewMode || state.mode === "chunks";
     const scrolled = root.querySelector(".prf-groups")?.scrollTop ?? 0;
-    root.classList.toggle("prf-review", reviewMode);
-    host.classList.toggle(HOST_HIDDEN, reviewMode);
+    root.classList.toggle("prf-review", listMode);
+    host.classList.toggle(HOST_HIDDEN, listMode);
 
     root.replaceChildren(bar(state, handlers));
     const stale = staleMessage(review, state.pageSha);
     if (stale) root.append(make("p", "prf-banner", stale));
     if (state.note) root.append(make("p", "prf-banner", state.note));
-    if (reviewMode) {
-      root.append(stopList(state, handlers));
+    if (listMode) {
+      root.append(reviewMode ? stopList(state, handlers) : chunkList(state, handlers));
       root.querySelector(".prf-groups").scrollTop = scrolled;
     }
   }
@@ -304,10 +419,10 @@
     return bottom + margin - height;
   }
 
-  // Scrolls the review list, and only it, so the row of stop `i` shows. Smooth unless the user prefers reduced motion.
-  function revealStop(i) {
+  // Scrolls the list, and only it, so the row matching `selector` shows. Smooth unless the user prefers reduced motion.
+  function revealRow(selector) {
     const list = document.querySelector(`#${ROOT_ID} .prf-groups`);
-    const element = list?.querySelector(`.prf-stop[data-stop="${i}"]`);
+    const element = list?.querySelector(selector);
     if (!element) return;
     const base = list.getBoundingClientRect().top - list.scrollTop;
     const row = element.getBoundingClientRect();
@@ -315,6 +430,14 @@
     if (target === null) return;
     const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     list.scrollTo({ top: target, behavior: reduced ? "instant" : "smooth" });
+  }
+
+  function revealStop(i) {
+    revealRow(`.prf-stop[data-stop="${i}"]`);
+  }
+
+  function revealChunk(i) {
+    revealRow(`.prf-chunk[data-chunk="${i}"]`);
   }
 
   function remove() {
@@ -327,7 +450,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealTarget, stopsOf, fileChips, fileSetOf, stopCallout, bar, stopList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, fileChips, fileSetOf, stopCallout, chunkCallout, bar, stopList, chunkRow, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

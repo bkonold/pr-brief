@@ -15,6 +15,11 @@
   const LOAD_BUTTON = 'button[data-component="Button"]';
   const LOAD_LABEL = "load diff";
   const LINE_CELL = "[data-line-anchor]";
+  const LINE_ANCHOR = /^diff-[0-9a-f]+([LR])(\d+)$/;
+  // A hunk header (the `@@` line with its expand controls) and an expand-context row are each one cell of this class.
+  // That cell carries a line anchor too, for the line just before or after the hunk, so it is no line of the row.
+  const HUNK_CELL = ".diff-hunk-cell";
+  const LINE_OF_ROW = `${LINE_CELL}:not(${HUNK_CELL})`;
   const DIFF_CONTAINER = "#diff-comparison-viewer-container";
   const DIFF_CONTENT = `${DIFF_CONTAINER} [class*="prc-PageLayout-ContentWrapper"]`;
   const DIFF_PANE = `${DIFF_CONTAINER} [class*="prc-PageLayout-PaneWrapper"]`;
@@ -71,6 +76,22 @@
     return document.querySelector(`${LINE_CELL}[data-line-anchor="${anchor}"]`)?.closest("tr") ?? null;
   }
 
+  // The lines a row shows: its line cell carries a data-line-anchor of the diff's id, the side and the number (one per
+  // row: R for an added or a context line, L for a removed one).
+  function rowLines(tr) {
+    const lines = [];
+    for (const cell of tr.querySelectorAll(LINE_OF_ROW)) {
+      const match = LINE_ANCHOR.exec(cell.getAttribute("data-line-anchor") ?? "");
+      if (match) lines.push({ side: match[1], line: Number(match[2]) });
+    }
+    return lines;
+  }
+
+  // A hunk's `@@` header or an expand-context row.
+  function hunkRow(tr) {
+    return Boolean(tr.querySelector(HUNK_CELL));
+  }
+
   // A diff GitHub does not render by default (a large diff, a generated file) is a block with no rows and a "Load Diff"
   // button. Clicking it fetches the diff, and the block is then replaced by a new element with the same id.
   function loadDiff(id) {
@@ -120,6 +141,8 @@
     entryOf: (block) => block.closest(DIFF_ENTRY) ?? block,
     diffId,
     findRow,
+    rowLines,
+    hunkRow,
     loadDiff,
     fileHeaderSelector: FILE_HEADER,
     stickySkip: STICKY_SKIP,

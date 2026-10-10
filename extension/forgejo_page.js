@@ -25,6 +25,9 @@
   // file) that is the line's anchor. The row is the span's tr.
   const LOAD_BUTTON = "a.diff-load-button";
   const LINE_REL = ".lines-num [rel]";
+  const LINE_ANCHOR = /^diff-[0-9a-f]+([LR])(\d+)$/;
+  // A hunk header and an expand-context row are both rows of class tag-code (data-line-type="tag").
+  const HUNK_ROW = "tag-code";
   // The header's "view file" links point at /src/commit/<head sha>/<path>.
   const HEAD_LINK = `${DIFF_BLOCK} a[href*="/src/commit/"]`;
   const HEAD_SHA = /\/src\/commit\/([0-9a-f]{40})\//;
@@ -95,6 +98,21 @@
     return document.querySelector(`${LINE_REL}[rel="${anchor}"]`)?.closest("tr") ?? null;
   }
 
+  // The lines a row shows: each line-number cell holds a span whose `rel` is the diff's id, the side and the number; an
+  // added row's old-number span and a removed row's new-number span have an empty `rel`.
+  function rowLines(tr) {
+    const lines = [];
+    for (const span of tr.querySelectorAll(LINE_REL)) {
+      const match = LINE_ANCHOR.exec(span.getAttribute("rel") ?? "");
+      if (match) lines.push({ side: match[1], line: Number(match[2]) });
+    }
+    return lines;
+  }
+
+  function hunkRow(tr) {
+    return tr.classList.contains(HUNK_ROW);
+  }
+
   // A file Forgejo holds back (a very large diff) shows a "Load diff" link in its box. Clicking it fetches the file's
   // rows, which replace the link's container inside the box; the box itself stays.
   function loadDiff(id) {
@@ -150,6 +168,8 @@
     entryOf: (block) => block,
     diffId,
     findRow,
+    rowLines,
+    hunkRow,
     loadDiff,
     fileHeaderSelector: FILE_HEADER,
     stickySkip: STICKY_SKIP,

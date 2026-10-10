@@ -140,9 +140,16 @@
     renderDiagram(session);
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
-    page.showCallouts(session.mode === "review" ? session.callouts : []);
+    page.showCallouts(calloutsShown(session));
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
-    page.filterFiles(fileSet?.paths ?? null);
+    if (session.mode === "chunks") {
+      const chunk = selectedChunkOf(session);
+      page.filterFiles(null);
+      page.filterHunks(chunk ? rangesOf(chunk) : null);
+    } else {
+      page.filterFiles(fileSet?.paths ?? null);
+      page.filterHunks(null);
+    }
 
     const waited = Date.now() - session.startedAt;
     const noBlocks = page.fileBlocks().size === 0;
@@ -153,6 +160,9 @@
         mode: session.mode,
         stops: session.stops,
         selectedStop: session.selectedStop,
+        chunks: session.chunks,
+        selectedChunk: session.selectedChunk,
+        judged: session.judged,
         pageSha: page.headSha(),
         chips: tree.fileChips(session.review, page.changedFileCount()),
         fileSet,
@@ -236,6 +246,84 @@
     );
   }
 
+  // The callouts of the chunks, one per chunk, each at its first hunk's first line: each is built when its place is found.
+  // Its buttons open a chunk, and its checkbox records the chunk as judged.
+  async function chunkCalloutsFor(session) {
+    const { chunks } = session;
+    const targets = chunks.map(chunkTarget);
+    const anchors = await Promise.all(targets.map((target) => (target ? page.lineAnchor(target.path, target.side, target.line) : null)));
+    return chunks.flatMap((chunk, index) =>
+      anchors[index]
+        ? [
+            {
+              key: `chunk:${chunk.i}`,
+              anchor: anchors[index],
+              render: () => tree.chunkCallout(chunk, chunks, (i) => selectChunk(session, i, { pulse: false }), (i, on) => setJudged(session, i, on), session.judged.has(chunk.i)),
+            },
+          ]
+        : [],
+    );
+  }
+
+  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected chunk's in the chunks tab.
+  function calloutsShown(session) {
+    if (session.mode === "review") return session.callouts;
+    if (session.mode !== "chunks") return [];
+    return session.chunkCallouts.filter((entry) => entry.key === `chunk:${session.selectedChunk}`);
+  }
+
+  function selectedChunkOf(session) {
+    return session.chunks.find((chunk) => chunk.i === session.selectedChunk) ?? null;
+  }
+
+  // The first line a chunk shows: its first hunk's first new line, or, for a hunk with no new lines (a deleted file,
+  // a pure deletion), its first old line; null for a chunk with no hunks.
+  function chunkTarget(chunk) {
+    const hunk = chunk.hunks[0];
+    if (!hunk) return null;
+    return hunk.new[1] > 0 ? { path: hunk.path, side: "R", line: hunk.new[0] } : { path: hunk.path, side: "L", line: hunk.old[0] };
+  }
+
+  // The lines the page is narrowed to for a chunk: each hunk's new lines on the right and its old lines on the left, so
+  // that removed lines stay.
+  function rangesOf(chunk) {
+    return chunk.hunks.flatMap(({ path, old: before, new: after }) => [
+      ...(after[1] > 0 ? [{ path, side: "R", start: after[0], count: after[1] }] : []),
+      ...(before[1] > 0 ? [{ path, side: "L", start: before[0], count: before[1] }] : []),
+    ]);
+  }
+
+  // The chunks the reader has judged, kept in this browser per PR head: the viewer's own marks, not part of the review.
+  function judgedKey(session) {
+    const { pr, review } = session;
+    return `prf-judged:${location.host}/${pr.owner}/${pr.repo}#${pr.pr}@${review.head_sha}`;
+  }
+
+  function loadJudged(session) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(judgedKey(session)) ?? "[]");
+      return new Set(Array.isArray(stored) ? stored.filter(Number.isInteger) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveJudged(session) {
+    try {
+      localStorage.setItem(judgedKey(session), JSON.stringify([...session.judged].sort((a, b) => a - b)));
+    } catch {
+      // The marks stay for this page's life when storage is unavailable.
+    }
+  }
+
+  function setJudged(session, i, on) {
+    return change(session, () => {
+      if (on) session.judged.add(i);
+      else session.judged.delete(i);
+      saveJudged(session);
+    });
+  }
+
   // Each selection takes the next number, so that a selection a later one has overtaken stops before it jumps: clicking
   // Previous or Next quickly ends at the last stop clicked.
   function startSelection(session) {
@@ -269,6 +357,28 @@
     if (stop.node) diagram.centerOn([stop.node], { zoom });
     tree.revealStop(stop.i);
     if (scroll) await jumpToStop(session, stop, Object.keys(jump).length ? jump : undefined);
+  }
+
+  // Opens a chunk: the tab shows chunks, no stop or box is selected, and the page narrows to the chunk's hunks. The view
+  // lands on the chunk's first line, where its callout is. `jump` options pass on to that jump; the callout's buttons
+  // pass `{ pulse: false }`, as a stop's do.
+  async function selectChunk(session, i, jump) {
+    const chunk = session.chunks.find((candidate) => candidate.i === i);
+    if (!chunk) return;
+    const mine = startSelection(session);
+    await change(session, () => {
+      leaveLine();
+      deactivate(session);
+      session.mode = "chunks";
+      session.selectedChunk = chunk.i;
+      session.selectedStop = null;
+      session.selectedNode = null;
+      session.fileSet = "all";
+    });
+    if (current !== session || !live() || session.selection !== mine) return;
+    tree.revealChunk(chunk.i);
+    const target = chunkTarget(chunk);
+    if (target) await page.jumpToLine(target.path, target.side, target.line, jump);
   }
 
   // Clears the selection: no box or stop selected and no line or box marked. The pane's mode stays as it is.
@@ -336,6 +446,8 @@
           },
         ),
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
+      onSelectChunk: (i) => selectChunk(session, i),
+      onJudged: (i, on) => setJudged(session, i, on),
       onFileSet: (id) => change(session, () => (session.fileSet = id)),
     };
   }
@@ -425,6 +537,7 @@
     page.cancelJump();
     page.clearLineTarget();
     page.filterFiles(null);
+    page.filterHunks(null);
     focus.clearBox();
     tree.remove();
     diagram.remove();
@@ -490,12 +603,18 @@
       startedAt: Date.now(),
       stops: tree.stopsOf(review),
       selectedStop: null,
+      chunks: tree.chunksOf(review),
+      selectedChunk: null,
+      judged: new Set(),
       fileSet: "all",
       selection: 0,
       callouts: [],
+      chunkCallouts: [],
     };
     const session = current;
+    session.judged = loadJudged(session);
     session.callouts = await calloutsFor(session);
+    session.chunkCallouts = await chunkCalloutsFor(session);
     if (current !== session || !live()) return;
     stopObserving = page.onChange(onMutations);
     refresh();

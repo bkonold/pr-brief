@@ -200,7 +200,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, startState = "running", runs = null, payloads = null }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null }) {
   const log = [];
   const description = {
     name: "description",
@@ -229,6 +229,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const boxes = [];
   const scrolled = [];
   const filters = [];
+  const hunkFilters = [];
   const prFocus = {
     page: {
       name: "Fake",
@@ -250,6 +251,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       fileAnchor: async (path) => `diff-${path}`,
       showCallouts: (entries) => callouts.push(entries),
       filterFiles: (paths) => filters.push(paths),
+      filterHunks: (ranges) => hunkFilters.push(ranges),
       changedFileCount: () => 9,
       jumpToLine: async (...args) => jumps.push(args),
       jumpToFile: async (...args) => fileJumps.push(args),
@@ -273,10 +275,13 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
       stopsOf: require("../tree.js").stopsOf,
+      chunksOf: require("../tree.js").chunksOf,
       fileChips: require("../tree.js").fileChips,
       fileSetOf: require("../tree.js").fileSetOf,
       stopCallout: (stop, stops, onGo, nodes) => ({ stop, stops, onGo, nodes }),
+      chunkCallout: (chunk, chunks, onGo, onJudged, judged) => ({ chunk, chunks, onGo, onJudged, judged }),
       revealStop: (i) => revealed.push(i),
+      revealChunk: (i) => revealed.push(`chunk ${i}`),
       remove() {},
       owns: () => false,
     },
@@ -300,10 +305,11 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     return timer;
   };
   const sessionStorage = { getItem: (key) => stored[key] ?? null, setItem: (key, value) => (stored[key] = value) };
-  const context = { prFocus, sessionStorage, location: { href: "x", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, ...(payloads ? { document: {} } : {}) };
+  const localStorage = { getItem: (key) => local[key] ?? null, setItem: (key, value) => (local[key] = value) };
+  const context = { prFocus, sessionStorage, localStorage, location: { href: "x", host: "forge.example", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, ...(payloads ? { document: {} } : {}) };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters };
+  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters, hunkFilters, local };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -770,7 +776,7 @@ test("the sidebar opens in Files mode with every stop listed and none current", 
   await settle();
   const { state } = renders.at(-1);
   assert.deepEqual([state.stops.map((stop) => stop.i), state.mode, state.selectedStop], [[1, 2, 3, 4], "github", null]);
-  assert.deepEqual(Object.keys(state).sort(), ["chips", "fileSet", "mode", "note", "pageSha", "selectedStop", "stops"]);
+  assert.deepEqual(Object.keys(state).sort(), ["chips", "chunks", "fileSet", "judged", "mode", "note", "pageSha", "selectedChunk", "selectedStop", "stops"]);
   assert.deepEqual(plain(emphasized.filter((nodes) => nodes !== null)), []);
 });
 
@@ -946,7 +952,7 @@ test("a context box, which covers no file, and a box the review does not list do
 test("the sidebar's state and handlers are the stops and the mode", async () => {
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onMode", "onSelectStop"]);
+  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJudged", "onMode", "onSelectChunk", "onSelectStop"]);
 });
 
 const SET_REVIEW = {
@@ -1004,4 +1010,143 @@ test("selecting a stop in a file the chip hides puts the chip back on All, and a
   await renders.at(-1).handlers.onSelectStop(1);
   assert.equal(renders.at(-1).state.fileSet, null);
   assert.equal(filters.at(-1), null);
+});
+
+const CHUNK_HEAD = "c".repeat(40);
+const CHUNK_REVIEW = {
+  ...WALK_REVIEW,
+  head_sha: CHUNK_HEAD,
+  chunks: [
+    {
+      i: 1,
+      title: "Screen and table",
+      summary: "s",
+      risk: "low",
+      risk_reason: "",
+      depends_on: [],
+      hunks: [
+        { id: "h1", path: "src/ui.js", change: "modified", old: [4, 3], new: [4, 5] },
+        { id: "h2", path: "db/V1.sql", change: "added", old: [0, 0], new: [1, 6] },
+      ],
+    },
+    { i: 2, title: "Old endpoint goes", summary: "s", risk: "high", risk_reason: "r", depends_on: [1], hunks: [{ id: "h3", path: "src/old.js", change: "deleted", old: [1, 20], new: [0, 0] }] },
+    { i: 3, title: "Pure deletion", summary: "s", risk: "medium", risk_reason: "", depends_on: [], hunks: [{ id: "h4", path: "src/ui.js", change: "modified", old: [40, 2], new: [39, 0] }] },
+  ],
+};
+const JUDGED_KEY = `prf-judged:forge.example/acme/widgets#7@${CHUNK_HEAD}`;
+
+async function loadChunks(options = {}) {
+  const loaded = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, ...options });
+  await settle();
+  return loaded;
+}
+
+test("selecting a chunk shows the chunks tab, narrows the page to the chunk's lines and lands on its first line", async () => {
+  const { renders, hunkFilters, filters, jumps, callouts, revealed, emphasized } = await loadChunks();
+  await renders.at(-1).handlers.onSelectChunk(1);
+  const { state } = renders.at(-1);
+  assert.deepEqual([state.mode, state.selectedChunk, state.selectedStop, state.chunks.length], ["chunks", 1, null, 3]);
+  assert.deepEqual(plain(hunkFilters.at(-1)), [
+    { path: "src/ui.js", side: "R", start: 4, count: 5 },
+    { path: "src/ui.js", side: "L", start: 4, count: 3 },
+    { path: "db/V1.sql", side: "R", start: 1, count: 6 },
+  ]);
+  assert.equal(filters.at(-1), null);
+  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/ui.js", "R", 4]]);
+  assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor]), [["chunk:1", "src/ui.jsR4"]]);
+  assert.deepEqual([revealed.at(-1), emphasized.at(-1)], ["chunk 1", null]);
+});
+
+test("a deleted file, and a hunk with no new lines, narrow to old lines and land on the old side", async () => {
+  const { renders, hunkFilters, jumps, callouts } = await loadChunks();
+  await renders.at(-1).handlers.onSelectChunk(2);
+  assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/old.js", side: "L", start: 1, count: 20 }]);
+  assert.deepEqual(callouts.at(-1).map((entry) => entry.anchor), ["src/old.jsL1"]);
+  await renders.at(-1).handlers.onSelectChunk(3);
+  assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/ui.js", side: "L", start: 40, count: 2 }]);
+  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/old.js", "L", 1], ["src/ui.js", "L", 40]]);
+});
+
+test("the chunk callout's buttons open a chunk without the pulse, and a chunk number that does not exist does nothing", async () => {
+  const { renders, callouts, jumps } = await loadChunks();
+  await renders.at(-1).handlers.onSelectChunk(1);
+  const { onGo, chunks, judged } = callouts.at(-1)[0].render();
+  assert.deepEqual([chunks.length, judged], [3, false]);
+  await onGo(2);
+  assert.deepEqual(plain(jumps.at(-1)), ["src/old.js", "L", 1, { pulse: false }]);
+  assert.equal(renders.at(-1).state.selectedChunk, 2);
+  const shown = jumps.length;
+  await onGo(99);
+  assert.deepEqual([jumps.length, renders.at(-1).state.selectedChunk], [shown, 2]);
+});
+
+test("every mode other than chunks clears the hunk filter, and the chunks tab applies the selected chunk's again", async () => {
+  const { renders, hunkFilters, filters, callouts } = await loadChunks();
+  assert.equal(hunkFilters.at(-1), null);
+  await renders.at(-1).handlers.onSelectChunk(1);
+  await renders.at(-1).handlers.onMode("review");
+  assert.equal(hunkFilters.at(-1), null);
+  assert.equal(callouts.at(-1).length, 4);
+  await renders.at(-1).handlers.onMode("chunks");
+  assert.equal(hunkFilters.at(-1).length, 3);
+  assert.deepEqual(callouts.at(-1).map((entry) => entry.key), ["chunk:1"]);
+  await renders.at(-1).handlers.onMode("github");
+  assert.deepEqual([hunkFilters.at(-1), callouts.at(-1).length], [null, 0]);
+  await renders.at(-1).handlers.onMode("chunks");
+  await renders.at(-1).handlers.onSelectStop(2);
+  assert.deepEqual([renders.at(-1).state.mode, hunkFilters.at(-1), filters.at(-1)], ["review", null, null]);
+});
+
+test("the chunks tab with no chunk selected filters nothing and shows no callout", async () => {
+  const { renders, hunkFilters, filters, callouts } = await loadChunks();
+  await renders.at(-1).handlers.onMode("chunks");
+  assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedChunk, hunkFilters.at(-1), filters.at(-1), callouts.at(-1)], ["chunks", null, null, null, []]);
+});
+
+test("selecting a box leaves the chunks tab and its hunk filter", async () => {
+  const { renders, hunkFilters, diagramHandlers } = await loadChunks();
+  await renders.at(-1).handlers.onSelectChunk(1);
+  assert.equal(hunkFilters.at(-1).length, 3);
+  diagramHandlers.at(-1).onNode("b");
+  await settle();
+  assert.deepEqual([renders.at(-1).state.mode, hunkFilters.at(-1)], ["review", null]);
+});
+
+test("selecting a chunk clears the stop, the chip and the box", async () => {
+  const { renders, emphasized } = await loadChunks();
+  await renders.at(-1).handlers.onSelectStop(1);
+  await renders.at(-1).handlers.onSelectChunk(2);
+  assert.deepEqual([renders.at(-1).state.selectedStop, renders.at(-1).state.fileSet, emphasized.at(-1)], [null, null, null]);
+});
+
+test("judging a chunk is kept in this browser for the PR's head, and read back on the next load", async () => {
+  const first = await loadChunks();
+  assert.deepEqual([...first.renders.at(-1).state.judged], []);
+  await first.renders.at(-1).handlers.onJudged(2, true);
+  await first.renders.at(-1).handlers.onJudged(1, true);
+  assert.deepEqual([...first.renders.at(-1).state.judged].sort(), [1, 2]);
+  assert.deepEqual(JSON.parse(first.local[JUDGED_KEY]), [1, 2]);
+  await first.renders.at(-1).handlers.onJudged(2, false);
+  assert.deepEqual(JSON.parse(first.local[JUDGED_KEY]), [1]);
+  assert.deepEqual(plain(first.stored), {});
+  const again = await loadChunks({ local: first.local });
+  assert.deepEqual([...again.renders.at(-1).state.judged], [1]);
+  const newHead = await loadChunks({ local: first.local, review: { ...CHUNK_REVIEW, head_sha: "d".repeat(40) } });
+  assert.deepEqual([...newHead.renders.at(-1).state.judged], []);
+});
+
+test("an unreadable judged list is an empty one, and only chunk numbers are read from it", async () => {
+  const garbled = await loadChunks({ local: { [JUDGED_KEY]: "{not json" } });
+  assert.deepEqual([...garbled.renders.at(-1).state.judged], []);
+  const wrong = await loadChunks({ local: { [JUDGED_KEY]: '{"a":1}' } });
+  assert.deepEqual([...wrong.renders.at(-1).state.judged], []);
+  const mixed = await loadChunks({ local: { [JUDGED_KEY]: '[1,"x",2.5,3]' } });
+  assert.deepEqual([...mixed.renders.at(-1).state.judged], [1, 3]);
+});
+
+test("a run with no chunks passes none and has no chunk callout", async () => {
+  const { renders, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  assert.deepEqual(plain(renders.at(-1).state.chunks), []);
+  assert.deepEqual(plain(callouts.at(-1)), []);
 });

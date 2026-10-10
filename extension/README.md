@@ -27,8 +27,8 @@ earliest block in the page.
 
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
-- A toggle, "Walkthrough" / "Files". The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
-  swaps in the stop list, and the toggle stays so you can switch again. No mode or stop ever hides a diff: every file's diff is always in the page, so the host's find
+- A toggle, "Walkthrough" / "Chunks" / "Files". The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
+  swaps in the stop list, "Chunks" (only for a brief that has chunks, see "Chunks tab") the chunk list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a chunk, which narrows the page to its hunks: otherwise every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
 - Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
@@ -98,9 +98,40 @@ variant) is not shown: see "Older runs".
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-Nothing about the review's state is remembered: every load and every navigation into the files page opens as GitHub would,
+Nothing about the review's state is remembered, except which chunks are judged (see "Chunks tab"): every load and every navigation into the files page opens as GitHub would,
 in "Files" mode with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
 link to a stop's line selects that stop. The one thing kept is whether the diagram panel is expanded (see below).
+
+## Chunks tab
+
+`review.json`'s `chunks`, when the brief has them, is an ordered list of `{i, title, summary, risk, risk_reason, depends_on,
+hunks}`: the change cut into pieces to judge one at a time. `risk` is `"low"`, `"medium"` or `"high"`, `depends_on` the
+numbers of the chunks this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count]}`.
+A brief with no `chunks` (an older run; `schema` is still 4) has no "Chunks" entry in the toggle.
+
+- The list has a muted line, `6 chunks · 1 judged`, then one row per chunk: its number, its title, a risk pill (green,
+  amber or red for low, medium and high), its hunk count, and a tick once it is judged. The selected row is marked as a
+  stop's is, and scrolled into view when a chunk is opened from its callout.
+- Selecting a chunk narrows the page to it: the diffs of the chunk's files only, and in each only the rows that show a
+  line inside one of the chunk's hunks. A hunk's new range filters the right side and its old range the left, so removed
+  lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own
+  tree is behind the sidebar in this tab, but its rows for the other files are hidden as in a file set. The view then
+  lands on the chunk's first hunk, at its first new line (its first old line for a deleted file or a hunk with no new
+  lines), the way a stop does, and the selection clears any stop, box or chip. Selecting a stop, a box or a file leaves the
+  tab and shows the whole diff again; opening the tab with a chunk already selected narrows to it again, and with none
+  selects nothing and filters nothing.
+- The chunk's callout sits above that first line. Its header reads `Chunk 2 of 6 · <title>`; under it are the risk pill
+  and `risk_reason` when there is one, the summary, `Needs 1, 3` with a button per number that opens that chunk, and a
+  "Judged" checkbox. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening the neighbouring chunk
+  without the pulse. Only the selected chunk's callout is shown, and none in the other tabs.
+- "Judged" is the reader's own mark, kept in this browser's `localStorage` under `prf-judged:<host>/<owner>/<repo>#<pr>@<head_sha>`
+  as a JSON array of chunk numbers, so it is per PR head and comes back on reload; a new head starts empty. It is read and
+  written in a try/catch, and without storage the marks last until the page is left. Nothing else about chunks is remembered.
+- The chip row ("All", "API", "Data") is not drawn in this tab: the selected chunk owns the page filter, and a chip
+  is not applied while the tab is open.
+- Known limit: the host renders rows as the page scrolls, and a row it has not rendered yet is filtered when it appears
+  (the filter runs again on every change of the document), so a row can show for an instant first. A diff the host holds
+  back behind its load control is loaded, once, when its chunk is selected.
 
 ## When the page server is down
 
@@ -282,13 +313,13 @@ Run the pure tests with `node --test test/*.test.js`.
 | `background.js` | When a server URL is set: fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers. With none set it answers `unset` and requests nothing |
 | `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
 | `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
-| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, change watching. `createPage(spec)` builds an adapter from a host's spec |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, the file and hunk filters, change watching. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Marks the active file's header, and scrolls to a diff. It hides nothing |
-| `tree.js`, `tree.css`, `focus.css` | The stop list, the stop callout card with its previous and next stop, and the classes `focus.js` and the line jump toggle |
-| `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state |
+| `tree.js`, `tree.css`, `focus.css` | The stop list and the chunk list, the stop and chunk callout cards with their previous and next, and the classes `focus.js` and the line jump toggle |
+| `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state, the chunk selection and the judged marks |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
 | `comment_source.js` | Reads the brief from the PR's "Brief data" comment block (inflate, split, fetch the conversation page). Loaded before `source.js` |
@@ -303,7 +334,7 @@ The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
 `prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `conversationUrl(pr)`, `isConversationPage(pr?)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
 `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
-`restoreLineTarget`, `ownsLine`, `cancelJump`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `filterFiles(paths | null)`, `filterHunks(ranges | null)` (`ranges` being `[{path, side, start, count}]`), `diagramHost`, `treeHost`, `descriptionHost`, `onChange` and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)
@@ -320,6 +351,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 | Tree host | `#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]`: GitHub's tree with its "File tree" heading. `#pr-file-tree` also holds the "Filter files" box as its first child, so the list is inserted before the host and the host is hidden with a class |
 | Tree rows | `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory; a file row is matched to its diff by the `a[href*="#diff-"]` it holds (the diff's id). A directory row is hidden only when it has file rows in the page and all of them are hidden |
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed, and its callout row is scrolled to the stop place. |
+| Row lines, hunk rows | `rowLines(tr)` reads the row's `[data-line-anchor]` cell as `diff-<hash>(L\|R)<n>`, one per row: R for an added or a context line, L for a removed one. `hunkRow(tr)` is a row holding `td.diff-hunk-cell`: the `@@` header and the expand-context row. That cell carries an anchor too, for the line just before or after the hunk (`R0` above a new file's first hunk, `R133` above a hunk starting at 134), so it is skipped as a line. Observed 2026-10-09 on a files page in the React view
 | Load Diff control | A diff GitHub does not render by default (observed 2026-10-09 on the `/changes` page: "Large diffs are not rendered by default.", "Some generated files are not rendered by default.") is the same diff block with no `tr` and no `[data-line-anchor]`, holding a `button[data-component="Button"]` whose trimmed text is "Load Diff" (inner `span[data-component="text"]`) beside a `span.fgColor-muted` with the sentence. `loadDiff(id)` clicks that button, found by its text and not by the sentence. A second later (1 to 9 s) the block is replaced by a new node with the same id (the old one is detached), so the jump looks the block up by id again after the wait; the entry wrapper stays |
 | Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
 | Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, on the files page and (observed 2026-10-09) on the conversation page; trusted only for the PR the page was first opened on. For any other page the PR's conversation page is fetched and read the same way (`readHeadSha(doc)`), and only then a set run server is asked |
@@ -341,6 +373,7 @@ All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
 | Block path | `data-new-filename`, else `data-old-filename` |
 | File header | `.diff-file-header`, sticky at 44px inside the box, under the sticky summary bar `.diff-detail-box` (top 0, 44px) that the scroll offset is measured against |
 | Line row | `.lines-num [rel="diff-<sha1 of path>R<line>"]` (`L` for a removed line); its closest `tr`. The cell is `td.lines-num-new` / `td.lines-num-old` with `data-line-num` |
+| Row lines, hunk rows | `rowLines(tr)` reads every `.lines-num [rel]` span as `diff-<sha1>(L\|R)<n>`; an added row's old-number span and a removed row's new-number span have an empty `rel` and give no line. `hunkRow(tr)` is `tr.tag-code` (`data-line-type="tag"`): the `@@` header row (`td.lines-code.blob-hunk` holding `@ -a,b +c,d @@`). The expand-context row is assumed to share the class: the `@@` rows were observed 2026-10-09 in the files pages of local PRs, which had no expand rows |
 | Tree host | `#diff-file-tree > .diff-file-tree-items`: the Vue-rendered tree inside the sticky 380px column `#diff-file-tree`. The list is mounted before it in that column and the tree is hidden with a class |
 | Tree rows | `.item-file` is a file row, matched to its diff by the `a[href*="#diff-"]` it is or holds. Directory rows are left showing |
 | Diagram host | pane `#diff-file-tree`, content `#diff-content-container`, both children of the flex row `#diff-container`; the panel goes right after the pane |

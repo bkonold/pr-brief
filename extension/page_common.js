@@ -19,6 +19,10 @@
 //   entryOf(block)                  the whole entry of one file's diff, which holds the file callout above its header
 //   diffId(path)                    the id of a file's diff block (async)
 //   findRow(anchor)                 the table row of a line anchor, or null
+//   rowLines(tr)                    the diff lines a table row shows, as [{ side, line }] with side "L" (old file) or "R"
+//                                   (new file), read from the row's line anchors; empty for a row that shows no line
+//   hunkRow(tr)                     whether a row that shows no line is a hunk header (the `@@` line) or an expand-context
+//                                   row; optional, absent meaning no row is
 //   loadDiff(id)                    optional: when the diff block with this id shows the host's control for loading a
 //                                   diff it does not render by default, clicks it and returns true; else false. The host
 //                                   may replace the block once the diff has loaded, so the block is looked up by id again
@@ -41,6 +45,7 @@
   const FILE_CALLOUT = "prf-callout-file";
   const PULSE = "prf-pulse";
   const FILE_HIDDEN = "prf-file-hidden";
+  const HUNK_HIDDEN = "prf-hunk-hidden";
   const DIFF_LINK = 'a[href*="#diff-"]';
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
@@ -579,13 +584,23 @@
     // The diff ids of the files the page is narrowed to, keyed by the paths they came from; null for every file.
     let fileFilter = null;
     let filterToken = 0;
+    // The line ranges the page is narrowed to: { key, byId, loading }, `byId` mapping a diff id to the ranges
+    // [{ side, start, count }] of its file that stay, and `loading` the diffs whose load control was clicked.
+    let hunkFilter = null;
+    let hunkToken = 0;
+
+    // The diff ids the active filter keeps: the hunk filter's files when it is set, else the file filter's; null when no
+    // file is hidden.
+    function shownIds() {
+      return hunkFilter ? new Set(hunkFilter.byId.keys()) : (fileFilter?.ids ?? null);
+    }
 
     // Hides the diff blocks whose id is not in the filter and the tree's file rows whose diff is not, then the directory
     // rows left with no visible file. A row with no diff link is left alone, as is a directory whose files are not in the
     // page (collapsed). The host re-renders its tree and loads diffs as the page scrolls, so this runs again on every
     // refresh.
     function applyFileFilter() {
-      const ids = fileFilter?.ids;
+      const ids = shownIds();
       for (const block of document.querySelectorAll(spec.blockSelector)) {
         block.classList.toggle(FILE_HIDDEN, Boolean(ids) && !ids.has(block.id));
       }
@@ -603,6 +618,42 @@
       }
     }
 
+    function covers(ranges, { side, line }) {
+      return ranges.some((range) => range.side === side && line >= range.start && line < range.start + range.count);
+    }
+
+    // Hides the rows of the kept diffs that show no line inside the hunk filter's ranges, and every hunk header or
+    // expand row followed by a hidden row, which would otherwise stand alone. A row that shows no line and is no hunk
+    // row (a callout, a comment thread) is left alone. A kept diff the host holds back behind its load control is loaded,
+    // once. Without a filter every hidden row is shown again.
+    function applyHunkFilter() {
+      for (const row of document.querySelectorAll(`.${HUNK_HIDDEN}`)) row.classList.remove(HUNK_HIDDEN);
+      if (!hunkFilter) return;
+      for (const block of document.querySelectorAll(spec.blockSelector)) {
+        const ranges = hunkFilter.byId.get(block.id);
+        if (!ranges) continue;
+        if (!hunkFilter.loading.has(block.id) && spec.loadDiff?.(block.id)) hunkFilter.loading.add(block.id);
+        const rows = [...block.querySelectorAll("tr")];
+        let nextHidden = false;
+        for (let index = rows.length - 1; index >= 0; index -= 1) {
+          const row = rows[index];
+          if (row.classList.contains(CALLOUT_ROW)) continue;
+          const lines = spec.rowLines?.(row) ?? [];
+          if (lines.length > 0) {
+            nextHidden = !lines.some((line) => covers(ranges, line));
+            row.classList.toggle(HUNK_HIDDEN, nextHidden);
+          } else if (nextHidden && spec.hunkRow?.(row)) {
+            row.classList.add(HUNK_HIDDEN);
+          }
+        }
+      }
+    }
+
+    function applyFilters() {
+      applyFileFilter();
+      applyHunkFilter();
+    }
+
     // Narrows the host's tree and the diff to the files at `paths`; null shows every file. Calling again with the same
     // paths only re-applies the filter, which hides diffs the host loaded since.
     async function filterFiles(paths) {
@@ -615,7 +666,26 @@
       } else if (key === null) {
         fileFilter = null;
       }
-      applyFileFilter();
+      applyFilters();
+    }
+
+    // Narrows the page to the lines in `ranges`, [{ path, side, start, count }]: only the files they name are shown, and
+    // in each only the rows showing a line inside one of its ranges. It takes the place of the file filter while set; null
+    // shows every file and row again. Calling again with the same ranges only re-applies it, which covers the rows the
+    // host rendered since.
+    async function filterHunks(ranges) {
+      const mine = ++hunkToken;
+      const key = ranges ? JSON.stringify(ranges) : null;
+      if (key !== null && hunkFilter?.key !== key) {
+        const ids = await Promise.all(ranges.map((range) => spec.diffId(range.path)));
+        if (mine !== hunkToken) return;
+        const byId = new Map();
+        ranges.forEach(({ side, start, count }, index) => byId.set(ids[index], [...(byId.get(ids[index]) ?? []), { side, start, count }]));
+        hunkFilter = { key, byId, loading: new Set() };
+      } else if (key === null) {
+        hunkFilter = null;
+      }
+      applyFilters();
     }
 
     // How many files the page lists as changed: the tree's rows, or the diffs loaded when the tree is not showing.
@@ -677,6 +747,7 @@
       restoreLineTarget,
       showCallouts,
       filterFiles,
+      filterHunks,
       changedFileCount,
       ownsLine,
       cancelJump,
