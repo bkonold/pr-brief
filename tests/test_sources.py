@@ -501,16 +501,16 @@ class FileSets(unittest.TestCase):
         self.assertRegex(row, r"\[Customer\.java:5\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}R5\) · \[spec\]\(")
         listed = contract[contract.index("**API files**"):]
         for name in ("openapi.json", "Customer.java", "CustomerController.java"):
-            self.assertIn(f"[{name}](", listed)
+            self.assertIn(f"- [{name}](", listed)
         self.assertNotIn("Untouched.java", listed)
         data = text[text.index("<summary><strong>Data</strong>"):]
-        self.assertIn("**Data files** [CustomerBE.java](", data)
+        self.assertIn("**Data files**\n\n- [CustomerBE.java](", data)
         self.assertIn("[V9__customers.sql](", data)
 
     def test_a_section_with_no_files_has_no_list(self) -> None:
         text = self.brief(paths=[MIGRATION]).body
         self.assertNotIn("Contract files", text)
-        self.assertIn("**Data files** [V9__customers.sql](", text)
+        self.assertIn("**Data files**\n\n- [V9__customers.sql](", text)
 
 
 if __name__ == "__main__":

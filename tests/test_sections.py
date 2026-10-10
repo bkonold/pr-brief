@@ -66,8 +66,8 @@ class Sections(unittest.TestCase):
     def test_two_closed_sections_follow_the_description_and_no_rule_separates_them(self) -> None:
         brief, _ = render_body()
         text = brief.body
-        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>API</strong> '
-                               r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong> ')
+        self.assertRegex(text, r'(?s)### \*\*Description\*\*\n.*___\n\n<details class="section">\n<summary><strong>API</strong><br>\n'
+                               r'.*</details>\n+<details class="section">\n<summary><strong>Data</strong><br>\n')
         self.assertNotIn("Contract and data", text)
         self.assertNotIn("### **Contract**", text)
         self.assertEqual(text.count('<details class="section">'), 2)
@@ -82,8 +82,8 @@ class Sections(unittest.TestCase):
         brief, _ = render_body()
         text, lineset = brief.body, brief
         contract = self.section_of(text, "API")
-        summary = re.search(r"<summary>(.*?)</summary>", contract).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API callers must change consumers may break 3 changes")
+        summary = re.search(r"(?s)<summary>(.*?)</summary>", contract).group(1)
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "API\ncallers must change consumers may break 3 changes")
         rows = [re.sub(r"<[^>]+>", "", row) for row in contract.splitlines() if row.startswith("| <span")]
         self.assertEqual([re.sub(r" \| \[↗\].*", "", row) for row in rows],
                          ["| callers must change | request | + owner required | ItemRequest",
@@ -97,8 +97,8 @@ class Sections(unittest.TestCase):
         brief, _ = render_body()
         text = brief.body
         data = self.section_of(text, "Data")
-        summary = re.search(r"<summary>(.*?)</summary>", data).group(1)
-        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Data destructive additive 2 changes")
+        summary = re.search(r"(?s)<summary>(.*?)</summary>", data).group(1)
+        self.assertEqual(re.sub(r"<[^>]+>", "", summary), "Data\ndestructive additive 2 changes")
         self.assertEqual(data.count("<details"), 1)
         self.assertIn("| Impact | Change | Table | ↗ |", data)
         self.assertIn("| <code>− old</code> | <code>legacy</code> |", data)
