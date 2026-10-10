@@ -9,6 +9,11 @@
     "M5 3.25a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 5 3.25Zm0 5a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 5 8.25Zm0 5a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1-.75-.75ZM.924 10.32a.5.5 0 0 1-.851-.525l.001-.001.001-.002.002-.004.007-.011c.097-.144.215-.273.348-.384.228-.19.588-.392 1.068-.392.468 0 .858.181 1.126.484.259.294.377.673.377 1.038 0 .987-.686 1.495-1.156 1.845l-.047.035c-.303.225-.522.4-.654.597h1.357a.5.5 0 0 1 0 1H.5a.5.5 0 0 1-.5-.5c0-1.005.692-1.52 1.167-1.875l.035-.025c.531-.396.8-.625.8-1.078a.57.57 0 0 0-.128-.376C1.806 10.068 1.695 10 1.5 10a.658.658 0 0 0-.429.163.835.835 0 0 0-.144.153ZM2.003 2.5V6h.503a.5.5 0 0 1 0 1H.5a.5.5 0 0 1 0-1h.503V3.308l-.28.14a.5.5 0 0 1-.446-.895l1.003-.5a.5.5 0 0 1 .723.447Z";
   const DIRECTORY_ICON =
     "M0 2.75C0 1.784.784 1 1.75 1H5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 0 0 .2.1h6.75c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 0 0-.2-.1Z";
+  // Octicons' file-directory-fill and file, 16-unit filled paths, as GitHub's file tree draws a folder and a file.
+  const DIRECTORY_FILL_ICON =
+    "M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z";
+  const FILE_ICON =
+    "M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   // Octicons' check, 16-unit filled.
   const CHECK_ICON = "M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z";
@@ -301,16 +306,15 @@
     return count;
   }
 
-  function jvmLabel(folder, segments, withModule) {
-    const head = [withModule ? folder.module : "", folder.set === "main" ? "" : folder.set].filter(Boolean).join(" ");
+  function jvmLabel(folder, segments) {
+    const head = [folder.module, folder.set === "main" ? "" : folder.set].filter(Boolean).join(" ");
     return head ? `${head} \u203a ${segments.join("/")}` : segments.join("/");
   }
 
   // The layer's files grouped by folder, folders in the order of their first hunk, each as { dir, label, files }.
   // `reviewPaths` is every path in the review. A JVM source folder (<module>/src/<set>/<lang>/<package>) is labelled
-  // by module, source set and package, minus the package prefix all the review's JVM folders share. A layer of
-  // several folders drops what they all share: the module when every folder is JVM in one module, otherwise the
-  // leading directories common to non-JVM folders when none is JVM.
+  // by module, source set and package, minus the package prefix all the review's JVM folders share; the module is
+  // always shown. Any other folder is labelled by its full directory, and a file at the repo root by `/`.
   function folderGroups(chunk, reviewPaths) {
     const groups = new Map();
     for (const file of filesOf(chunk)) {
@@ -320,37 +324,48 @@
     }
     const jvmPackages = [...new Set(reviewPaths.map(dirOf))].map((dir) => jvmFolderOf(dir)?.segments).filter(Boolean);
     const prefix = jvmPackages.length ? sharedSegments(jvmPackages) : 0;
-    const folders = [...groups.values()].map((group) => ({ group, jvm: jvmFolderOf(group.dir) }));
-    const several = folders.length > 1;
-    const allJvm = folders.every(({ jvm }) => jvm);
-    const withModule = !(several && allJvm && new Set(folders.map(({ jvm }) => jvm.module)).size === 1);
-    for (const { group, jvm } of folders) {
-      if (jvm) group.label = jvmLabel(jvm, jvm.segments.slice(prefix), withModule);
-    }
-    if (several && folders.every(({ jvm }) => !jvm)) {
-      const lists = folders.map(({ group }) => (group.dir === "/" ? [] : group.dir.split("/")));
-      const drop = sharedSegments(lists);
-      for (const [index, { group }] of folders.entries()) group.label = lists[index].slice(drop).join("/") || group.dir;
+    for (const group of groups.values()) {
+      const jvm = jvmFolderOf(group.dir);
+      if (jvm) group.label = jvmLabel(jvm, jvm.segments.slice(prefix));
     }
     return [...groups.values()];
   }
 
-  // The layer's files under one muted line per folder (its full directory as the tooltip), each file a button with its
-  // full path as the tooltip. A file the Tests control keeps out of view is struck through, and so is a folder line
+  // A folder label as text nodes with a `wbr` after each `/` that has more text after it, so a long label wraps at a
+  // path separator.
+  function labelNodes(label) {
+    const parts = label.split("/");
+    const nodes = [];
+    parts.forEach((part, index) => {
+      if (index < parts.length - 1) {
+        nodes.push(`${part}/`);
+        if (parts.slice(index + 1).some(Boolean)) nodes.push(make("wbr"));
+      } else if (part) {
+        nodes.push(part);
+      }
+    });
+    return nodes;
+  }
+
+  // The layer's files under one folder line each (a folder icon and its label, its full directory as the tooltip), each
+  // file a button (a file icon and its name) with its full path as the tooltip. A file the Tests control keeps out of view is struck through, and so is a folder line
   // whose files all are.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
     const reviewPaths = state.chunks.flatMap((other) => other.hunks.map((hunk) => hunk.path));
     for (const { dir, label, files } of folderGroups(chunk, reviewPaths)) {
       const group = make("div", "prf-chunk-group");
-      const folder = make("div", "prf-chunk-folder", label);
+      const folder = make("div", "prf-chunk-folder");
+      const folderLabel = make("span", "prf-chunk-folder-label");
+      folderLabel.append(...labelNodes(label));
+      folder.append(filledIcon(DIRECTORY_FILL_ICON, 16, "prf-chunk-icon"), folderLabel);
       folder.title = dir;
       const excluded = files.map(({ path }) => isExcludedByTests(state, path));
       const buttons = files.map(({ path }, index) => {
         const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, path));
         file.classList.toggle("prf-dimmed", excluded[index]);
         file.title = path;
-        file.append(make("span", "prf-chunk-file-name", baseName(path)));
+        file.append(filledIcon(FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", baseName(path)));
         return file;
       });
       folder.classList.toggle("prf-dimmed", excluded.every(Boolean));

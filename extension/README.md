@@ -142,20 +142,20 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
 - The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer, on one line: its number and its title, and
   at the end a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
   stop's is, and scrolled into view when a layer is opened from its callout.
-- The selected row, and only it, lists the files its layer touches, grouped by folder. Each folder is one muted line (smaller than the
-  file names, wrapping rather than cut off, its full directory as the tooltip, not a button), with that folder's files indented under it,
-  one button per file with the file's name and its full path as the tooltip. Folders come in the order of their first
+- The selected row, and only it, lists the files its layer touches, grouped by folder. Each folder is one line, not a button, with a
+  muted folder icon (GitHub's `file-directory-fill`) and its label in muted 12px text; a long label wraps rather than being cut off,
+  preferring to break after a `/`, and hangs under its own first character, not under the icon. The folder's full directory is the tooltip.
+  Its files sit under it, indented so each file's icon is under the label's first character: one button per file with a muted file icon (`file`) and the
+  file's name in the default text colour, and its full path as the tooltip. Folders come in the order of their first
   hunk in the layer, and files within a folder in the order of each file's first hunk. A click
   jumps to that file's first hunk of the layer, at the line the layer's own jump would use, and stays in the tab: the
   selection and the page filter do not change. A click on a file of a layer that is not selected opens that layer first. A file the
-  Tests control keeps out of view is struck through, and so is a folder line whose files all are.
+  Tests control keeps out of view is struck through, and so is a folder line whose files all are; their icons dim with them.
 - Folder labels shorten a JVM source folder, one shaped `<module>/src/<set>/<lang>/<package>` with `<lang>` java, kotlin,
   scala, groovy or resources (the module is empty when `src` is at the repo root): `<module> › <package>` for the `main` set and
   `<module> <set> › <package>` for another, e.g. `acme-api test › creators/lumber`. The package segments every JVM folder in
-  the review shares at the front (not just this layer's) are dropped, always leaving each folder one segment. In a layer
-  of several folders, the module is left out when every folder is JVM in the same module (`creators/lumber`,
-  `test › creators/lumber`), and when no folder is JVM the leading directories they all share are dropped, leaving each folder one segment. A mixed layer keeps
-  the JVM labels as above and each other folder's full directory; so does a layer of one folder. A file at the repo root is in the folder `/`.
+  the review shares at the front (not just this layer's) are dropped, always leaving each folder one segment. The module is
+  never left out, however many folders the layer has. Any other folder is labelled by its full directory, and a file at the repo root is in the folder `/`.
 - Selecting a layer narrows the page to it: the diffs of the layer's files only, and in each only the rows that show a
   line inside one of the layer's hunks. A hunk's new range filters the right side and its old range the left, so removed
   lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own

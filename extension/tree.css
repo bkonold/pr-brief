@@ -402,8 +402,8 @@
   margin-left: auto;
 }
 
-/* A folder line and a file button both have 4px of their own left padding, so a folder's text lines up under the
-   title; its files sit one step further in. */
+/* A folder line and a file button both have 4px of their own left padding, so a folder's icon lines up under the
+   title. A file is indented by an icon and its gap, so its icon sits under the folder label's first character. */
 .prf-chunk-files {
   display: flex;
   flex-direction: column;
@@ -419,27 +419,50 @@
   margin-top: 4px;
 }
 
-.prf-chunk-folder {
+.prf-chunk-folder,
+.prf-chunk-file {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
   padding: 1px 4px;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.prf-chunk-folder {
   color: var(--fgColor-muted, #59636e);
+}
+
+.prf-chunk-icon {
+  flex: none;
+  color: var(--treeViewItem-leadingVisual-iconColor-rest, var(--fgColor-muted, #59636e));
+}
+
+.prf-chunk-folder-label,
+.prf-chunk-file-name {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.prf-chunk-folder.prf-dimmed {
+.prf-chunk-folder.prf-dimmed .prf-chunk-folder-label,
+.prf-chunk-file.prf-dimmed .prf-chunk-file-name {
   text-decoration: line-through;
 }
 
+.prf-chunk-folder.prf-dimmed .prf-chunk-icon,
+.prf-chunk-file.prf-dimmed .prf-chunk-icon {
+  opacity: 0.5;
+}
+
 .prf-chunk-group .prf-chunk-file {
-  margin-left: 12px;
+  margin-left: 22px;
 }
 
 .prf-chunk-file {
-  display: block;
-  padding: 1px 4px;
   font: inherit;
   font-size: 12px;
-  color: var(--fgColor-muted, #59636e);
+  line-height: 16px;
+  color: var(--fgColor-default, #1f2328);
   text-align: left;
   cursor: pointer;
   background: none;
@@ -453,12 +476,6 @@
 
 .prf-chunk-file.prf-dimmed {
   color: var(--fgColor-muted, #59636e);
-  text-decoration: line-through;
-}
-
-.prf-chunk-file-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .prf-risk {

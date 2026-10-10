@@ -1906,26 +1906,24 @@ test("folderGroups handles a source root at the repo root, which has no module",
   assert.deepEqual(labelsOf(main, [layer, other]), ["a"]);
 });
 
-test("folderGroups omits the module in a layer of several folders when all are JVM in one module", () => {
+test("folderGroups keeps the module in every JVM label, whatever else the layer holds", () => {
   const layer = layerOf(
     "acme-api/src/main/java/com/acme/creators/lumber/A.java",
     "acme-api/src/main/java/com/acme/models/B.java",
     "acme-api/src/test/java/com/acme/creators/lumber/ATest.java",
   );
-  assert.deepEqual(labelsOf(layer), ["creators/lumber", "models", "test \u203a creators/lumber"]);
+  assert.deepEqual(labelsOf(layer), ["acme-api \u203a creators/lumber", "acme-api \u203a models", "acme-api test \u203a creators/lumber"]);
   const two = layerOf("acme-api/src/main/java/com/acme/x/A.java", "acme-core/src/main/java/com/acme/y/B.java");
   assert.deepEqual(labelsOf(two), ["acme-api \u203a x", "acme-core \u203a y"]);
 });
 
-test("folderGroups drops the leading directories several non-JVM folders share, keeping one segment each", () => {
+test("folderGroups labels non-JVM folders by their full directory", () => {
   const layer = layerOf("web/app/routes/a/x.tsx", "web/app/routes/b/y.tsx", "web/app/routes/b/z.tsx");
-  assert.deepEqual(labelsOf(layer), ["a", "b"]);
+  assert.deepEqual(labelsOf(layer), ["web/app/routes/a", "web/app/routes/b"]);
   const nested = layerOf("web/app/routes/x.tsx", "web/app/routes/b/y.tsx");
-  assert.deepEqual(labelsOf(nested), ["routes", "routes/b"]);
-  const single = layerOf("web/app/routes/x.tsx");
-  assert.deepEqual(labelsOf(single), ["web/app/routes"]);
-  const divergent = layerOf("web/sdk/x.ts", "docs/y.md");
-  assert.deepEqual(labelsOf(divergent), ["web/sdk", "docs"]);
+  assert.deepEqual(labelsOf(nested), ["web/app/routes", "web/app/routes/b"]);
+  assert.deepEqual(labelsOf(layerOf("web/app/routes/x.tsx")), ["web/app/routes"]);
+  assert.deepEqual(labelsOf(layerOf("web/sdk/x.ts", "docs/y.md")), ["web/sdk", "docs"]);
 });
 
 test("folderGroups keeps JVM labels and full non-JVM directories in a mixed layer", () => {
@@ -1953,7 +1951,7 @@ test("folderGroups lists folders by first hunk and keeps each folder's files in 
   assert.deepEqual(require("../tree.js").folderGroups(layerOf(), []), []);
 });
 
-test("the selected chunk lists a muted folder line over each folder's files, with the directory as its tooltip", () => {
+test("the selected chunk lists a folder line with an icon over each folder's files, with the directory as its tooltip", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
@@ -1967,13 +1965,33 @@ test("the selected chunk lists a muted folder line over each folder's files, wit
     assert.deepEqual(
       groups.map((group) => [byClass(group, "prf-chunk-folder")[0].textContent, byClass(group, "prf-chunk-folder")[0].title, byClass(group, "prf-chunk-file").map((file) => byClass(file, "prf-chunk-file-name")[0].textContent)]),
       [
-        ["creators/lumber", "acme-api/src/main/java/com/acme/creators/lumber", ["A.java", "C.java"]],
-        ["models", "acme-api/src/main/java/com/acme/models", ["B.java"]],
+        ["acme-api \u203a creators/lumber", "acme-api/src/main/java/com/acme/creators/lumber", ["A.java", "C.java"]],
+        ["acme-api \u203a models", "acme-api/src/main/java/com/acme/models", ["B.java"]],
       ],
     );
+    for (const group of groups) {
+      assert.deepEqual(byClass(group, "prf-chunk-folder")[0].children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-folder-label"]]);
+      for (const file of byClass(group, "prf-chunk-file")) {
+        assert.deepEqual(file.children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-file-name"]]);
+      }
+    }
     assert.deepEqual(byClass(row, "prf-chunk-folder").map((folder) => folder.tag), ["div", "div"]);
     for (const file of byClass(row, "prf-chunk-file")) file.listeners.click();
     assert.deepEqual(picked.map(([, path]) => path.split("/").pop()), ["A.java", "C.java", "B.java"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a folder label breaks after each / that has text after it, from text nodes and wbr elements", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const row = byClass(chunkList({ chunks: [layerOf("web/app/routes/a.tsx", "README.md")], selectedChunk: 1, judged: new Set() }, {}), "prf-chunk")[0];
+    const [deep, root] = byClass(row, "prf-chunk-folder-label");
+    assert.deepEqual(deep.children.map((child) => (typeof child === "string" ? child : child.tag)), ["web/", "wbr", "app/", "wbr", "routes"]);
+    assert.equal(deep.textContent, "web/app/routes");
+    assert.deepEqual(root.children, ["/"]);
   } finally {
     delete globalThis.document;
   }
