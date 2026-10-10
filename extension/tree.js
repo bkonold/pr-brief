@@ -14,12 +14,6 @@
   const CHECK_ICON = "M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z";
   // Three stacked layers, filled.
   const LAYERS_ICON = "M8 1 15 4.5 8 8 1 4.5ZM1 7.4 8 10.9 15 7.4V8.9L8 12.4 1 8.9ZM1 10.4 8 13.9 15 10.4V11.9L8 15.4 1 11.9Z";
-  // Octicons' eye-closed, 16-unit filled.
-  const EYE_CLOSED_ICON =
-    "M.143 2.31a.75.75 0 0 1 1.047-.167l14.5 10.5a.75.75 0 1 1-.88 1.214l-2.248-1.628C11.346 13.19 9.792 14 8 14c-1.981 0-3.67-.992-4.933-2.078C1.797 10.832.88 9.577.43 8.9a1.619 1.619 0 0 1 0-1.797c.353-.533.995-1.42 1.868-2.305L.31 3.357A.75.75 0 0 1 .143 2.31Zm1.536 5.622A.12.12 0 0 0 1.657 8c0 .021.006.045.022.068.412.621 1.242 1.75 2.366 2.717C5.175 11.758 6.527 12.5 8 12.5c1.195 0 2.31-.488 3.29-1.191L9.77 10.2a2 2 0 0 1-2.868-2.076L4.288 6.23c-1.064.8-1.879 1.53-2.609 2.702ZM8 3.5c-.516 0-1.017.09-1.499.251a.75.75 0 1 1-.473-1.423A6.207 6.207 0 0 1 8 2c1.981 0 3.67.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.11.166-.248.365-.41.587a.75.75 0 1 1-1.21-.887c.148-.201.272-.382.371-.53a.119.119 0 0 0 0-.137c-.412-.621-1.242-1.75-2.366-2.717C10.825 4.242 9.473 3.5 8 3.5Z";
-  // Octicons' eye, 16-unit filled.
-  const EYE_ICON =
-    "M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2ZM1.679 7.932a.12.12 0 0 0 0 .136c.411.622 1.241 1.75 2.366 2.717C5.176 11.758 6.527 12.5 8 12.5c1.473 0 2.825-.742 3.955-1.715 1.124-.967 1.954-2.096 2.366-2.717a.12.12 0 0 0 0-.136c-.412-.621-1.242-1.75-2.366-2.717C10.824 4.242 9.473 3.5 8 3.5c-1.473 0-2.825.742-3.955 1.715-1.124.967-1.954 2.096-2.366 2.717ZM8 10a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 10Z";
   const ROUTE_ICON = "M2 12.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M11 3.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M3.5 11v-1.5a2 2 0 0 1 2-2h5a2 2 0 0 0 2-2V5";
   function staleMessage(review, pageSha) {
     if (!review.head_sha || !pageSha || review.head_sha.toLowerCase() === pageSha.toLowerCase()) return null;
@@ -120,8 +114,8 @@
   // The card shown above a stop's line, or above its file's header, in the diff: which stop of how many this is, the
   // diagram box it belongs to and its title, why to stop here, and, in a column beside them, buttons to the previous and
   // the next stop, each in a slot that is kept, hidden, when there is no such stop. `onGo(stop)` opens a stop; `nodes`
-  // is review.json's `nodes`, which names the box a stop belongs to; the buttons pass over each stop `skip(stop)` is true for.
-  function stopCallout(stop, stops, onGo, nodes = {}, skip = () => false) {
+  // is review.json's `nodes`, which names the box a stop belongs to.
+  function stopCallout(stop, stops, onGo, nodes = {}) {
     const card = make("div", "prf-callout");
     const main = make("div", "prf-callout-main");
     const head = make("div", "prf-callout-head");
@@ -142,8 +136,8 @@
 
     const nav = make("div", "prf-callout-nav");
     const at = stops.findIndex((other) => other.i === stop.i);
-    const previous = stops.slice(0, at).findLast((other) => !skip(other));
-    const following = stops.slice(at + 1).find((other) => !skip(other));
+    const previous = stops[at - 1];
+    const following = stops[at + 1];
     const back = button(previous ? "prf-callout-prev" : "prf-callout-prev prf-callout-empty", "↑ Previous", () => previous && onGo(previous));
     if (previous) back.title = previous.title;
     else inertSlot(back);
@@ -182,8 +176,9 @@
   }
 
   const TESTS_MODES = ["all", "hide", "only"];
+  const TESTS_CHOICES = [["all", "all"], ["hide", "hidden"], ["only", "only"]];
 
-  // Whether the Tests switch keeps `path` out of view: a test file while tests are hidden, any other file while only
+  // Whether the Tests control keeps `path` out of view: a test file while tests are hidden, any other file while only
   // tests are shown.
   function isExcludedByTests(state, path) {
     if (state.testsMode === "hide") return (state.tests ?? []).includes(path);
@@ -191,24 +186,35 @@
     return false;
   }
 
-  // The single control at the right end of the toggle line that cycles which files the PR shows: all of them, all but
-  // the test files, or only the test files. Pressed whenever it narrows the page.
-  function testsSwitch(state, handlers) {
+  // The label "Tests" and one choice per mode, all, hidden or only, of which files the page shows: all of them, all but
+  // the test files, or only the test files. The choice in effect is pressed; a click picks its mode directly.
+  function testsControl(state, handlers) {
     const mode = TESTS_MODES.includes(state.testsMode) ? state.testsMode : "all";
-    const element = button("prf-tests", undefined, () => handlers.onTestsMode(TESTS_MODES[(TESTS_MODES.indexOf(mode) + 1) % TESTS_MODES.length]));
-    element.title = "Show all files, hide tests, or show only tests";
-    element.append(filledIcon(mode === "only" ? EYE_ICON : EYE_CLOSED_ICON, 14, "prf-tests-icon"));
-    if (mode === "all") element.append(make("span", undefined, "Tests"), make("span", "prf-chip-count", String(state.tests.length)));
-    else element.append(make("span", undefined, mode === "hide" ? "Tests hidden" : "Tests only"));
-    element.setAttribute("aria-pressed", String(mode !== "all"));
-    return element;
+    const control = make("span", "prf-tests");
+    control.append(make("span", "prf-tests-label", "Tests"));
+    TESTS_CHOICES.forEach(([value, label], index) => {
+      const choice = button("prf-tests-choice", label, () => handlers.onTestsMode(value));
+      choice.setAttribute("aria-pressed", String(mode === value));
+      if (index > 0) control.append(make("span", "prf-tests-sep", "\u00b7"));
+      control.append(choice);
+    });
+    return control;
+  }
+
+  // The line under the toggle: the file chips in "Walkthrough" and "Files" or the chunk count in "Chunks" at its left,
+  // and in "Files" and "Chunks" the Tests control, when the review has test files, at its right. Null when the line
+  // would be empty.
+  function filters(state, handlers) {
+    const line = make("div", "prf-filters");
+    if (state.mode === "chunks") line.append(chunksLede(state));
+    else if (state.chips?.length) line.append(chipRow(state, handlers));
+    if (state.mode !== "review" && state.tests?.length) line.append(testsControl(state, handlers));
+    return line.children.length > 0 ? line : null;
   }
 
   function bar(state, handlers) {
     const element = make("div", "prf-bar");
     element.append(modeToggle(state, handlers));
-    if (state.tests?.length) element.append(testsSwitch(state, handlers));
-    if (state.mode !== "chunks" && state.chips?.length) element.append(chipRow(state, handlers));
     return element;
   }
 
@@ -225,7 +231,6 @@
     header.append(main);
     const element = make("section", "prf-group prf-stop");
     element.classList.toggle("prf-selected", current);
-    element.classList.toggle("prf-dimmed", isExcludedByTests(state, stop.path));
     element.dataset.stop = String(stop.i);
     element.append(header);
     return element;
@@ -276,8 +281,8 @@
     return [...files.values()];
   }
 
-  // One button per file the chunk touches: the file's name, with its full path as the tooltip. A test file the Tests
-  // switch hides is struck through.
+  // One button per file the chunk touches: the file's name, with its full path as the tooltip. A file the Tests
+  // control keeps out of view is struck through.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
     for (const { path } of filesOf(chunk)) {
@@ -315,11 +320,15 @@
     return element;
   }
 
-  // The chunks in order, under a line counting them and how many are judged.
+  // The line counting the chunks and how many are judged.
+  function chunksLede(state) {
+    const judged = state.chunks.filter((chunk) => state.judged?.has(chunk.i)).length;
+    return make("p", "prf-lede", `${state.chunks.length} ${state.chunks.length === 1 ? "chunk" : "chunks"} \u00b7 ${judged} judged`);
+  }
+
+  // The chunks in order.
   function chunkList(state, handlers) {
     const list = make("div", "prf-groups");
-    const judged = state.chunks.filter((chunk) => state.judged?.has(chunk.i)).length;
-    list.append(make("p", "prf-lede", `${state.chunks.length} ${state.chunks.length === 1 ? "chunk" : "chunks"} \u00b7 ${judged} judged`));
     for (const chunk of state.chunks) list.append(chunkRow(chunk, state, handlers));
     return list;
   }
@@ -402,7 +411,7 @@
 
   // state: { mode: "review" | "chunks" | "github", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
   // fileSet, tests, testsMode }, `judged` being a Set of chunk numbers, `tests` the PR's test files' paths and `testsMode`
-  // "all" | "hide" | "only", which of the PR's files the Tests switch shows
+  // "all" | "hide" | "only", which of the PR's files the Tests control shows in "Files" and "Chunks"
   // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onSelectFileInChunk(i, path), onFileSet(id), onTestsMode(mode)
   function render(review, state, handlers) {
     const mount = mountPoint();
@@ -415,6 +424,8 @@
     host.classList.toggle(HOST_HIDDEN, listMode);
 
     root.replaceChildren(bar(state, handlers));
+    const filterLine = filters(state, handlers);
+    if (filterLine) root.append(filterLine);
     const stale = staleMessage(review, state.pageSha);
     if (stale) root.append(make("p", "prf-banner", stale));
     if (state.note) root.append(make("p", "prf-banner", state.note));
@@ -517,7 +528,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, bar, stopList, chunkRow, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, bar, filters, stopList, chunkRow, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

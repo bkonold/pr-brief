@@ -144,7 +144,11 @@
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
     const mode = testsMode(session);
     const exempt = exemptPaths(session);
-    if (session.mode === "chunks") {
+    if (session.mode === "review") {
+      page.filterFiles(fileSet?.paths ?? null);
+      page.filterHunks(null);
+      page.excludeFiles(null);
+    } else if (session.mode === "chunks") {
       const chunk = selectedChunkOf(session);
       page.filterFiles(null);
       page.filterHunks(chunk ? chunkRanges(session, chunk) : null);
@@ -245,7 +249,7 @@
               key: stop.i,
               anchor: anchors[index],
               ...(isFileStop(stop) ? { file: true } : {}),
-              render: () => tree.stopCallout(stop, stops, (target) => selectStop(session, target, { pulse: false }), review.nodes, (other) => isExcluded(session, other.path)),
+              render: () => tree.stopCallout(stop, stops, (target) => selectStop(session, target, { pulse: false }), review.nodes),
             },
           ]
         : [],
@@ -271,10 +275,9 @@
     );
   }
 
-  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected chunk's in the chunks tab. A
-  // stop's callout is built again when the Tests mode changes, since its Previous and Next pass over the stops that mode hides.
+  // What the page shows over the diff: the stops' callouts in the walkthrough, the selected chunk's in the chunks tab.
   function calloutsShown(session) {
-    if (session.mode === "review") return session.callouts.map((entry) => ({ ...entry, version: testsMode(session) }));
+    if (session.mode === "review") return session.callouts;
     if (session.mode !== "chunks") return [];
     return session.chunkCallouts.filter((entry) => entry.key === `chunk:${session.selectedChunk}`);
   }
@@ -368,7 +371,7 @@
     }
   }
 
-  // The mode in effect: a review with no test files shows every file whatever the preference.
+  // The mode in effect in "Files" and "Chunks": a review with no test files shows every file whatever the preference.
   function testsMode(session) {
     return session.tests.length > 0 ? session.testsMode : "all";
   }
@@ -380,20 +383,13 @@
     return session.tests.includes(path) === (mode === "hide");
   }
 
-  // The files the mode must keep in view although it would not: in the walkthrough, the selected stop's file and the
-  // active one, so that a stop or a box can always be opened; in the chunks tab, the files of a selected chunk that
+  // The files the mode must keep in view although it would not: in the chunks tab, the files of a selected chunk that
   // is shown whole.
   function exemptPaths(session) {
     const paths = new Set();
-    if (session.mode === "chunks") {
-      const chunk = selectedChunkOf(session);
-      if (chunk && chunk.hunks.every((hunk) => isExcluded(session, hunk.path))) for (const hunk of chunk.hunks) paths.add(hunk.path);
-      return paths;
-    }
-    if (session.mode !== "review") return paths;
-    const stop = session.stops.find((candidate) => candidate.i === session.selectedStop);
-    if (stop) paths.add(stop.path);
-    for (const path of session.activeBox?.paths ?? []) paths.add(path);
+    if (session.mode !== "chunks") return paths;
+    const chunk = selectedChunkOf(session);
+    if (chunk && chunk.hunks.every((hunk) => isExcluded(session, hunk.path))) for (const hunk of chunk.hunks) paths.add(hunk.path);
     return paths;
   }
 

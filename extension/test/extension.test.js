@@ -1216,21 +1216,23 @@ test("fileSetOf is the chosen set with its lines, and nothing for All, an empty 
   assert.equal(fileSetOf({}, "contract"), null);
 });
 
-test("the chips sit under the mode toggle, mark the chosen one and choose a set when clicked", () => {
-  const { bar } = require("../tree.js");
+test("the chips sit on the filter line under the mode toggle, mark the chosen one and choose a set when clicked", () => {
+  const { bar, filters } = require("../tree.js");
   globalThis.document = fakeDom();
   globalThis.prFocus.page = { treeLabel: "Files" };
   try {
     const chips = [{ id: "all", label: "All", count: 9 }, { id: "contract", label: "API", count: 4 }];
     const chosen = [];
-    const element = bar({ mode: "review", chips, fileSet: { id: "contract" } }, { onMode() {}, onFileSet: (id) => chosen.push(id) });
+    const element = filters({ mode: "github", chips, fileSet: { id: "contract" } }, { onFileSet: (id) => chosen.push(id) });
     const buttons = byClass(element, "prf-chip");
     assert.deepEqual(buttons.map((chip) => byClass(chip, "prf-chip-count")[0].textContent), ["9", "4"]);
     assert.deepEqual(buttons.map((chip) => chip.attributes["aria-pressed"]), ["false", "true"]);
-    assert.deepEqual(element.children.map((child) => child.className), ["prf-modes", "prf-chips"]);
+    assert.equal(element.className, "prf-filters");
+    assert.deepEqual(element.children.map((child) => child.className), ["prf-chips"]);
+    assert.deepEqual(bar({ mode: "github", chips }, { onMode() {} }).children.map((child) => child.className), ["prf-modes"]);
     for (const chip of buttons) chip.listeners.click();
     assert.deepEqual(chosen, ["all", "contract"]);
-    assert.deepEqual(byClass(bar({ mode: "review", chips: [] }, {}), "prf-chips"), []);
+    assert.equal(filters({ mode: "github", chips: [] }, {}), null);
   } finally {
     delete globalThis.document;
     delete globalThis.prFocus.page;
@@ -1385,15 +1387,16 @@ test("chunksOf is the review's chunks, and none for a review made before chunks"
   assert.deepEqual(chunksOf({}), []);
 });
 
-test("the chunk list opens with a count of the chunks and how many are judged, singular for one", () => {
-  const { chunkList } = require("../tree.js");
+test("the chunks filter line counts the chunks and how many are judged, singular for one, and the chunk list has no lede", () => {
+  const { chunkList, filters } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
-    const lede = (chunks, judged) => byClass(chunkList({ chunks, selectedChunk: null, judged: new Set(judged) }, {}), "prf-lede")[0].textContent;
+    const lede = (chunks, judged) => byClass(filters({ mode: "chunks", chunks, selectedChunk: null, judged: new Set(judged) }, {}), "prf-lede")[0].textContent;
     assert.equal(lede(CHUNKS, [2]), "3 chunks · 1 judged");
     assert.equal(lede(CHUNKS, []), "3 chunks · 0 judged");
     assert.equal(lede(CHUNKS.slice(0, 1), [1]), "1 chunk · 1 judged");
     assert.equal(lede(CHUNKS, [2, 99]), "3 chunks · 1 judged");
+    assert.deepEqual(byClass(chunkList({ chunks: CHUNKS, selectedChunk: null, judged: new Set() }, {}), "prf-lede"), []);
   } finally {
     delete globalThis.document;
   }
@@ -1558,7 +1561,7 @@ test("the mode toggle offers Chunks between the walkthrough and the host's tree 
     for (const choice of choices) choice.listeners.click();
     assert.deepEqual(modes, ["review", "chunks", "github"]);
     assert.deepEqual(element.children.map((child) => child.className), ["prf-modes"]);
-    assert.deepEqual(bar({ mode: "review", chips, chunks: CHUNKS }, {}).children.map((child) => child.className), ["prf-modes", "prf-chips"]);
+    assert.deepEqual(bar({ mode: "review", chips, chunks: CHUNKS, tests: ["a.test.js"] }, {}).children.map((child) => child.className), ["prf-modes"]);
   } finally {
     delete globalThis.document;
     delete globalThis.prFocus.page;
@@ -1765,64 +1768,65 @@ test("testsOf is the review's test files, and none for a review made before they
   assert.deepEqual(testsOf({}), []);
 });
 
-function testsSwitchOf(state, handlers = {}) {
-  const { bar } = require("../tree.js");
+function filtersOf(state, handlers = {}) {
+  const { filters } = require("../tree.js");
   globalThis.document = fakeDom();
   globalThis.prFocus.page = { treeLabel: "Files" };
   try {
-    return byClass(bar({ mode: "review", chips: [], ...state }, { onMode() {}, ...handlers }), "prf-tests");
+    return filters({ chips: [], ...state }, handlers);
   } finally {
     delete globalThis.document;
     delete globalThis.prFocus.page;
   }
 }
 
-test("the Tests switch is drawn after the mode toggle only when the review has test files", () => {
-  assert.deepEqual(testsSwitchOf({}), []);
-  assert.deepEqual(testsSwitchOf({ tests: [] }), []);
-  const { bar } = require("../tree.js");
-  globalThis.document = fakeDom();
-  globalThis.prFocus.page = { treeLabel: "Files" };
-  try {
-    const element = bar({ mode: "review", tests: ["a.test.js"], testsMode: "all", chips: [{ id: "all", label: "All", count: 3 }] }, { onMode() {} });
-    assert.deepEqual(element.children.map((child) => child.className), ["prf-modes", "prf-tests", "prf-chips"]);
-  } finally {
-    delete globalThis.document;
-    delete globalThis.prFocus.page;
-  }
+function testsControlOf(state, handlers = {}) {
+  const line = filtersOf(state, handlers);
+  return line ? byClass(line, "prf-tests") : [];
+}
+
+test("the filter line holds the chips in the walkthrough and Files, the lede in Chunks, and the Tests control outside the walkthrough", () => {
+  const tests = ["a.test.js"];
+  const chips = [{ id: "all", label: "All", count: 3 }];
+  assert.deepEqual(filtersOf({ mode: "review", chips, tests, chunks: CHUNKS }).children.map((child) => child.className), ["prf-chips"]);
+  assert.equal(filtersOf({ mode: "review", chips: [], tests }), null);
+  assert.deepEqual(filtersOf({ mode: "github", chips, tests }).children.map((child) => child.className), ["prf-chips", "prf-tests"]);
+  assert.deepEqual(filtersOf({ mode: "chunks", chunks: CHUNKS, tests }).children.map((child) => child.className), ["prf-lede", "prf-tests"]);
+  assert.deepEqual(filtersOf({ mode: "chunks", chunks: CHUNKS }).children.map((child) => child.className), ["prf-lede"]);
+  assert.deepEqual(filtersOf({ mode: "github", chips: [], tests }).children.map((child) => child.className), ["prf-tests"]);
+  assert.equal(filtersOf({ mode: "github", chips: [] }), null);
 });
 
-test("the Tests switch reads Tests with the count when all files show, and is pressed only while it narrows the page", () => {
-  const tests = ["a.test.js", "b.test.js"];
+test("the Tests control is drawn only when the review has test files, in Files and Chunks, and not in the walkthrough", () => {
+  assert.deepEqual(testsControlOf({ mode: "github" }), []);
+  assert.deepEqual(testsControlOf({ mode: "github", tests: [] }), []);
+  assert.equal(testsControlOf({ mode: "github", tests: ["a.test.js"] }).length, 1);
+  assert.equal(testsControlOf({ mode: "chunks", chunks: CHUNKS, tests: ["a.test.js"] }).length, 1);
+  assert.deepEqual(testsControlOf({ mode: "review", tests: ["a.test.js"] }), []);
+});
+
+test("the Tests control reads Tests all · hidden · only and presses the choice matching the mode, all when there is none", () => {
   const view = (testsMode) => {
-    const [element] = testsSwitchOf({ tests, testsMode });
-    return {
-      text: element.textContent,
-      pressed: element.attributes["aria-pressed"],
-      count: byClass(element, "prf-chip-count").map((count) => count.textContent),
-      icon: byClass(element, "prf-tests-icon")[0].children[0].attributes.d.slice(0, 12),
-      title: element.title,
-    };
+    const [control] = testsControlOf({ mode: "github", tests: ["a.test.js"], testsMode });
+    const choices = byClass(control, "prf-tests-choice");
+    return { text: control.textContent, label: byClass(control, "prf-tests-label")[0].textContent, choices: choices.map((choice) => choice.textContent), pressed: choices.map((choice) => choice.attributes["aria-pressed"]) };
   };
-  const title = "Show all files, hide tests, or show only tests";
-  const closed = "M.143 2.31a.";
-  const open = "M8 2c1.981 0";
-  assert.deepEqual(view("all"), { text: "Tests2", pressed: "false", count: ["2"], icon: closed, title });
-  assert.deepEqual(view("hide"), { text: "Tests hidden", pressed: "true", count: [], icon: closed, title });
-  assert.deepEqual(view("only"), { text: "Tests only", pressed: "true", count: [], icon: open, title });
-  assert.deepEqual(view(undefined).text, "Tests2");
+  const text = "Testsall·hidden·only";
+  const choices = ["all", "hidden", "only"];
+  assert.deepEqual(view("all"), { text, label: "Tests", choices, pressed: ["true", "false", "false"] });
+  assert.deepEqual(view("hide"), { text, label: "Tests", choices, pressed: ["false", "true", "false"] });
+  assert.deepEqual(view("only"), { text, label: "Tests", choices, pressed: ["false", "false", "true"] });
+  assert.deepEqual(view(undefined).pressed, ["true", "false", "false"]);
 });
 
-test("clicking the Tests switch cycles all, hide, only and back to all", () => {
+test("clicking a Tests choice sends that mode, whichever is in effect", () => {
   const asked = [];
-  for (const testsMode of ["all", "hide", "only"]) {
-    const [element] = testsSwitchOf({ tests: ["a.test.js"], testsMode }, { onTestsMode: (mode) => asked.push(mode) });
-    element.listeners.click();
-  }
-  assert.deepEqual(asked, ["hide", "only", "all"]);
+  const [control] = testsControlOf({ mode: "chunks", chunks: CHUNKS, tests: ["a.test.js"], testsMode: "hide" }, { onTestsMode: (mode) => asked.push(mode) });
+  for (const choice of byClass(control, "prf-tests-choice")) choice.listeners.click();
+  assert.deepEqual(asked, ["all", "hide", "only"]);
 });
 
-test("a stop row is dimmed when the Tests mode keeps its file out of view: a test file in hide, any other file in only", () => {
+test("a stop row is not dimmed by the Tests mode", () => {
   const { stopList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
@@ -1830,11 +1834,10 @@ test("a stop row is dimmed when the Tests mode keeps its file out of view: a tes
       { i: 1, title: "Code", why: "", path: "src/a.js", side: "R", line: 1, node: null },
       { i: 2, title: "Test", why: "", path: "src/a.test.js", side: "R", line: 1, node: null },
     ];
-    const dimmed = (testsMode) => byClass(stopList({ stops, selectedStop: null, tests: ["src/a.test.js"], testsMode }, {}), "prf-stop").map((row) => row.className.split(" ").includes("prf-dimmed"));
-    assert.deepEqual(dimmed("all"), [false, false]);
-    assert.deepEqual(dimmed("hide"), [false, true]);
-    assert.deepEqual(dimmed("only"), [true, false]);
-    assert.deepEqual(dimmed(undefined), [false, false]);
+    for (const testsMode of ["all", "hide", "only"]) {
+      const classes = byClass(stopList({ stops, selectedStop: null, tests: ["src/a.test.js"], testsMode }, {}), "prf-stop").map((row) => row.className);
+      assert.deepEqual(classes.filter((name) => name.includes("prf-dimmed")), []);
+    }
   } finally {
     delete globalThis.document;
   }
@@ -1855,20 +1858,17 @@ test("a chunk's file button is struck through when the Tests mode keeps that fil
   }
 });
 
-test("a stop callout's Previous and Next pass over the stops skip is true for, and hide a slot with none left", () => {
+test("a stop callout's Previous and Next go to the neighbouring stops, and a slot with none beyond it is hidden", () => {
   globalThis.document = fakeDom();
   try {
     const gone = [];
-    const skipSecond = (stop) => stop.i === 2;
-    const [prevSlot, nextSlot] = navSlots(stopCallout(STOPS[0], STOPS, (target) => gone.push(target.i), NODES, skipSecond));
-    assert.deepEqual([prevSlot.hidden, nextSlot.hidden, nextSlot.title], [true, false, "Back to the screen"]);
-    const [backSlot] = navSlots(stopCallout(STOPS[2], STOPS, () => {}, NODES, skipSecond));
-    assert.deepEqual([backSlot.hidden, backSlot.title], [false, "List is built"]);
-    const card = stopCallout(STOPS[1], STOPS, (target) => gone.push(target.i), NODES, skipSecond);
+    const [prevSlot, nextSlot] = navSlots(stopCallout(STOPS[0], STOPS, (target) => gone.push(target.i), NODES));
+    assert.deepEqual([prevSlot.hidden, nextSlot.hidden, nextSlot.title], [true, false, STOPS[1].title]);
+    const [, lastNext] = navSlots(stopCallout(STOPS[2], STOPS, () => {}, NODES));
+    assert.equal(lastNext.hidden, true);
+    const card = stopCallout(STOPS[1], STOPS, (target) => gone.push(target.i), NODES);
     for (const button of walk(card).filter((element) => element.tag === "button")) button.listeners.click();
     assert.deepEqual(gone, [1, 3]);
-    const [onlyPrev, onlyNext] = navSlots(stopCallout(STOPS[0], STOPS, () => {}, NODES, (stop) => stop.i !== 1));
-    assert.deepEqual([onlyPrev.hidden, onlyNext.hidden], [true, true]);
   } finally {
     delete globalThis.document;
   }
@@ -1920,20 +1920,4 @@ test("an excluded block is hidden even when the hunk filter keeps it, and its ro
   assert.deepEqual(blocks.map((block) => block.fileHidden), [false, false]);
   assert.deepEqual(blocks[0].rows.map((row) => row.hidden), [false, true]);
   assert.ok(Row);
-});
-
-test("showCallouts builds a callout again when its entry's version changes, and keeps it while the version stays", () => {
-  const table = fakeTable(["a"]);
-  try {
-    const page = calloutPage(table);
-    const built = [];
-    const entry = (version) => ({ key: "a", anchor: "a", version, render: () => (built.push(version), {}) });
-    page.showCallouts([entry("all")]);
-    page.showCallouts([entry("all")]);
-    assert.deepEqual(built, ["all"]);
-    page.showCallouts([entry("hide")]);
-    assert.deepEqual([built, table.callouts().length, table.callouts()[0].dataset.version], [["all", "hide"], 1, "hide"]);
-  } finally {
-    delete globalThis.document;
-  }
 });

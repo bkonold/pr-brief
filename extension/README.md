@@ -28,13 +28,13 @@ earliest block in the page.
 What the list shows, in GitHub's left column between the "Filter files" box and the tree:
 
 - A toggle, "Walkthrough" / "Chunks" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
-  swaps in the stop list, "Chunks" (only for a brief that has chunks, see "Chunks tab") the chunk list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a chunk, which narrows the page to its hunks, and the Tests switch, which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
+  swaps in the stop list, "Chunks" (only for a brief that has chunks, see "Chunks tab") the chunk list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a chunk, which narrows the page to its hunks, and the Tests control in "Files" and "Chunks", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
-- Under the toggle, chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
+- Under the toggle, a filter line. In "Walkthrough" and "Files" its left side holds chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
   (or an older run without `file_sets`) has no chips. The chip is per tab and not remembered, stays through a switch of the toggle, and clicking one never
   moves the diagram. See "File sets" below.
-- At the right end of the toggle line, when the brief lists test files, the Tests switch (see "Tests switch").
+  In "Chunks" it holds the chunk count instead (see "Chunks tab"). At its right end, when the brief lists test files, sits the Tests control (see "Tests control"). A line with nothing to show is not drawn.
 - Under the toggle in "Walkthrough" mode, one row per stop of the walkthrough (see "The walkthrough"): no tabs. The
   diagram's boxes in `review.json` drive the diagram's halo and the box named in each stop's callout. A muted line above
   the stops counts them, `6 stops, in reading order` (`1 stop`; with a file set, the stops listed), and says in its tooltip what the list is for; a run with no stops has none.
@@ -51,30 +51,27 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
   applied again on every refresh, as the callouts are. A tree row is matched to a file by the `#diff-…` link it holds.
 - A click on a diagram box, or on a stop, in a file outside the set puts the chip back on "All" first, so the file shows.
 
-## Tests switch
+## Tests control
 
-`review.json`'s `file_sets.tests` lists the PR's test files, as full paths. When it is not empty, one button, "Tests", sits at the
-right end of the toggle line (same row as "Walkthrough" / "Chunks" / "Files"), in every tab. A brief without `file_sets.tests`
-(an older run, or a PR with no test files) has no switch and shows every file. A click cycles three states:
+`review.json`'s `file_sets.tests` lists the PR's test files, as full paths. When it is not empty, the filter line (under the
+toggle, in "Files" and "Chunks" only) ends with the Tests control: a muted label "Tests" followed by three text buttons,
+`all · hidden · only`, 12px, with no border or background. The choices other than the one in effect are in the secondary colour; the
+one in effect is in the default colour, underlined, and has `aria-pressed="true"`. A click picks that mode directly. A brief
+without `file_sets.tests` (an older run, or a PR with no test files) has no control and shows every file. The "Walkthrough"
+has no Tests control and no test behaviour: it shows the files its file set chooses, whatever the stored mode.
 
-| State | Label | Pressed | Icon | Shows |
-| --- | --- | --- | --- | --- |
-| all | `Tests 4` (the count of test files, muted) | no | eye closed | every file |
-| hide | `Tests hidden` | yes | eye closed | every file but the tests |
-| only | `Tests only` | yes | eye | the test files only |
+| Choice | Mode | Shows |
+| --- | --- | --- |
+| all | `all` | every file |
+| hidden | `hide` | every file but the tests |
+| only | `only` | the test files only |
 
-Its tooltip is "Show all files, hide tests, or show only tests".
-
-- **Diff and tree.** In "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
+- **Diff and tree.** In "Files", in "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
   with none, whatever the chip or the chunk keeps (`page.excludeFiles`, a third filter that only subtracts). In "only" the
   page is narrowed to the test files by the file filter (within the chosen chip, if any), so no list of the PR's other files is
   needed. Either way the host's own tree rows follow, as with a chip.
-- **Exemption.** In the Walkthrough, the selected stop's file, and the file a box or the diagram activated, stay in view
-  whatever the mode, so a stop can always be opened; in "only" they are added to the files kept. Nothing is exempted in "Files".
-- **Dimming.** A stop row whose file the mode keeps out of view (a test file in "hide", any other file in "only") has muted text.
-  A direct click on it still opens the stop. In the selected chunk's file list such a file's name is muted and struck through.
-- **Previous and Next.** The stop callout's buttons pass over stops whose file the mode keeps out of view, and a slot with
-  none beyond it stays hidden. The callouts are built again when the mode changes.
+- **Dimming.** In the selected chunk's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
+  its name muted and struck through.
 - **Chunks.** The selected chunk's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
   hunks in "only". The chunk's callout and its jump use the first hunk still in view, not the chunk's first hunk. A chunk
   whose hunks are all kept out by the mode (a chunk of tests only, with tests hidden) is shown whole instead, so that opening
@@ -131,7 +128,7 @@ variant) is not shown: see "Older runs".
   stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-Nothing about the review's state is remembered, except which chunks are judged (see "Chunks tab") and the Tests switch's mode (see "Tests switch"): every load and every navigation into the files page opens as GitHub would,
+Nothing about the review's state is remembered, except which chunks are judged (see "Chunks tab") and the Tests control's mode (see "Tests control"): every load and every navigation into the files page opens as GitHub would,
 in "Files" mode with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
 link to a stop's line selects that stop. The one thing kept is whether the diagram panel is expanded (see below).
 
@@ -142,7 +139,7 @@ hunks}`: the change cut into pieces to judge one at a time. `risk` is `"low"`, `
 numbers of the chunks this one builds on, and each hunk `{id, path, change, old: [start, count], new: [start, count]}`.
 A brief with no `chunks` (an older run; `schema` is still 4) has no "Chunks" entry in the toggle.
 
-- The list has a muted line, `6 chunks · 1 judged`, then one row per chunk, on one line: its number and its title, and
+- The filter line has a muted line at its left, `6 chunks · 1 judged`; the list has one row per chunk, on one line: its number and its title, and
   at the end a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
   stop's is, and scrolled into view when a chunk is opened from its callout.
 - The selected row, and only it, lists the files its chunk touches, their names starting under its title: one button per file, in the order of

@@ -267,11 +267,6 @@
     }
 
     // A line callout is a full-width table row directly above its stop's line, so the host's columns stay as they are.
-    // A callout is rebuilt when its entry's `version` changes, so content that depends on state outside the entry follows it.
-    function versionOf(entry) {
-      return String(entry.version ?? "");
-    }
-
     function placeLineCallout(entry) {
       const row = findRow(entry.anchor);
       if (!row || calloutRowOf(row)) return;
@@ -281,7 +276,6 @@
       const callout = document.createElement("tr");
       callout.className = CALLOUT_ROW;
       callout.dataset.key = String(entry.key);
-      callout.dataset.version = versionOf(entry);
       callout.append(cell);
       row.before(callout);
     }
@@ -294,19 +288,18 @@
       const callout = document.createElement("div");
       callout.className = `${CALLOUT_ROW} ${FILE_CALLOUT}`;
       callout.dataset.key = String(entry.key);
-      callout.dataset.version = versionOf(entry);
       callout.dataset.anchor = entry.anchor;
       callout.append(entry.render());
       host.prepend(callout);
     }
 
     // Each entry's place is found again on every call: it keeps the callout it has, makes one the host dropped, and
-    // removes a callout that no longer sits at its place, is of another version or belongs to no entry.
+    // removes a callout that no longer sits at its place or belongs to no entry.
     function placeCallouts() {
       const wanted = new Map(callouts.map((entry) => [String(entry.key), entry]));
       for (const element of document.querySelectorAll(`.${CALLOUT_ROW}`)) {
         const entry = wanted.get(element.dataset.key);
-        if (!entry || !isPlaced(element, entry) || element.dataset.version !== versionOf(entry)) element.remove();
+        if (!entry || !isPlaced(element, entry)) element.remove();
       }
       for (const entry of callouts) {
         if (entry.file) placeFileCallout(entry);
@@ -316,7 +309,7 @@
 
     // Shows a callout for each stop: entries are { key, anchor, file?, render() }. `anchor` is a line's anchor, or, with
     // `file: true`, a file's diff id, whose callout goes above that file's header. `render` builds the content of one
-    // callout; an optional `version` makes the callout be built again when it changes. An empty list removes them all. Calling again with the same entries changes nothing.
+    // callout. An empty list removes them all. Calling again with the same entries changes nothing.
     function showCallouts(entries) {
       callouts = entries;
       placeCallouts();
