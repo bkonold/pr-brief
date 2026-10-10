@@ -13,6 +13,7 @@ class FakeNode {
   constructor(className = "") {
     this.classes = new Set(className.split(" ").filter(Boolean));
     this.children = [];
+    this.listeners = [];
     this.classList = {
       contains: (name) => this.classes.has(name),
       add: (...names) => names.forEach((name) => this.classes.add(name)),
@@ -28,7 +29,15 @@ class FakeNode {
   getBoundingClientRect() {
     return { top: 0, height: 0, bottom: 0, left: 0, right: 0 };
   }
-  addEventListener() {}
+  addEventListener(type, listener) {
+    this.listeners.push([type, listener]);
+  }
+  removeEventListener(type, listener) {
+    this.listeners = this.listeners.filter(([t, l]) => t !== type || l !== listener);
+  }
+  dispatch(type, event) {
+    for (const [t, listener] of [...this.listeners]) if (t === type) listener(event);
+  }
   querySelector() {
     return null;
   }
@@ -110,6 +119,23 @@ test("jumpToLine does not ask the host to load a diff whose row is already there
     assert.equal(await dom.page.jumpToLine("a", "R", 5), true);
     assert.equal(dom.loads, 0);
     assert.equal(dom.row.classes.has("prf-line-target"), true);
+  } finally {
+    await dom.done();
+  }
+});
+
+test("jumpToLine flashes the row once it lands, until the flash's animationend, and not when the pulse is off", async () => {
+  const dom = fakeJumpPage({});
+  try {
+    dom.rows.set("diff-aR5", dom.row);
+    assert.equal(await dom.page.jumpToLine("a", "R", 5), true);
+    assert.equal(dom.row.classes.has("prf-pulse"), true);
+    dom.row.dispatch("animationend", { animationName: "something-else" });
+    assert.equal(dom.row.classes.has("prf-pulse"), true);
+    dom.row.dispatch("animationend", { animationName: "prf-line-flash" });
+    assert.deepEqual([dom.row.classes.has("prf-pulse"), dom.row.listeners.length], [false, 0]);
+    assert.equal(await dom.page.jumpToLine("a", "R", 5, { pulse: false }), true);
+    assert.deepEqual([dom.row.classes.has("prf-line-target"), dom.row.classes.has("prf-pulse"), dom.row.listeners.length], [true, false, 0]);
   } finally {
     await dom.done();
   }

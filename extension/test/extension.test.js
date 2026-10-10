@@ -963,16 +963,16 @@ test("a file callout and a line callout can be shown together without disturbing
   }
 });
 
-test("jumpToFile marks the file callout as the target and pulses it, and a jump without the pulse only marks it", async () => {
+test("jumpToFile marks the file callout as the target and pulses nothing", async () => {
   const dom = fakeEntries(["a", "b"]);
   try {
     const page = filePage();
     page.showCallouts([fileEntry(1, "a"), fileEntry(2, "b")]);
     const [first, second] = dom.callouts();
     assert.equal(await page.jumpToFile("a"), true);
-    assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [true, true]);
+    assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [true, false]);
     assert.deepEqual([second.classes.has("prf-line-target"), second.classes.has("prf-pulse")], [false, false]);
-    assert.equal(await page.jumpToFile("b", { pulse: false }), true);
+    assert.equal(await page.jumpToFile("b"), true);
     assert.deepEqual([first.classes.has("prf-line-target"), first.classes.has("prf-pulse")], [false, false]);
     assert.deepEqual([second.classes.has("prf-line-target"), second.classes.has("prf-pulse")], [true, false]);
     page.clearLineTarget();
@@ -1075,7 +1075,7 @@ test("restoreLineTarget gives a re-created file callout its target mark back", a
     const page = filePage();
     const entries = [fileEntry(1, "a")];
     page.showCallouts(entries);
-    await page.jumpToFile("a", { pulse: false });
+    await page.jumpToFile("a");
     dom.callouts()[0].remove();
     page.showCallouts(entries);
     assert.equal(dom.callouts()[0].classes.has("prf-line-target"), false);

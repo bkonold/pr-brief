@@ -44,6 +44,7 @@
   const CALLOUT_ROW = "prf-callout-row";
   const FILE_CALLOUT = "prf-callout-file";
   const PULSE = "prf-pulse";
+  const LINE_FLASH = "prf-line-flash";
   const FILE_HIDDEN = "prf-file-hidden";
   const HUNK_HIDDEN = "prf-hunk-hidden";
   const DIFF_LINK = 'a[href*="#diff-"]';
@@ -334,15 +335,17 @@
       for (const row of document.querySelectorAll(`.${LINE_TARGET}, .${PULSE}`)) row.classList.remove(LINE_TARGET, PULSE);
     }
 
-    // Pulses the stop's line and its callout together (a stop with no line, its callout alone), once the jump has landed: the
-    // same animation, started at the same moment. Skipped under reduced motion.
-    function pulseTarget(elements) {
+    // Flashes the stop's line once the jump has landed. The animation runs on the row's cells, whose `animationend` events
+    // bubble to the row; the first one for the flash ends it. Skipped under reduced motion.
+    function pulseLine(row) {
       if (reducedMotion()) return;
-      for (const element of elements) {
-        if (!element) continue;
-        element.classList.add(PULSE);
-        element.addEventListener("animationend", () => element.classList.remove(PULSE), { once: true });
-      }
+      const end = (event) => {
+        if (event.animationName !== LINE_FLASH) return;
+        row.classList.remove(PULSE);
+        row.removeEventListener("animationend", end);
+      };
+      row.addEventListener("animationend", end);
+      row.classList.add(PULSE);
     }
 
     function targetElement(target) {
@@ -518,7 +521,7 @@
     // to first; then the line's row is waited for, highlighted, and scrolled so its callout sits in the stop place (see
     // calloutPlace), where it is held. A diff the host holds back behind a load control is loaded first, and the wait is
     // longer since the host fetches it. If the row never appears the view stays at the file's header. Returns whether the
-    // callout ended in place. `pulse: false` lands without the pulse.
+    // callout ended in place. `pulse: false` lands without the line flashing.
     async function jumpToLine(path, side, line, { pulse = true } = {}) {
       const mine = ++latestJump;
       cancelPendingJump?.();
@@ -544,13 +547,13 @@
       }
       row.classList.add(LINE_TARGET);
       holdStop(place);
-      if (pulse) pulseTarget([row, calloutRowOf(row)]);
+      if (pulse) pulseLine(row);
       return landed;
     }
 
     // Scrolls to a file's diff entry, whose callout is its first child, so the callout sits in the stop place (see
-    // calloutPlace), where it is held. Returns whether the callout ended in place. `pulse: false` lands without the pulse.
-    async function jumpToFile(path, { pulse = true } = {}) {
+    // calloutPlace), where it is held. Returns whether the callout ended in place.
+    async function jumpToFile(path) {
       const mine = ++latestJump;
       cancelPendingJump?.();
       endHold();
@@ -576,7 +579,6 @@
       }
       callout.classList.add(LINE_TARGET);
       holdStop(place);
-      if (pulse) pulseTarget([callout]);
       return landed;
     }
 

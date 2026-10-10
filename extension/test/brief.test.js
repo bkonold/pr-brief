@@ -760,7 +760,7 @@ test("walking the stops with a callout's buttons gives each stop's box the halo 
     [4, ["b"], ["b"]],
   ]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["src/ui.js", "R", 4, { pulse: false }], ["db/V1.sql", "R", 2, { pulse: false }], ["src/ui.js", "R", 30, { pulse: false }]]));
-  assert.equal(JSON.stringify(fileJumps), JSON.stringify([["src/api.js", { pulse: false }]]));
+  assert.equal(JSON.stringify(fileJumps), JSON.stringify([["src/api.js"]]));
 });
 
 test("a stop on no box selects no box but still jumps there", async () => {
@@ -784,7 +784,7 @@ test("opening the files page on a stop's diff anchor goes to that stop", async (
   const { fileJumps, emphasized, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
   await settle();
   assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedStop], ["review", 4]);
-  assert.deepEqual(fileJumps, [["src/api.js", undefined]]);
+  assert.deepEqual(fileJumps, [["src/api.js"]]);
   assert.deepEqual(plain(emphasized.at(-1)), ["b"]);
 });
 
@@ -1069,7 +1069,7 @@ test("selecting a chunk shows the chunks tab, narrows the page to the chunk's li
     { path: "db/V1.sql", side: "R", start: 1, count: 6 },
   ]);
   assert.equal(filters.at(-1), null);
-  assert.deepEqual([jumps, fileJumps], [[], [["src/ui.js", undefined]]]);
+  assert.deepEqual([jumps, fileJumps], [[], [["src/ui.js"]]]);
   assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file]), [["chunk:1", "diff-src/ui.js", true]]);
   assert.deepEqual([revealed.at(-1), emphasized.at(-1)], ["chunk 1", null]);
 });
@@ -1081,16 +1081,16 @@ test("a deleted file, and a hunk with no new lines, narrow to old lines and put 
   assert.deepEqual(callouts.at(-1).map((entry) => entry.anchor), ["diff-src/old.js"]);
   await renders.at(-1).handlers.onSelectChunk(3);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/ui.js", side: "L", start: 40, count: 2 }]);
-  assert.deepEqual(fileJumps, [["src/old.js", undefined], ["src/ui.js", undefined]]);
+  assert.deepEqual(fileJumps, [["src/old.js"], ["src/ui.js"]]);
 });
 
-test("the chunk callout's buttons open a chunk without the pulse, and a chunk number that does not exist does nothing", async () => {
+test("the chunk callout's buttons open a chunk, and a chunk number that does not exist does nothing", async () => {
   const { renders, callouts, fileJumps } = await loadChunks();
   await renders.at(-1).handlers.onSelectChunk(1);
   const { onGo, chunks, judged } = callouts.at(-1)[0].render();
   assert.deepEqual([chunks.length, judged], [3, false]);
   await onGo(2);
-  assert.deepEqual(plain(fileJumps.at(-1)), ["src/old.js", { pulse: false }]);
+  assert.deepEqual(plain(fileJumps.at(-1)), ["src/old.js"]);
   assert.equal(renders.at(-1).state.selectedChunk, 2);
   const shown = fileJumps.length;
   await onGo(99);
@@ -1123,7 +1123,7 @@ test("a file of another chunk selects that chunk first, narrowing the page, then
   await renders.at(-1).handlers.onSelectFileInChunk(2, "src/old.js");
   assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedChunk], ["chunks", 2]);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/old.js", side: "L", start: 1, count: 20 }]);
-  assert.deepEqual(fileJumps, [["src/ui.js", undefined], ["src/old.js", undefined]]);
+  assert.deepEqual(fileJumps, [["src/ui.js"], ["src/old.js"]]);
   assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/old.js", "L", 1]]);
 });
 
@@ -1315,7 +1315,7 @@ test("the chunks tab drops the hidden files' ranges and puts the callout above t
     { path: "src/api.js", side: "L", start: 5, count: 1 },
   ]);
   assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor]), [["chunk:4", "diff-src/api.js"]]);
-  assert.deepEqual(fileJumps.at(-1), ["src/api.js", undefined]);
+  assert.deepEqual(fileJumps.at(-1), ["src/api.js"]);
 });
 
 test("the chunk callout is anchored again when the Tests mode changes", async () => {
@@ -1346,7 +1346,7 @@ test("a chunk's callout is above the file the page lists first, not the one its 
   const { renders, callouts, fileJumps } = await loadChunks({ pageOrder: ["db/V1.sql", "src/ui.js"] });
   await renders.at(-1).handlers.onSelectChunk(1);
   assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file]), [["chunk:1", "diff-db/V1.sql", true]]);
-  assert.deepEqual(fileJumps, [["db/V1.sql", undefined]]);
+  assert.deepEqual(fileJumps, [["db/V1.sql"]]);
 });
 
 test("a chunk's callout skips the files the Tests mode hides, even when the page lists them first", async () => {
@@ -1356,9 +1356,9 @@ test("a chunk's callout skips the files the Tests mode hides, even when the page
   await renders.at(-1).handlers.onTestsMode("hide");
   assert.deepEqual([callouts.at(-1)[0].anchor, callouts.at(-1)[0].file], ["diff-src/api.js", true]);
   await renders.at(-1).handlers.onSelectChunk(4);
-  assert.deepEqual(fileJumps.at(-1), ["src/api.js", undefined]);
+  assert.deepEqual(fileJumps.at(-1), ["src/api.js"]);
   await renders.at(-1).handlers.onSelectChunk(2);
-  assert.deepEqual([callouts.at(-1)[0].anchor, fileJumps.at(-1)], ["diff-src/old.js", ["src/old.js", undefined]]);
+  assert.deepEqual([callouts.at(-1)[0].anchor, fileJumps.at(-1)], ["diff-src/old.js", ["src/old.js"]]);
 });
 
 test("showing only tests keeps a chunk's test hunks and drops the rest", async () => {

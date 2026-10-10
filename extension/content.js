@@ -233,12 +233,12 @@
   // file, the file's diff scrolls to its callout above the header.
   async function jumpToStop(session, stop, options) {
     if (current !== session || !live()) return;
-    if (isFileStop(stop)) await page.jumpToFile(stop.path, options);
+    if (isFileStop(stop)) await page.jumpToFile(stop.path);
     else await page.jumpToLine(stop.path, stop.side, stop.line, options);
   }
 
   // The callouts of the walkthrough, one per stop that has a place in the diff: each is built when its place is found,
-  // and its buttons open a stop as a click on it in the list would, without the pulse: the reader is already following
+  // and its buttons open a stop as a click on it in the list would, a line stop without the flash: the reader is already following
   // the callouts, so nothing needs finding.
   async function calloutsFor(session) {
     const { stops, review } = session;
@@ -272,7 +272,7 @@
               anchor: anchors[index],
               path: paths[index],
               file: true,
-              render: () => tree.chunkCallout(chunk, chunks, (i) => selectChunk(session, i, { pulse: false }), (i, on) => setJudged(session, i, on), session.judged.has(chunk.i)),
+              render: () => tree.chunkCallout(chunk, chunks, (i) => selectChunk(session, i), (i, on) => setJudged(session, i, on), session.judged.has(chunk.i)),
             },
           ]
         : [],
@@ -462,7 +462,7 @@
   // Makes the stop's file the active one, gives the stop's box the diagram's halo and jumps to the stop's line, or to its
   // file's header when the stop has no line. A stop on no box selects no box. `scroll: false` leaves the diff where it
   // is, so only the box, the list and the highlight follow. The diagram zooms to the stop's box, except with `zoom: false`,
-  // which a click on the box itself passes so that it only pans; any other option, e.g. `{ pulse: false }`, passes on to the
+  // which a click on the box itself passes so that it only pans; any other option, e.g. `{ pulse: false }`, passes on to a line's
   // jump.
   async function selectStop(session, stop, { scroll = true, zoom = true, ...jump } = {}) {
     const mine = startSelection(session);
@@ -482,9 +482,8 @@
   }
 
   // Opens a layer: the tab shows layers, no stop or box is selected, and the page narrows to the layer's hunks. The view
-  // lands on the layer's callout above its file's header, as it does for a stop on a file. `jump` options pass on to that
-  // jump; the callout's buttons pass `{ pulse: false }`, as a stop's do.
-  async function selectChunk(session, i, jump) {
+  // lands on the layer's callout above its file's header, as it does for a stop on a file.
+  async function selectChunk(session, i) {
     const chunk = session.chunks.find((candidate) => candidate.i === i);
     if (!chunk) return;
     const mine = startSelection(session);
@@ -500,7 +499,7 @@
     if (current !== session || !live() || session.selection !== mine) return;
     tree.revealChunk(chunk.i);
     const callout = session.chunkCallouts.find((entry) => entry.key === `chunk:${chunk.i}`);
-    if (callout) await page.jumpToFile(callout.path, jump);
+    if (callout) await page.jumpToFile(callout.path);
   }
 
   // Lands on a file's first hunk of a layer. A layer that is not the selected one is opened first, which narrows the page;

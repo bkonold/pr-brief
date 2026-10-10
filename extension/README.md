@@ -113,11 +113,11 @@ variant) is not shown: see "Older runs".
   stays in the layout hidden (`visibility: hidden`, `inert`, `aria-hidden`, no tab stop), so the other slot does not
   move and the column keeps its height; a walkthrough of one stop hides both. On a diff too narrow for
   both columns the right column wraps below the text and stays right-aligned. A button goes to that stop, as a click on
-  its row does, without the pulse. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
+  its row does, without the flash of its line. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
   once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "Walkthrough" mode.
 - A stop with no line has its callout as the first child of that file's diff entry (the GitHub diff entry, the Forgejo
   file box), so it sits directly above the file header and spans the entry's full width with the same card. The jump
-  places the callout like a line stop's, so the header shows under it, and marks and pulses the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
+  places the callout like a line stop's, so the header shows under it, and marks the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
 - Every callout of the shown mode (all stops in Walkthrough, all layers in Layers) has the same width: that of the widest
   card at its natural width, its heading and its Previous/Next column, not its summary, at least 480px and never more than
   the space it sits in. The host draws only the diff near the viewport, so the width is measured from the data: every card
@@ -127,11 +127,12 @@ variant) is not shown: see "Older runs".
 - The stop's line is left exactly as the host draws it. Each callout card starts at the file pane's left edge, and the
   jumped-to stop's card border is the full purple where the other callouts' is purple at 45%. The file, line number and code are not repeated, since the diff row shows them. Only
   one card is marked as the target; the mark goes whenever the line target clears (another selection, a new jump or
-  teardown) and comes back if the host re-renders the row. When a jump lands, its callout pulses once: a purple ring
-  that swells from its resting width to 3px wider and back, three times over about two seconds (666ms each). It fires on
-  every jump from the list or the diagram (a stop or box click) and from a link to a stop, but not
+  teardown) and comes back if the host re-renders the row. When a jump lands on a stop's line, the line flashes: a
+  translucent purple overlay (the guide colour) fades in and out twice over 1.2 seconds on top of the row's cells, so the
+  host's add/remove tint shows through. A stop with no line, and a layer, flash nothing, and no callout pulses. The flash
+  fires on every jump from the list or the diagram (a stop or box click) and from a link to a stop, but not
   from the callout's own Next and ↑ buttons, since the reader is already following the callouts. Only the jumped-to
-  stop pulses, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not pulse.
+  line flashes, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not flash.
 - A banner appears when the review was generated for an older head commit than the page's.
 
 Nothing about the review's state is remembered, except which layers are judged (see "Layers tab") and the Tests control's mode (see "Tests control"): every load and every navigation into the files page opens as GitHub would,
@@ -176,7 +177,7 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
   the layer's hunks stands in. A click on a file in the layer's list still lands on that file's first hunk line. Its header is shaped like a stop's: `Layer 2 of 6` in bold, a small muted chevron, then the title in
   normal weight; under it are the risk pill and `risk_reason` (muted) when there is one, the summary, and `Needs 1, 3` with a
   button per number that opens that layer. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening
-  the neighbouring layer without the pulse, with the "Judged" checkbox under them. Only the selected layer's callout is shown, and none in the other tabs.
+  the neighbouring layer, with the "Judged" checkbox under them. Only the selected layer's callout is shown, and none in the other tabs.
 - "Judged" is the reader's own mark, kept in this browser's `localStorage` under `prf-judged:<host>/<owner>/<repo>#<pr>@<head_sha>`
   as a JSON array of layer numbers, so it is per PR head and comes back on reload; a new head starts empty. It is read and
   written in a try/catch, and without storage the marks last until the page is left. Nothing else about layers is remembered.
