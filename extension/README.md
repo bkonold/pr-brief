@@ -73,7 +73,7 @@ has no Tests control and no test behaviour: it shows the files its file set choo
 - **Dimming.** In the selected layer's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
   its name muted and struck through.
 - **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
-  hunks in "only". The layer's callout and its jump use the first hunk still in view, not the layer's first hunk. A layer
+  hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
   whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
   it still shows its lines and its callout. A click on a struck-through file in the layer's list has no row to land on.
 - **Preference.** The mode is kept in this browser's `localStorage` under `prf-tests-mode` as the string `all`, `hide` or `only`
@@ -166,11 +166,13 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
   line inside one of the layer's hunks. A hunk's new range filters the right side and its old range the left, so removed
   lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own
   tree is behind the sidebar in this tab, but its rows for the other files are hidden as in a file set. The view then
-  lands on the layer's first hunk, at its first new line (its first old line for a deleted file or a hunk with no new
-  lines), the way a stop does, and the selection clears any stop, box or chip. Selecting a stop, a box or a file leaves the
+  lands on the layer's callout above its file's header, the way a stop on a file does, and the selection clears any stop, box or chip. Selecting a stop, a box or a file leaves the
   tab and shows the whole diff again; opening the tab with a layer already selected narrows to it again, and with none
   selects nothing and filters nothing.
-- The layer's callout sits above that first line. Its header is shaped like a stop's: `Layer 2 of 6` in bold, a small muted chevron, then the title in
+- The layer's callout sits above the header of one file, outside the file's box, like a stop on a file: the first, in the page's
+  order, of the files the layer's shown hunks touch (a Tests-hidden file does not count, unless every file of the layer is hidden). The
+  page's order is the document order of the file entries; when none of the layer's entries is in the page yet, the first file of
+  the layer's hunks stands in. A click on a file in the layer's list still lands on that file's first hunk line. Its header is shaped like a stop's: `Layer 2 of 6` in bold, a small muted chevron, then the title in
   normal weight; under it are the risk pill and `risk_reason` (muted) when there is one, the summary, and `Needs 1, 3` with a
   button per number that opens that layer. Beside them are the same "↑ Previous" and "Next ↓" slots as a stop's, opening
   the neighbouring layer without the pulse, with the "Judged" checkbox under them. Only the selected layer's callout is shown, and none in the other tabs.

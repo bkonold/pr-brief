@@ -200,7 +200,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0 }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0, pageOrder = [] }) {
   const log = [];
   const description = {
     name: "description",
@@ -262,6 +262,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       ownsLine: () => false,
       lineAnchor: async (path, side, line) => `${path}${side}${line}`,
       fileAnchor: async (path) => `diff-${path}`,
+      firstInPage: async (paths) => pageOrder.find((path) => paths.includes(path)) ?? paths[0] ?? null,
       showCallouts: (entries) => callouts.push(entries),
       filterFiles: (paths) => filters.push(paths),
       filterHunks: (ranges) => hunkFilters.push(ranges),
@@ -1057,8 +1058,8 @@ async function loadChunks(options = {}) {
   return loaded;
 }
 
-test("selecting a chunk shows the chunks tab, narrows the page to the chunk's lines and lands on its first line", async () => {
-  const { renders, hunkFilters, filters, jumps, callouts, revealed, emphasized } = await loadChunks();
+test("selecting a chunk shows the chunks tab, narrows the page to the chunk's lines and lands on its callout above the file", async () => {
+  const { renders, hunkFilters, filters, jumps, fileJumps, callouts, revealed, emphasized } = await loadChunks();
   await renders.at(-1).handlers.onSelectChunk(1);
   const { state } = renders.at(-1);
   assert.deepEqual([state.mode, state.selectedChunk, state.selectedStop, state.chunks.length], ["chunks", 1, null, 3]);
@@ -1068,32 +1069,32 @@ test("selecting a chunk shows the chunks tab, narrows the page to the chunk's li
     { path: "db/V1.sql", side: "R", start: 1, count: 6 },
   ]);
   assert.equal(filters.at(-1), null);
-  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/ui.js", "R", 4]]);
-  assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor]), [["chunk:1", "src/ui.jsR4"]]);
+  assert.deepEqual([jumps, fileJumps], [[], [["src/ui.js", undefined]]]);
+  assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file]), [["chunk:1", "diff-src/ui.js", true]]);
   assert.deepEqual([revealed.at(-1), emphasized.at(-1)], ["chunk 1", null]);
 });
 
-test("a deleted file, and a hunk with no new lines, narrow to old lines and land on the old side", async () => {
-  const { renders, hunkFilters, jumps, callouts } = await loadChunks();
+test("a deleted file, and a hunk with no new lines, narrow to old lines and put the callout above their file", async () => {
+  const { renders, hunkFilters, fileJumps, callouts } = await loadChunks();
   await renders.at(-1).handlers.onSelectChunk(2);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/old.js", side: "L", start: 1, count: 20 }]);
-  assert.deepEqual(callouts.at(-1).map((entry) => entry.anchor), ["src/old.jsL1"]);
+  assert.deepEqual(callouts.at(-1).map((entry) => entry.anchor), ["diff-src/old.js"]);
   await renders.at(-1).handlers.onSelectChunk(3);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/ui.js", side: "L", start: 40, count: 2 }]);
-  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/old.js", "L", 1], ["src/ui.js", "L", 40]]);
+  assert.deepEqual(fileJumps, [["src/old.js", undefined], ["src/ui.js", undefined]]);
 });
 
 test("the chunk callout's buttons open a chunk without the pulse, and a chunk number that does not exist does nothing", async () => {
-  const { renders, callouts, jumps } = await loadChunks();
+  const { renders, callouts, fileJumps } = await loadChunks();
   await renders.at(-1).handlers.onSelectChunk(1);
   const { onGo, chunks, judged } = callouts.at(-1)[0].render();
   assert.deepEqual([chunks.length, judged], [3, false]);
   await onGo(2);
-  assert.deepEqual(plain(jumps.at(-1)), ["src/old.js", "L", 1, { pulse: false }]);
+  assert.deepEqual(plain(fileJumps.at(-1)), ["src/old.js", { pulse: false }]);
   assert.equal(renders.at(-1).state.selectedChunk, 2);
-  const shown = jumps.length;
+  const shown = fileJumps.length;
   await onGo(99);
-  assert.deepEqual([jumps.length, renders.at(-1).state.selectedChunk], [shown, 2]);
+  assert.deepEqual([fileJumps.length, renders.at(-1).state.selectedChunk], [shown, 2]);
 });
 
 test("a file in the selected chunk jumps to its first hunk there, leaving the tab and the filter as they are", async () => {
@@ -1117,12 +1118,13 @@ test("a file of a chunk with no new lines in its first hunk there lands on the o
 });
 
 test("a file of another chunk selects that chunk first, narrowing the page, then jumps to the file's first hunk", async () => {
-  const { renders, hunkFilters, jumps } = await loadChunks();
+  const { renders, hunkFilters, jumps, fileJumps } = await loadChunks();
   await renders.at(-1).handlers.onSelectChunk(1);
   await renders.at(-1).handlers.onSelectFileInChunk(2, "src/old.js");
   assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedChunk], ["chunks", 2]);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/old.js", side: "L", start: 1, count: 20 }]);
-  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/ui.js", "R", 4], ["src/old.js", "L", 1], ["src/old.js", "L", 1]]);
+  assert.deepEqual(fileJumps, [["src/ui.js", undefined], ["src/old.js", undefined]]);
+  assert.deepEqual(jumps.map((jump) => jump.slice(0, 3)), [["src/old.js", "L", 1]]);
 });
 
 test("every mode other than chunks clears the hunk filter, and the chunks tab applies the selected chunk's again", async () => {
@@ -1298,8 +1300,8 @@ test("a file set and the Tests mode both apply", async () => {
   assert.deepEqual([filters.at(-1), excluded.at(-1)], [["db/V1.sql", "src/api.js"], ["db/V1.sql", "src/old.js"]]);
 });
 
-test("the chunks tab drops the hidden files' ranges and lands on the first shown hunk, with its callout", async () => {
-  const { renders, hunkFilters, excluded, callouts, jumps } = await loadTests();
+test("the chunks tab drops the hidden files' ranges and puts the callout above the first shown file", async () => {
+  const { renders, hunkFilters, excluded, callouts, fileJumps } = await loadTests();
   await renders.at(-1).handlers.onTestsMode("hide");
   await renders.at(-1).handlers.onSelectChunk(1);
   assert.deepEqual(plain(hunkFilters.at(-1)), [
@@ -1312,18 +1314,18 @@ test("the chunks tab drops the hidden files' ranges and lands on the first shown
     { path: "src/api.js", side: "R", start: 5, count: 2 },
     { path: "src/api.js", side: "L", start: 5, count: 1 },
   ]);
-  assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor]), [["chunk:4", "src/api.jsR5"]]);
-  assert.deepEqual(jumps.at(-1).slice(0, 3), ["src/api.js", "R", 5]);
+  assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor]), [["chunk:4", "diff-src/api.js"]]);
+  assert.deepEqual(fileJumps.at(-1), ["src/api.js", undefined]);
 });
 
 test("the chunk callout is anchored again when the Tests mode changes", async () => {
   const { renders, callouts } = await loadTests();
   await renders.at(-1).handlers.onSelectChunk(4);
-  assert.equal(callouts.at(-1)[0].anchor, "db/V1.sqlR10");
+  assert.equal(callouts.at(-1)[0].anchor, "diff-db/V1.sql");
   await renders.at(-1).handlers.onTestsMode("hide");
-  assert.equal(callouts.at(-1)[0].anchor, "src/api.jsR5");
+  assert.equal(callouts.at(-1)[0].anchor, "diff-src/api.js");
   await renders.at(-1).handlers.onTestsMode("only");
-  assert.equal(callouts.at(-1)[0].anchor, "db/V1.sqlR10");
+  assert.equal(callouts.at(-1)[0].anchor, "diff-db/V1.sql");
   assert.deepEqual(plain(renders.at(-1).state.mode), "chunks");
 });
 
@@ -1333,11 +1335,30 @@ test("a chunk whose files are all kept out by the mode is shown whole, with its 
   await renders.at(-1).handlers.onSelectChunk(2);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/old.js", side: "L", start: 1, count: 20 }]);
   assert.deepEqual(excluded.at(-1), ["db/V1.sql"]);
-  assert.deepEqual(callouts.at(-1).map((entry) => entry.anchor), ["src/old.jsL1"]);
+  assert.deepEqual(callouts.at(-1).map((entry) => entry.anchor), ["diff-src/old.js"]);
   await renders.at(-1).handlers.onTestsMode("only");
   await renders.at(-1).handlers.onSelectChunk(3);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/ui.js", side: "L", start: 40, count: 2 }]);
   assert.equal(excluded.at(-1), null);
+});
+
+test("a chunk's callout is above the file the page lists first, not the one its hunks list first", async () => {
+  const { renders, callouts, fileJumps } = await loadChunks({ pageOrder: ["db/V1.sql", "src/ui.js"] });
+  await renders.at(-1).handlers.onSelectChunk(1);
+  assert.deepEqual(callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file]), [["chunk:1", "diff-db/V1.sql", true]]);
+  assert.deepEqual(fileJumps, [["db/V1.sql", undefined]]);
+});
+
+test("a chunk's callout skips the files the Tests mode hides, even when the page lists them first", async () => {
+  const { renders, callouts, fileJumps } = await loadTests({ pageOrder: ["db/V1.sql", "src/api.js"] });
+  await renders.at(-1).handlers.onSelectChunk(4);
+  assert.equal(callouts.at(-1)[0].anchor, "diff-db/V1.sql");
+  await renders.at(-1).handlers.onTestsMode("hide");
+  assert.deepEqual([callouts.at(-1)[0].anchor, callouts.at(-1)[0].file], ["diff-src/api.js", true]);
+  await renders.at(-1).handlers.onSelectChunk(4);
+  assert.deepEqual(fileJumps.at(-1), ["src/api.js", undefined]);
+  await renders.at(-1).handlers.onSelectChunk(2);
+  assert.deepEqual([callouts.at(-1)[0].anchor, fileJumps.at(-1)], ["diff-src/old.js", ["src/old.js", undefined]]);
 });
 
 test("showing only tests keeps a chunk's test hunks and drops the rest", async () => {

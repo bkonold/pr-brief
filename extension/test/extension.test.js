@@ -341,7 +341,7 @@ test("each adapter names itself and its tree for the interface", () => {
   assert.deepEqual([githubPage.name, githubPage.treeLabel], ["GitHub", "Files"]);
   assert.deepEqual([forgejoPage.name, forgejoPage.treeLabel], ["Forgejo", "Files"]);
   for (const page of [githubPage, forgejoPage]) {
-    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
+    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "firstInPage", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "treeHost", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
       assert.equal(typeof page[member], "function", `${page.name}.${member}`);
     }
   }
@@ -855,6 +855,10 @@ function fakeEntries(ids) {
       return { top: 0, height: 0, bottom: 0, left: 0, right: 0 };
     }
     addEventListener() {}
+    compareDocumentPosition(other) {
+      const order = root.all();
+      return order.indexOf(other) > order.indexOf(this) ? 4 : 2;
+    }
     querySelector(selector) {
       return this.all().find((node) => node !== this && node.classes?.has(selector.slice(1))) ?? null;
     }
@@ -1077,6 +1081,30 @@ test("restoreLineTarget gives a re-created file callout its target mark back", a
     assert.equal(dom.callouts()[0].classes.has("prf-line-target"), false);
     page.restoreLineTarget();
     assert.equal(dom.callouts()[0].classes.has("prf-line-target"), true);
+  } finally {
+    dom.done();
+  }
+});
+
+test("firstInPage picks the file whose entry comes first in the document, whatever the order asked", async () => {
+  const dom = fakeEntries(["a", "b", "c"]);
+  try {
+    const page = filePage();
+    assert.equal(await page.firstInPage(["c", "b"]), "b");
+    assert.equal(await page.firstInPage(["b", "c", "a"]), "a");
+    assert.equal(await page.firstInPage(["c"]), "c");
+  } finally {
+    dom.done();
+  }
+});
+
+test("firstInPage skips a file whose entry is not in the page, falls back to the first asked when none is, and is null for no files", async () => {
+  const dom = fakeEntries(["a", "b"]);
+  try {
+    const page = filePage();
+    assert.equal(await page.firstInPage(["late", "b"]), "b");
+    assert.equal(await page.firstInPage(["late", "later"]), "late");
+    assert.equal(await page.firstInPage([]), null);
   } finally {
     dom.done();
   }

@@ -241,6 +241,20 @@
       return spec.diffId(path);
     }
 
+    const FOLLOWING = 4;
+
+    // Of `paths`, the one whose diff entry comes first in the page's document order; the first of `paths` when none of
+    // their entries is in the page yet, since the page's order is not known then. Null for no paths.
+    async function firstInPage(paths) {
+      const ids = await Promise.all(paths.map(fileAnchor));
+      const present = paths.flatMap((path, index) => {
+        const entry = entryOfId(ids[index]);
+        return entry ? [{ path, entry }] : [];
+      });
+      if (present.length === 0) return paths[0] ?? null;
+      return present.reduce((first, next) => (first.entry.compareDocumentPosition(next.entry) & FOLLOWING ? first : next)).path;
+    }
+
     // What the jump landed on, so a re-render of it by the host can be undone: { anchor } is the line row with that
     // anchor, { anchor, file: true } is the callout at the top of the diff entry with that id.
     let lineTarget = null;
@@ -752,6 +766,7 @@
       entryFor,
       lineAnchor,
       fileAnchor,
+      firstInPage,
       loadDiff: spec.loadDiff,
       scrollToElement,
       fileHeaderOf,

@@ -257,18 +257,21 @@
     );
   }
 
-  // The callouts of the layers, one per layer, each at its first hunk's first line: each is built when its place is found.
-  // Its buttons open a layer, and its checkbox records the layer as judged.
+  // The callouts of the layers, one per layer, each above the header of the first file, in the page's order, that the
+  // layer's shown hunks touch: each is built when its place is found. A layer with no hunks has none. Its buttons open a
+  // layer, and its checkbox records the layer as judged. Each entry names its file, which selecting the layer lands on.
   async function chunkCalloutsFor(session) {
     const { chunks } = session;
-    const targets = chunks.map((chunk) => chunkTarget(session, chunk));
-    const anchors = await Promise.all(targets.map((target) => (target ? page.lineAnchor(target.path, target.side, target.line) : null)));
+    const paths = await Promise.all(chunks.map((chunk) => chunkFile(session, chunk)));
+    const anchors = await Promise.all(paths.map((path) => (path === null ? null : page.fileAnchor(path))));
     return chunks.flatMap((chunk, index) =>
       anchors[index]
         ? [
             {
               key: `chunk:${chunk.i}`,
               anchor: anchors[index],
+              path: paths[index],
+              file: true,
               render: () => tree.chunkCallout(chunk, chunks, (i) => selectChunk(session, i, { pulse: false }), (i, on) => setJudged(session, i, on), session.judged.has(chunk.i)),
             },
           ]
@@ -321,11 +324,11 @@
     return session.chunks.find((chunk) => chunk.i === session.selectedChunk) ?? null;
   }
 
-  // The first line a layer shows: its first shown hunk's first new line, or, for a hunk with no new lines (a deleted
-  // file, a pure deletion), its first old line; null for a layer with no hunks.
-  function chunkTarget(session, chunk) {
-    const hunk = shownHunks(session, chunk)[0];
-    return hunk ? hunkTarget(hunk) : null;
+  // The file a layer's callout sits above: of the files its shown hunks touch, the one the page lists first; null for a
+  // layer with no hunks.
+  function chunkFile(session, chunk) {
+    const paths = [...new Set(shownHunks(session, chunk).map((hunk) => hunk.path))];
+    return paths.length > 0 ? page.firstInPage(paths) : null;
   }
 
   // The hunks of a layer the Tests mode leaves in view. A layer whose hunks are all kept out is shown whole instead, so
@@ -479,8 +482,8 @@
   }
 
   // Opens a layer: the tab shows layers, no stop or box is selected, and the page narrows to the layer's hunks. The view
-  // lands on the layer's first line, where its callout is. `jump` options pass on to that jump; the callout's buttons
-  // pass `{ pulse: false }`, as a stop's do.
+  // lands on the layer's callout above its file's header, as it does for a stop on a file. `jump` options pass on to that
+  // jump; the callout's buttons pass `{ pulse: false }`, as a stop's do.
   async function selectChunk(session, i, jump) {
     const chunk = session.chunks.find((candidate) => candidate.i === i);
     if (!chunk) return;
@@ -496,8 +499,8 @@
     });
     if (current !== session || !live() || session.selection !== mine) return;
     tree.revealChunk(chunk.i);
-    const target = chunkTarget(session, chunk);
-    if (target) await page.jumpToLine(target.path, target.side, target.line, jump);
+    const callout = session.chunkCallouts.find((entry) => entry.key === `chunk:${chunk.i}`);
+    if (callout) await page.jumpToFile(callout.path, jump);
   }
 
   // Lands on a file's first hunk of a layer. A layer that is not the selected one is opened first, which narrows the page;
