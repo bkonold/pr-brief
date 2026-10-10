@@ -281,16 +281,81 @@
     return [...files.values()];
   }
 
-  // One button per file the layer touches: the file's name, with its full path as the tooltip. A file the Tests
-  // control keeps out of view is struck through.
+  const JVM_FOLDER = /^(?:(.+?)\/)?src\/([^/]+)\/(?:java|kotlin|scala|groovy|resources)\/(.+)$/;
+
+  function dirOf(path) {
+    const slash = path.lastIndexOf("/");
+    return slash < 0 ? "/" : path.slice(0, slash);
+  }
+
+  function jvmFolderOf(dir) {
+    const match = JVM_FOLDER.exec(dir);
+    return match ? { module: match[1] ?? "", set: match[2], segments: match[3].split("/") } : null;
+  }
+
+  // How many leading segments every list shares, leaving each list at least one segment.
+  function sharedSegments(lists) {
+    const cap = Math.min(...lists.map((segments) => segments.length)) - 1;
+    let count = 0;
+    while (count < cap && lists.every((segments) => segments[count] === lists[0][count])) count++;
+    return count;
+  }
+
+  function jvmLabel(folder, segments, withModule) {
+    const head = [withModule ? folder.module : "", folder.set === "main" ? "" : folder.set].filter(Boolean).join(" ");
+    return head ? `${head} \u203a ${segments.join("/")}` : segments.join("/");
+  }
+
+  // The layer's files grouped by folder, folders in the order of their first hunk, each as { dir, label, files }.
+  // `reviewPaths` is every path in the review. A JVM source folder (<module>/src/<set>/<lang>/<package>) is labelled
+  // by module, source set and package, minus the package prefix all the review's JVM folders share. A layer of
+  // several folders drops what they all share: the module when every folder is JVM in one module, otherwise the
+  // leading directories common to non-JVM folders when none is JVM.
+  function folderGroups(chunk, reviewPaths) {
+    const groups = new Map();
+    for (const file of filesOf(chunk)) {
+      const dir = dirOf(file.path);
+      if (!groups.has(dir)) groups.set(dir, { dir, label: dir, files: [] });
+      groups.get(dir).files.push(file);
+    }
+    const jvmPackages = [...new Set(reviewPaths.map(dirOf))].map((dir) => jvmFolderOf(dir)?.segments).filter(Boolean);
+    const prefix = jvmPackages.length ? sharedSegments(jvmPackages) : 0;
+    const folders = [...groups.values()].map((group) => ({ group, jvm: jvmFolderOf(group.dir) }));
+    const several = folders.length > 1;
+    const allJvm = folders.every(({ jvm }) => jvm);
+    const withModule = !(several && allJvm && new Set(folders.map(({ jvm }) => jvm.module)).size === 1);
+    for (const { group, jvm } of folders) {
+      if (jvm) group.label = jvmLabel(jvm, jvm.segments.slice(prefix), withModule);
+    }
+    if (several && folders.every(({ jvm }) => !jvm)) {
+      const lists = folders.map(({ group }) => (group.dir === "/" ? [] : group.dir.split("/")));
+      const drop = sharedSegments(lists);
+      for (const [index, { group }] of folders.entries()) group.label = lists[index].slice(drop).join("/") || group.dir;
+    }
+    return [...groups.values()];
+  }
+
+  // The layer's files under one muted line per folder (its full directory as the tooltip), each file a button with its
+  // full path as the tooltip. A file the Tests control keeps out of view is struck through, and so is a folder line
+  // whose files all are.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
-    for (const { path } of filesOf(chunk)) {
-      const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, path));
-      file.classList.toggle("prf-dimmed", isExcludedByTests(state, path));
-      file.title = path;
-      file.append(make("span", "prf-chunk-file-name", baseName(path)));
-      list.append(file);
+    const reviewPaths = state.chunks.flatMap((other) => other.hunks.map((hunk) => hunk.path));
+    for (const { dir, label, files } of folderGroups(chunk, reviewPaths)) {
+      const group = make("div", "prf-chunk-group");
+      const folder = make("div", "prf-chunk-folder", label);
+      folder.title = dir;
+      const excluded = files.map(({ path }) => isExcludedByTests(state, path));
+      const buttons = files.map(({ path }, index) => {
+        const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, path));
+        file.classList.toggle("prf-dimmed", excluded[index]);
+        file.title = path;
+        file.append(make("span", "prf-chunk-file-name", baseName(path)));
+        return file;
+      });
+      folder.classList.toggle("prf-dimmed", excluded.every(Boolean));
+      group.append(folder, ...buttons);
+      list.append(group);
     }
     return list;
   }
@@ -528,7 +593,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, bar, filters, stopList, chunkRow, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, bar, filters, stopList, chunkRow, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

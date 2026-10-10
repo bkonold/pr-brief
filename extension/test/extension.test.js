@@ -1858,6 +1858,144 @@ test("a chunk's file button is struck through when the Tests mode keeps that fil
   }
 });
 
+const hunkAt = (path, id = path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
+const layerOf = (...paths) => ({ i: 1, title: "t", summary: "", risk: "low", depends_on: [], hunks: paths.map((path) => hunkAt(path)) });
+const labelsOf = (layer, review = [layer]) => require("../tree.js").folderGroups(layer, review.flatMap((other) => other.hunks.map((hunk) => hunk.path))).map((group) => group.label);
+
+test("folderGroups labels a JVM folder by module and package, adding the source set when it is not main", () => {
+  const layers = [
+    layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java"),
+    layerOf("acme-api/src/test/java/com/acme/creators/lumber/ATest.java"),
+    layerOf("acme-api/src/integrationTest/java/com/acme/backends/lumber/BIT.java"),
+    layerOf("acme-api/src/main/resources/com/acme/db/C.sql"),
+    layerOf("tools/acme-cli/src/main/kotlin/com/acme/cli/D.kt"),
+  ];
+  assert.deepEqual(layers.map((layer) => labelsOf(layer, layers)), [
+    ["acme-api \u203a creators/lumber"],
+    ["acme-api test \u203a creators/lumber"],
+    ["acme-api integrationTest \u203a backends/lumber"],
+    ["acme-api \u203a db"],
+    ["tools/acme-cli \u203a cli"],
+  ]);
+});
+
+test("folderGroups drops the package prefix every JVM folder in the review shares, not only the layer's", () => {
+  const layer = layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java");
+  const other = layerOf("acme-api/src/main/java/com/acme/models/B.java");
+  assert.deepEqual(labelsOf(layer, [layer]), ["acme-api \u203a lumber"]);
+  assert.deepEqual(labelsOf(layer, [layer, other]), ["acme-api \u203a creators/lumber"]);
+  const outside = layerOf("acme-api/src/main/java/org/other/C.java");
+  assert.deepEqual(labelsOf(layer, [layer, other, outside]), ["acme-api \u203a com/acme/creators/lumber"]);
+});
+
+test("folderGroups keeps at least one package segment in every JVM folder", () => {
+  const shallow = layerOf("acme-api/src/main/java/com/acme/A.java");
+  const same = layerOf("acme-api/src/test/java/com/acme/ATest.java");
+  assert.deepEqual(labelsOf(shallow, [shallow, same]), ["acme-api \u203a acme"]);
+  assert.deepEqual(labelsOf(same, [shallow, same]), ["acme-api test \u203a acme"]);
+  assert.deepEqual(labelsOf(shallow, [shallow]), ["acme-api \u203a acme"]);
+});
+
+test("folderGroups handles a source root at the repo root, which has no module", () => {
+  const layer = layerOf("src/main/java/com/acme/a/A.java", "src/test/java/com/acme/b/BTest.java");
+  const other = layerOf("src/main/java/com/acme/c/C.java");
+  assert.deepEqual(labelsOf(layer, [layer, other]), ["a", "test \u203a b"]);
+  const single = layerOf("src/test/java/com/acme/b/BTest.java");
+  assert.deepEqual(labelsOf(single, [layer, other]), ["test \u203a b"]);
+  const main = layerOf("src/main/java/com/acme/a/A.java");
+  assert.deepEqual(labelsOf(main, [layer, other]), ["a"]);
+});
+
+test("folderGroups omits the module in a layer of several folders when all are JVM in one module", () => {
+  const layer = layerOf(
+    "acme-api/src/main/java/com/acme/creators/lumber/A.java",
+    "acme-api/src/main/java/com/acme/models/B.java",
+    "acme-api/src/test/java/com/acme/creators/lumber/ATest.java",
+  );
+  assert.deepEqual(labelsOf(layer), ["creators/lumber", "models", "test \u203a creators/lumber"]);
+  const two = layerOf("acme-api/src/main/java/com/acme/x/A.java", "acme-core/src/main/java/com/acme/y/B.java");
+  assert.deepEqual(labelsOf(two), ["acme-api \u203a x", "acme-core \u203a y"]);
+});
+
+test("folderGroups drops the leading directories several non-JVM folders share, keeping one segment each", () => {
+  const layer = layerOf("web/app/routes/a/x.tsx", "web/app/routes/b/y.tsx", "web/app/routes/b/z.tsx");
+  assert.deepEqual(labelsOf(layer), ["a", "b"]);
+  const nested = layerOf("web/app/routes/x.tsx", "web/app/routes/b/y.tsx");
+  assert.deepEqual(labelsOf(nested), ["routes", "routes/b"]);
+  const single = layerOf("web/app/routes/x.tsx");
+  assert.deepEqual(labelsOf(single), ["web/app/routes"]);
+  const divergent = layerOf("web/sdk/x.ts", "docs/y.md");
+  assert.deepEqual(labelsOf(divergent), ["web/sdk", "docs"]);
+});
+
+test("folderGroups keeps JVM labels and full non-JVM directories in a mixed layer", () => {
+  const layer = layerOf(
+    "acme-api/src/main/java/com/acme/enums/A.java",
+    "acme-web/sdk/x.ts",
+    "acme-web/app/routes/y.tsx",
+    "acme-api/src/test/java/com/acme/services/ATest.java",
+  );
+  const other = layerOf("acme-api/src/main/java/com/acme/models/B.java");
+  assert.deepEqual(labelsOf(layer, [layer, other]), ["acme-api \u203a enums", "acme-web/sdk", "acme-web/app/routes", "acme-api test \u203a services"]);
+});
+
+test("folderGroups puts a file at the repo root in the folder /", () => {
+  assert.deepEqual(labelsOf(layerOf("README.md")), ["/"]);
+  assert.deepEqual(labelsOf(layerOf("README.md", "docs/a.md")), ["/", "docs"]);
+  assert.deepEqual(labelsOf(layerOf("docs/a.md", "README.md")), ["docs", "/"]);
+});
+
+test("folderGroups lists folders by first hunk and keeps each folder's files in hunk order", () => {
+  const layer = layerOf("b/x.js", "a/y.js", "b/w.js", "a/y.js", "b/x.js");
+  const groups = require("../tree.js").folderGroups(layer, layer.hunks.map((hunk) => hunk.path));
+  assert.deepEqual(groups.map((group) => [group.dir, group.files.map((file) => file.path)]), [["b", ["b/x.js", "b/w.js"]], ["a", ["a/y.js"]]]);
+  assert.deepEqual(groups[0].files[0].hunks, [layer.hunks[0], layer.hunks[4]]);
+  assert.deepEqual(require("../tree.js").folderGroups(layerOf(), []), []);
+});
+
+test("the selected chunk lists a muted folder line over each folder's files, with the directory as its tooltip", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const picked = [];
+    const chunks = [
+      layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java", "acme-api/src/main/java/com/acme/models/B.java", "acme-api/src/main/java/com/acme/creators/lumber/C.java"),
+      { ...layerOf("acme-api/src/test/java/com/acme/x/XTest.java"), i: 2 },
+    ];
+    const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk")[0];
+    const groups = byClass(row, "prf-chunk-group");
+    assert.deepEqual(
+      groups.map((group) => [byClass(group, "prf-chunk-folder")[0].textContent, byClass(group, "prf-chunk-folder")[0].title, byClass(group, "prf-chunk-file").map((file) => byClass(file, "prf-chunk-file-name")[0].textContent)]),
+      [
+        ["creators/lumber", "acme-api/src/main/java/com/acme/creators/lumber", ["A.java", "C.java"]],
+        ["models", "acme-api/src/main/java/com/acme/models", ["B.java"]],
+      ],
+    );
+    assert.deepEqual(byClass(row, "prf-chunk-folder").map((folder) => folder.tag), ["div", "div"]);
+    for (const file of byClass(row, "prf-chunk-file")) file.listeners.click();
+    assert.deepEqual(picked.map(([, path]) => path.split("/").pop()), ["A.java", "C.java", "B.java"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("a folder line is struck through only when every file under it is", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("src/a.js", "src/a.test.js", "spec/b.test.js", "spec/c.test.js", "lib/d.js")];
+    const struck = (testsMode) => {
+      const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/a.test.js", "spec/b.test.js", "spec/c.test.js"], testsMode }, {}), "prf-chunk")[0];
+      return [byClass(row, "prf-chunk-folder"), byClass(row, "prf-chunk-file")].map((elements) => elements.map((element) => element.className.split(" ").includes("prf-dimmed")));
+    };
+    assert.deepEqual(struck("all"), [[false, false, false], [false, false, false, false, false]]);
+    assert.deepEqual(struck("hide"), [[false, true, false], [false, true, true, true, false]]);
+    assert.deepEqual(struck("only"), [[false, false, true], [true, false, false, false, true]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test("a stop callout's Previous and Next go to the neighbouring stops, and a slot with none beyond it is hidden", () => {
   globalThis.document = fakeDom();
   try {

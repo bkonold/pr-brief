@@ -402,11 +402,36 @@
   margin-left: auto;
 }
 
-/* A file button has 4px of its own left padding, so its name lines up under the title. */
+/* A folder line and a file button both have 4px of their own left padding, so a folder's text lines up under the
+   title; its files sit one step further in. */
 .prf-chunk-files {
   display: flex;
   flex-direction: column;
   padding: 0 8px 6px calc(var(--prf-gutter) - 4px);
+}
+
+.prf-chunk-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.prf-chunk-group + .prf-chunk-group {
+  margin-top: 4px;
+}
+
+.prf-chunk-folder {
+  padding: 1px 4px;
+  font-size: 11px;
+  color: var(--fgColor-muted, #59636e);
+  overflow-wrap: anywhere;
+}
+
+.prf-chunk-folder.prf-dimmed {
+  text-decoration: line-through;
+}
+
+.prf-chunk-group .prf-chunk-file {
+  margin-left: 12px;
 }
 
 .prf-chunk-file {
