@@ -636,11 +636,19 @@ test("renderMarkdown reads a pipe table with an escaped pipe and leaves a lone p
 test("the callouts are shown in the review and removed in the host's own tree view", async () => {
   const { renders, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  await renders.at(-1).handlers.onMode("github");
   assert.deepEqual(plain(callouts.at(-1)), []);
   await renders.at(-1).handlers.onMode("review");
   assert.equal(callouts.at(-1).length, 4);
+  await renders.at(-1).handlers.onMode("github");
+  assert.deepEqual(plain(callouts.at(-1)), []);
 });
+
+async function loadWalkthrough(review = WALK_REVIEW) {
+  const loaded = loadContent({ run: null, view: "files", review });
+  await settle();
+  await loaded.renders.at(-1).handlers.onMode("review");
+  return loaded;
+}
 
 const WALK_REVIEW = {
   schema: 4,
@@ -663,8 +671,7 @@ const WALK_REVIEW = {
 };
 
 test("a walkthrough run has a callout for every stop and a file stop anchored at its file's diff", async () => {
-  const { callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
-  await settle();
+  const { callouts } = await loadWalkthrough();
   assert.deepEqual(
     callouts.at(-1).map((entry) => [entry.key, entry.anchor, entry.file ?? false]),
     [[1, "src/ui.jsR4", false], [2, "db/V1.sqlR2", false], [3, "src/ui.jsR30", false], [4, "diff-src/api.js", true]],
@@ -674,9 +681,7 @@ test("a walkthrough run has a callout for every stop and a file stop anchored at
 });
 
 test("walking the stops with a callout's buttons gives each stop's box the halo and centres on it", async () => {
-  const { callouts, jumps, fileJumps, centered, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
-  await settle();
-  jumps.length = 0;
+  const { callouts, jumps, fileJumps, centered, emphasized } = await loadWalkthrough();
   const { onGo, stops } = callouts.at(-1)[0].render();
   const walked = [];
   for (const stop of stops) {
@@ -695,8 +700,7 @@ test("walking the stops with a callout's buttons gives each stop's box the halo 
 
 test("a stop on no box selects no box but still jumps there", async () => {
   const outside = { ...WALK_REVIEW, walkthrough: [{ i: 1, title: "Docs", why: "w", path: "docs/readme.md", side: "R", line: 3, node: null }] };
-  const { callouts, jumps, renders, emphasized, centered } = loadContent({ run: null, view: "files", review: outside });
-  await settle();
+  const { callouts, jumps, renders, emphasized, centered } = await loadWalkthrough(outside);
   jumps.length = 0;
   await callouts.at(-1)[0].render().onGo(outside.walkthrough[0]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["docs/readme.md", "R", 3, { pulse: false }]]));
@@ -704,9 +708,7 @@ test("a stop on no box selects no box but still jumps there", async () => {
 });
 
 test("clicking Previous or Next quickly ends at the last stop clicked, jumping only there", async () => {
-  const { callouts, jumps, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
-  await settle();
-  jumps.length = 0;
+  const { callouts, jumps, emphasized } = await loadWalkthrough();
   const { onGo, stops } = callouts.at(-1)[0].render();
   await Promise.all([onGo(stops[1]), onGo(stops[2])]);
   assert.equal(JSON.stringify(jumps), JSON.stringify([["src/ui.js", "R", 30, { pulse: false }]]));
@@ -714,41 +716,40 @@ test("clicking Previous or Next quickly ends at the last stop clicked, jumping o
 });
 
 test("opening the files page on a stop's diff anchor goes to that stop", async () => {
-  const { fileJumps, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
+  const { fileJumps, emphasized, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
   await settle();
+  assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedStop], ["review", 4]);
   assert.deepEqual(fileJumps, [["src/api.js", undefined]]);
   assert.deepEqual(plain(emphasized.at(-1)), ["b"]);
 });
 
-test("the sidebar opens with every stop listed and the first one current", async () => {
+test("the sidebar opens in Files mode with every stop listed and none current", async () => {
   const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const { state } = renders.at(-1);
-  assert.deepEqual([state.stops.map((stop) => stop.i), state.selectedStop], [[1, 2, 3, 4], 1]);
+  assert.deepEqual([state.stops.map((stop) => stop.i), state.mode, state.selectedStop], [[1, 2, 3, 4], "github", null]);
   assert.deepEqual(Object.keys(state).sort(), ["chips", "fileSet", "mode", "note", "pageSha", "selectedStop", "stops"]);
-  assert.deepEqual(plain(emphasized.at(-1)), ["a"]);
+  assert.deepEqual(plain(emphasized.filter((nodes) => nodes !== null)), []);
 });
 
-test("a fresh load selects stop 1 as a click on it would: box, pan, list and a jump to its line", async () => {
-  const { renders, emphasized, centered, revealed, jumps, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+test("a fresh load selects nothing: Files mode, no jump, no pan, no emphasis and no callouts", async () => {
+  const { renders, emphasized, centered, revealed, jumps, fileJumps, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1), centered, revealed]), [1, ["a"], [["a"]], [1]]);
-  assert.deepEqual(jumps, [["src/ui.js", "R", 4, undefined]]);
-  assert.equal(callouts.at(-1).length, 4);
+  assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.selectedStop, emphasized.filter((nodes) => nodes !== null), centered, revealed, jumps, fileJumps, callouts.at(-1)]), ["github", null, [], [], [], [], [], []]);
 });
 
-test("a page URL naming a diff line other than a stop's keeps the diff where it is and only follows stop 1 in the diagram", async () => {
+test("a page URL naming a diff line other than a stop's selects nothing and jumps nowhere", async () => {
   for (const hash of ["#diff-abc123R7", "#r123456", "#discussion_r98765"]) {
     const { renders, emphasized, centered, jumps, fileJumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash });
     await settle();
-    assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1), centered, jumps, fileJumps]), [1, ["a"], [["a"]], [], []], hash);
+    assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.filter((nodes) => nodes !== null), centered, jumps, fileJumps]), [null, [], [], [], []], hash);
   }
 });
 
-test("a fragment that names no diff line does not stop the load from jumping to stop 1", async () => {
-  const { jumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#files_bucket" });
+test("a fragment that names no diff line does not make the load jump", async () => {
+  const { jumps, fileJumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#files_bucket" });
   await settle();
-  assert.equal(jumps.length, 1);
+  assert.deepEqual([jumps, fileJumps], [[], []]);
 });
 
 test("choosing a stop in the list goes to it and makes it the current stop", async () => {
@@ -762,7 +763,7 @@ test("choosing a stop in the list goes to it and makes it the current stop", asy
   assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1)]), [3, ["a"]]);
 });
 
-test("a reload lands on stop 1 again, whatever was selected before, and nothing is remembered", async () => {
+test("a reload lands in Files mode with nothing selected, whatever was selected before, and nothing is remembered", async () => {
   const first = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   await first.renders.at(-1).handlers.onSelectStop(3);
@@ -772,14 +773,13 @@ test("a reload lands on stop 1 again, whatever was selected before, and nothing 
   assert.deepEqual(plain(first.stored), {});
   const again = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
   await settle();
-  assert.deepEqual(plain([again.renders.at(-1).state.mode, again.renders.at(-1).state.selectedStop, again.emphasized.at(-1), again.centered]), ["review", 1, ["a"], [["a"]]]);
+  assert.deepEqual(plain([again.renders.at(-1).state.mode, again.renders.at(-1).state.selectedStop, again.emphasized.at(-1), again.centered]), ["github", null, null, []]);
 });
 
 test("every action that focuses a box centres the diagram on it", async () => {
   const { renders, callouts, centered, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(plain(centered), [["a"]]);
-  centered.length = 0;
+  assert.deepEqual(plain(centered), []);
   diagramHandlers.at(-1).onNode("b");
   await settle();
   assert.deepEqual(plain(centered), [["b"]]);
@@ -795,8 +795,7 @@ test("every action that focuses a box centres the diagram on it", async () => {
 test("every way into a stop zooms the diagram to it, and a click on a diagram box only pans", async () => {
   const { renders, callouts, centeredWith, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(plain(centeredWith), [{ zoom: true }]);
-  centeredWith.length = 0;
+  assert.deepEqual(plain(centeredWith), []);
   await renders.at(-1).handlers.onSelectStop(3);
   const { onGo, stops } = callouts.at(-1)[0].render();
   await onGo(stops[3]);
@@ -814,7 +813,7 @@ test("opening a stop's anchor zooms to it", async () => {
   assert.deepEqual(plain([linked.centered, linked.centeredWith]), [[["b"]], [{ zoom: true }]]);
 });
 
-test("the diagram's Reset restores the load-time state: nothing selected and no box marked", async () => {
+test("the diagram's Reset clears the selection and keeps the pane's mode: nothing selected and no box marked", async () => {
   const { renders, callouts, emphasized, lineEvents, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("c");
@@ -833,7 +832,7 @@ test("the diagram's Reset restores the load-time state: nothing selected and no 
   assert.equal(callouts.length > shownBefore, true);
 });
 
-test("Reset also clears a mode of GitHub's own tree", async () => {
+test("Reset leaves a mode of GitHub's own tree in place", async () => {
   const { renders, emphasized, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("b");
@@ -843,7 +842,7 @@ test("Reset also clears a mode of GitHub's own tree", async () => {
   assert.equal(emphasized.at(-1), null);
   diagramHandlers.at(-1).onReset();
   await settle();
-  assert.equal(renders.at(-1).state.mode, "review");
+  assert.equal(renders.at(-1).state.mode, "github");
   diagramHandlers.at(-1).onNode("b");
   await settle();
   assert.deepEqual(plain(emphasized.at(-1)), ["b"]);

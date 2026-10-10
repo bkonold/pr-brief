@@ -239,14 +239,13 @@
     if (scroll) await jumpToStop(session, stop, Object.keys(jump).length ? jump : undefined);
   }
 
-  // Puts the review back as it was when it loaded: no box or stop selected and no line or box marked.
+  // Clears the selection: no box or stop selected and no line or box marked. The pane's mode stays as it is.
   function resetReview(session) {
     return change(
       session,
       () => {
         leaveLine();
         deactivate(session);
-        session.mode = "review";
         session.selectedNode = null;
         session.selectedStop = null;
       },
@@ -314,9 +313,6 @@
     return tree.owns(node) || diagram.owns(node) || page.ownsLine(node);
   }
 
-  // A fragment that names a place in the diff: a file or line (`diff-…`) or a review comment (`r…`, `discussion_r…`).
-  const DIFF_FRAGMENT = /^(?:diff-|r\d+|discussion_r\d+)/;
-
   // A link to a stop, such as the PR brief card's, carries the anchor of that line or file in the URL fragment. Opening
   // the files page on it goes to that stop. Any other fragment is left to the page.
   async function stopLinkedBy(session, wanted) {
@@ -326,19 +322,14 @@
     return null;
   }
 
-  // What the page shows on load: a linked stop is opened as a click on it would. Otherwise stop 1 is: as a click on it
-  // would, or, when the URL names a diff line that is not a stop's, in the diagram only, so that line stays in view.
-  async function selectInitialStop(session) {
+  // What the page shows on load: nothing is selected, and the diff stays where GitHub put it. A URL fragment that names
+  // a stop's diff line opens that stop, as a click on it would.
+  async function selectLinkedStop(session) {
     if (!session?.review || !live()) return;
     const wanted = location.hash.slice(1);
     const linked = wanted.startsWith("diff-") ? await stopLinkedBy(session, wanted) : null;
     if (current !== session || !live()) return;
-    if (linked) {
-      selectStop(session, linked);
-      return;
-    }
-    const first = session.stops[0];
-    if (first) selectStop(session, first, { scroll: !DIFF_FRAGMENT.test(wanted) });
+    if (linked) selectStop(session, linked);
   }
 
   // A PR with no run: the list's place holds one line that generates the brief, then follows the run. When it is done
@@ -463,7 +454,7 @@
       key,
       pr,
       review,
-      mode: "review",
+      mode: "github",
       selectedNode: null,
       startedAt: Date.now(),
       stops: tree.stopsOf(review),
@@ -477,7 +468,7 @@
     if (current !== session || !live()) return;
     stopObserving = page.onChange(onMutations);
     refresh();
-    selectInitialStop(current);
+    selectLinkedStop(current);
   }
 
   stopNavigating = page.onNavigate(start);
