@@ -393,21 +393,21 @@
   display: none;
 }
 
-/* A layer's title with its line counts on the line under it, so the counts never narrow the title. */
-.prf-chunk-text {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
+/* The risk pill and judged tick, with the layer's line counts right-aligned on the line under them. */
 .prf-chunk-meta {
   display: flex;
   flex: none;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  align-self: flex-start;
+  margin-left: auto;
+}
+
+.prf-chunk-badges {
+  display: flex;
   gap: 6px;
   align-items: center;
-  margin-left: auto;
 }
 
 /* A folder line and a file button both have 4px of their own left padding, so a folder's icon lines up under the

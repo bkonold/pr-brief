@@ -1445,9 +1445,8 @@ test("a chunk row shows the number, title, risk and a tick when judged, and mark
     assert.deepEqual(rows.map((row) => byClass(row, "prf-judged-tick").length), [1, 0, 0]);
     const tick = byClass(rows[0], "prf-judged-tick")[0];
     assert.deepEqual([tick.title, tick.textContent, tick.children.map((child) => [child.tag, child.className, child.attributes.width])], ["Judged", "", [["svg", "prf-judged-icon", "16"]]]);
-    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-chunk-text", "prf-chunk-meta"]);
-    assert.deepEqual(byClass(rows[0], "prf-chunk-text")[0].children.map((child) => child.className), ["prf-name"]);
-    assert.deepEqual(byClass(rows[1], "prf-chunk-meta")[0].children.map((child) => child.className), ["prf-risk prf-risk-high"]);
+    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-name", "prf-chunk-meta"]);
+    assert.deepEqual(byClass(rows[1], "prf-chunk-badges")[0].children.map((child) => child.className), ["prf-risk prf-risk-high"]);
     assert.deepEqual(rows.map((row) => row.className.split(" ").includes("prf-selected")), [false, true, false]);
     assert.deepEqual(rows.map((row) => byClass(row, "prf-head-main")[0].attributes["aria-current"] ?? null), [null, "step", null]);
     assert.deepEqual(rows.map((row) => row.dataset.chunk), ["1", "2", "3"]);
@@ -1478,20 +1477,19 @@ const COUNTED = [
   { i: 2, title: "Two", summary: "", risk: "high", risk_reason: "", depends_on: [], hunks: [{ id: "h4", path: "src/c.js", change: "added", old: [0, 0], new: [1, 9], added: 9, removed: 0 }] },
 ];
 
-test("a layer row shows its added and removed totals under its title, and a file line its own sums over the layer's hunks", () => {
+test("a layer row shows its added and removed totals under its risk, and a file line its own sums over the layer's hunks", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const rows = byClass(chunkList({ chunks: COUNTED, selectedChunk: 1, judged: new Set([1]) }, {}), "prf-chunk");
     const stats = (element) => byClass(element, "prf-diffstat").map((stat) => stat.children.map((part) => [part.className, part.textContent]));
     const main = byClass(rows[0], "prf-head-main")[0];
-    assert.deepEqual(main.children.map((child) => child.className.split(" ")[0]), ["prf-num", "prf-chunk-text", "prf-chunk-meta"]);
-    const text = byClass(main, "prf-chunk-text")[0];
-    assert.deepEqual(text.children.map((child) => child.className.split(" ")[0]), ["prf-name", "prf-diffstat"]);
-    assert.deepEqual(byClass(main, "prf-chunk-meta")[0].children.map((child) => child.className.split(" ")[0]), ["prf-risk", "prf-judged-tick"]);
-    assert.deepEqual(stats(text), [[["prf-stat-added", "+8"], ["prf-stat-removed", "\u221210"]]]);
-    assert.deepEqual(stats(byClass(rows[1], "prf-chunk-text")[0]), [[["prf-stat-added", "+9"], ["prf-stat-removed", "\u22120"]]]);
-    assert.deepEqual(byClass(byClass(rows[0], "prf-chunk-meta")[0], "prf-diffstat"), []);
+    assert.deepEqual(main.children.map((child) => child.className.split(" ")[0]), ["prf-num", "prf-name", "prf-chunk-meta"]);
+    const meta = byClass(main, "prf-chunk-meta")[0];
+    assert.deepEqual(meta.children.map((child) => child.className.split(" ")[0]), ["prf-chunk-badges", "prf-diffstat"]);
+    assert.deepEqual(byClass(meta, "prf-chunk-badges")[0].children.map((child) => child.className.split(" ")[0]), ["prf-risk", "prf-judged-tick"]);
+    assert.deepEqual(stats(meta), [[["prf-stat-added", "+8"], ["prf-stat-removed", "\u221210"]]]);
+    assert.deepEqual(stats(byClass(rows[1], "prf-chunk-meta")[0]), [[["prf-stat-added", "+9"], ["prf-stat-removed", "\u22120"]]]);
     const files = byClass(rows[0], "prf-chunk-file");
     assert.deepEqual(files.map((file) => byClass(file, "prf-chunk-file-name")[0].textContent), ["a.js", "b.js"]);
     assert.deepEqual(files.map((file) => file.children.at(-1).className), ["prf-diffstat", "prf-diffstat"]);
@@ -1511,7 +1509,7 @@ test("a layer or file with a hunk that lacks its counts shows no counts", () => 
     const half = { ...withoutCounts, id: "h8", path: "src/d.js", added: 4 };
     const chunk = { ...counted, hunks: [...counted.hunks, withoutCounts, half] };
     const row = byClass(chunkList({ chunks: [chunk, { ...counted, i: 2, hunks: [withoutCounts] }], selectedChunk: 1, judged: new Set() }, {}), "prf-chunk")[0];
-    assert.deepEqual(byClass(byClass(row, "prf-chunk-text")[0], "prf-diffstat"), []);
+    assert.deepEqual(byClass(byClass(row, "prf-chunk-meta")[0], "prf-diffstat"), []);
     const files = byClass(row, "prf-chunk-file");
     assert.deepEqual(files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, byClass(file, "prf-diffstat").length]), [["a.js", 1], ["b.js", 0], ["d.js", 0]]);
     const old = byClass(chunkList({ chunks: CHUNKS, selectedChunk: 2, judged: new Set() }, {}), "prf-chunk");

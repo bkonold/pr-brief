@@ -389,25 +389,26 @@
     return list;
   }
 
-  // One row per layer: its number, then its title with the layer's added and removed line counts on the line under it, then at the end its risk and a
-  // tick once it is judged. The current layer is marked and, as the only one, lists the files it touches under its title.
+  // One row per layer: its number and title, then at the end its risk and a tick once it is judged, with the layer's
+  // added and removed line counts right-aligned on the line under them. The current layer is marked and, as the only one,
+  // lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
     if (current) main.setAttribute("aria-current", "step");
-    const meta = make("span", "prf-chunk-meta");
-    if (chunk.risk) meta.append(riskPill(chunk.risk));
+    const badges = make("span", "prf-chunk-badges");
+    if (chunk.risk) badges.append(riskPill(chunk.risk));
     if (state.judged?.has(chunk.i)) {
       const tick = make("span", "prf-judged-tick");
       tick.title = "Judged";
       tick.append(filledIcon(CHECK_ICON, 16, "prf-judged-icon"));
-      meta.append(tick);
+      badges.append(tick);
     }
-    const text = make("span", "prf-chunk-text");
-    text.append(make("span", "prf-name", chunk.title));
+    const meta = make("span", "prf-chunk-meta");
+    meta.append(badges);
     const stat = diffStat(chunk.hunks);
-    if (stat) text.append(stat);
-    main.append(make("span", "prf-num", String(chunk.i)), text, meta);
+    if (stat) meta.append(stat);
+    main.append(make("span", "prf-num", String(chunk.i)), make("span", "prf-name", chunk.title), meta);
     const header = make("div", "prf-head");
     header.append(main);
     const element = make("section", "prf-group prf-chunk");
