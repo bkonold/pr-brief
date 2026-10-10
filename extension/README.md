@@ -147,8 +147,8 @@ numbers of the layers this one builds on, and each hunk `{id, path, change, old:
 being the lines the hunk adds and removes (a review made before they were written has none).
 A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" entry in the toggle.
 
-- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer, on one line: its number and its title, and
-  at the end the layer's line counts over all its hunks in GitHub's diffstat form (`+12` in the success green, `−34` in the danger red, 12px, tabular figures; both shown even when one is 0), a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
+- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer: its number, then its title with the layer's line
+  counts over all its hunks on the line under it in GitHub's diffstat form (`+12` in the success green, `−34` in the danger red, 12px, tabular figures; both shown even when one is 0), and at the end a risk pill (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"). The selected row is marked as a
   stop's is, and scrolled into view when a layer is opened from its callout.
 - The selected row, and only it, lists the files its layer touches, grouped by folder. Each folder is one line, not a button, with a
   muted folder icon (GitHub's `file-directory-fill`) and its label in muted 12px text; a long label wraps rather than being cut off,

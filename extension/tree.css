@@ -393,6 +393,15 @@
   display: none;
 }
 
+/* A layer's title with its line counts on the line under it, so the counts never narrow the title. */
+.prf-chunk-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .prf-chunk-meta {
   display: flex;
   flex: none;
@@ -402,7 +411,8 @@
 }
 
 /* A folder line and a file button both have 4px of their own left padding, so a folder's icon lines up under the
-   title. A file is indented by an icon and its gap, so its icon sits under the folder label's first character. */
+   title. A file is indented by an icon and its gap, so its icon sits under the folder label's first character. A file
+   button spans the list's width to its right edge, so its hover background runs from 4px before the icon to 4px past the counts. */
 .prf-chunk-files {
   display: flex;
   flex-direction: column;
@@ -494,8 +504,21 @@
   border-radius: 6px;
 }
 
+.prf-chunk-group .prf-chunk-file {
+  padding: 2px 4px;
+}
+
 .prf-chunk-file:hover {
-  background: var(--bgColor-muted, #f6f8fa);
+  background: var(--control-transparent-bgColor-hover, rgba(208, 215, 222, 0.32));
+}
+
+.prf-chunk-file:active {
+  background: var(--control-transparent-bgColor-active, rgba(208, 215, 222, 0.48));
+}
+
+.prf-chunk-file:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: -2px;
 }
 
 .prf-chunk-file.prf-dimmed {
