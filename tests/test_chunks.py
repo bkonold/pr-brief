@@ -1,4 +1,4 @@
-"""Tests for the chunks of a brief: how the answer's chunks resolve against the diff's hunks, how the Layers section draws and
+"""Tests for the chunks of a brief: how the answer's chunks resolve against the diff's hunks, that the body leaves them out and
 how review.json lists them. All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import sys
 import unittest
@@ -8,7 +8,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import render  # noqa: E402
 from hunks import Hunk, hunk_json, parse_hunks  # noqa: E402
-from layout import chunks_section, hunk_target  # noqa: E402
 from render import AnswerError, Brief, build_body, resolve_chunks, review_json  # noqa: E402
 
 DIFF = """diff --git a/api/Item.java b/api/Item.java
@@ -181,66 +180,6 @@ class ResolveChunks(unittest.TestCase):
         self.assertEqual(resolve([], [])[1], ["0 layers, expected 1 to 7"])
 
 
-class HunkTarget(unittest.TestCase):
-    def test_a_hunk_is_shown_at_its_new_lines_and_a_deleted_files_hunk_at_its_old_lines(self) -> None:
-        self.assertEqual([hunk_target(hunk) for hunk in HUNKS], [("R", 3, 7), ("R", 31, 33), ("R", 1, 2), ("L", 1, 2)])
-
-
-def link_of(hunk: Hunk) -> str:
-    side, start, _ = hunk_target(hunk)
-    return f"https://x/{hunk.path}#{side}{start}"
-
-
-class ChunksSection(unittest.TestCase):
-    BY_ID = {hunk.id: hunk for hunk in HUNKS}
-    CHUNKS = [
-        {"i": 1, "title": "The <item> model", "summary": "Adds a field.", "risk": "medium", "risk_reason": "Key changes.",
-         "depends_on": [], "hunks": ["h01", "h02"]},
-        {"i": 2, "title": "Tests", "summary": "Covers it.", "risk": "low", "risk_reason": "", "depends_on": [1], "hunks": ["h03", "h04"]}]
-
-    def test_it_draws_a_count_then_one_details_per_chunk_with_a_link_per_hunk(self) -> None:
-        self.assertEqual(chunks_section(self.CHUNKS, self.BY_ID, link_of), "\n".join([
-            "### Layers",
-            "",
-            "2 layers, in review order.",
-            "",
-            "<details>",
-            "<summary><b>1. The &lt;item&gt; model</b> · medium · <i>Key changes.</i></summary>",
-            "",
-            "Adds a field.",
-            "",
-            "- [`api/Item.java:3–7`](https://x/api/Item.java#R3) (h01)",
-            "- [`api/Item.java:31–33`](https://x/api/Item.java#R31) (h02)",
-            "",
-            "</details>",
-            "",
-            "<details>",
-            "<summary><b>2. Tests</b> · low</summary>",
-            "",
-            "Covers it.",
-            "",
-            "- [`api/ItemTest.java:1–2`](https://x/api/ItemTest.java#R1) (h03)",
-            "- [`api/Gone.java:1–2`](https://x/api/Gone.java#L1) (h04)",
-            "",
-            "</details>"]))
-
-    def test_one_chunk_is_counted_in_the_singular(self) -> None:
-        self.assertIn("\n1 layer, in review order.\n", chunks_section(self.CHUNKS[:1], self.BY_ID, link_of))
-
-    def test_files_with_no_hunk_are_listed_after_the_chunks(self) -> None:
-        found = chunks_section(self.CHUNKS, self.BY_ID, link_of, [("api/After.java", "https://x/after"), ("img/logo.png", "https://x/logo")])
-        self.assertTrue(found.endswith("</details>\n\nAlso in this PR, with no hunks to assign:\n\n"
-                                       "- [api/After.java](https://x/after)\n- [img/logo.png](https://x/logo)"))
-        self.assertNotIn("no hunks to assign", chunks_section(self.CHUNKS, self.BY_ID, link_of, []))
-
-    def test_a_chunk_with_no_summary_has_no_blank_sentence(self) -> None:
-        found = chunks_section([{**self.CHUNKS[0], "summary": ""}], self.BY_ID, link_of)
-        self.assertIn("</summary>\n\n- [", found)
-
-    def test_no_chunk_gives_no_section(self) -> None:
-        self.assertEqual(chunks_section([], self.BY_ID, link_of, [("a", "u")]), "")
-
-
 RUN = {"repo": "acme/shop", "pr": 7, "with_body": False, "variant": "brief", "pr_head_sha": "abc"}
 PATHS = ["api/Item.java", "api/ItemTest.java", "api/Gone.java", "api/After.java"]
 PR = {"title": "T", "body": "", "files": [{"path": p, "additions": 2, "deletions": 1, "changeType": "MODIFIED"} for p in PATHS]}
@@ -254,18 +193,16 @@ class ChunksInTheBody(unittest.TestCase):
         notes: list[str] = []
         return build_body(RUN, PR, data, render.diff_lines_by_path(diff), notes, None, diff), notes
 
-    def test_the_chunks_section_comes_after_the_data_section_and_before_the_closing_rule(self) -> None:
+    def test_the_body_has_no_layers_section_while_the_brief_keeps_the_layers(self) -> None:
         brief, _ = self.build(ANSWER)
-        self.assertLess(brief.body.index("### Data"), brief.body.index("### Layers"))
-        self.assertLess(brief.body.index("### Layers"), brief.body.index("Also in this PR, with no hunks to assign:"))
-        self.assertTrue(brief.body.endswith(")\n\n\n___\n\n"))
-        self.assertIn("2 layers, in review order.", brief.body)
+        for gone in ("### Layers", "layers, in review order", "Also in this PR, with no hunks to assign:", "(h01)"):
+            self.assertNotIn(gone, brief.body)
+        self.assertTrue(brief.body.endswith("\n\n___\n\n"))
+        listed = review_json(RUN, brief, False)["chunks"]
         self.assertEqual([chunk["title"] for chunk in brief.chunks or []], ["The model", "Tests"])
-
-    def test_the_hunk_links_point_at_the_hunks_lines_in_the_pr(self) -> None:
-        brief, _ = self.build(ANSWER)
-        self.assertRegex(brief.body, r"- \[`api/Item\.java:3–7`\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}R3\) \(h01\)")
-        self.assertRegex(brief.body, r"- \[`api/Gone\.java:1–2`\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}L1\) \(h04\)")
+        self.assertEqual([(item["i"], item["title"], [h["id"] for h in item["hunks"]]) for item in listed],
+                         [(1, "The model", ["h01", "h02"]), (2, "Tests", ["h03", "h04"])])
+        self.assertEqual(listed, review_json(RUN, Brief("", {}, [], chunks=brief.chunks, hunks=HUNKS), False)["chunks"])
 
     def test_a_missing_diagram_is_noted_as_it_is_without_chunks(self) -> None:
         brief, notes = self.build(ANSWER)
@@ -283,7 +220,7 @@ class ChunksInTheBody(unittest.TestCase):
         self.assertEqual(notes, ["no changes_diagram", "layer 1: unknown hunk h99 dropped",
                                  "unassigned hunks gathered into the last layer: h02, h03, h04"])
 
-    def test_an_answer_with_no_chunks_key_has_no_chunks_section(self) -> None:
+    def test_an_answer_with_no_chunks_key_has_no_chunks(self) -> None:
         data = {"description": "d", "walkthrough": [{"file": "api/Item.java", "title": "t", "why": "w"}]}
         brief, notes = self.build(data)
         self.assertNotIn("### Layers", brief.body)
