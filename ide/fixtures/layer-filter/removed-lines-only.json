@@ -1,0 +1,17 @@
+{
+  "description": "A hunk that only removes lines: its new count is 0, so base lines are inserted after the stated head line.",
+  "path": "a.txt",
+  "base": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\n",
+  "head": "line 1\nline 2\nline 3\nline 4\nline 5\nline 8\nline 9\nline 10\nline 11\nline 12\n",
+  "hunks": [
+    {
+      "id": "h01",
+      "path": "a.txt",
+      "change": "modified",
+      "old": [3, 8],
+      "new": [3, 6]
+    }
+  ],
+  "selected": ["h01"],
+  "expected": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\n"
+}

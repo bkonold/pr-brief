@@ -16,6 +16,8 @@
                     factoryClass="io.github.bkonold.prbrief.ui.PrBriefToolWindowFactory"/>
         <applicationConfigurable parentId="tools" instance="io.github.bkonold.prbrief.ui.PrBriefSettings"
                                  id="io.github.bkonold.prbrief.settings" displayName="PR Brief"/>
+        <notificationGroup id="PR Brief" displayType="BALLOON"/>
+        <diff.DiffExtension implementation="io.github.bkonold.prbrief.diff.LayerMarkerExtension"/>
     </extensions>
 
     <actions>
@@ -26,5 +28,15 @@
                 icon="AllIcons.Actions.MenuOpen"/>
         <action id="PrBrief.Settings" class="io.github.bkonold.prbrief.ui.OpenBriefSettingsAction"
                 text="PR Brief Settings…" description="Set the optional GitHub token" icon="AllIcons.General.Settings"/>
+        <action id="PrBrief.NextStop" class="io.github.bkonold.prbrief.diff.NextStopAction"
+                text="Next Stop" description="Go to the next stop of the walkthrough"
+                icon="AllIcons.Actions.Forward">
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt DOWN"/>
+        </action>
+        <action id="PrBrief.PreviousStop" class="io.github.bkonold.prbrief.diff.PreviousStopAction"
+                text="Previous Stop" description="Go to the previous stop of the walkthrough"
+                icon="AllIcons.Actions.Back">
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt UP"/>
+        </action>
     </actions>
 </idea-plugin>

@@ -7,9 +7,11 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import io.github.bkonold.prbrief.BriefService
 import io.github.bkonold.prbrief.BriefState
+import io.github.bkonold.prbrief.diff.ReviewDiffController
 
 class PrBriefToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        ReviewDiffController.getInstance(project)
         val panel = PrBriefPanel(project, toolWindow.disposable)
         toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, "", false))
         val service: BriefService = project.getService(BriefService::class.java)

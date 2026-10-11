@@ -1,6 +1,8 @@
 package io.github.bkonold.prbrief
 
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -223,6 +225,10 @@ class BriefService(private val project: Project) : Disposable {
                 }
             }
         })
+    }
+
+    fun notify(message: String, type: NotificationType) {
+        NotificationGroupManager.getInstance().getNotificationGroup("PR Brief").createNotification(message, type).notify(project)
     }
 
     private fun update(next: BriefState) {
