@@ -52,6 +52,7 @@ sealed interface BriefState {
 /** What the reviewer has picked in the tool window; the diff tab follows it. */
 sealed interface Selection {
     data object None : Selection
+    /** [index] is the stop's position in the walkthrough, from 0. */
     data class StopAt(val index: Int) : Selection
     data class LayerAt(val index: Int, val file: String? = null) : Selection
     data class FileAt(val path: String) : Selection

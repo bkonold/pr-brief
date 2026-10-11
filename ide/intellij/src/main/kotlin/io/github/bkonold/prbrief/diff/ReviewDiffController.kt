@@ -1,6 +1,5 @@
 package io.github.bkonold.prbrief.diff
 
-import com.intellij.diff.chains.DiffRequestProducer
 import com.intellij.diff.editor.DiffEditorTabFilesManager
 import com.intellij.diff.impl.DiffSettingsHolder.DiffSettings
 import com.intellij.diff.tools.fragmented.UnifiedDiffTool
@@ -9,6 +8,7 @@ import com.intellij.diff.util.Side
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -23,6 +23,7 @@ import io.github.bkonold.prbrief.model.Stop
 /**
  * Keeps the single review tab in step with what is picked in the tool window: a stop, a layer, a layer's file or a
  * changed file. The tab is reused, so each pick swaps the chain of diffs in the open tab instead of opening another.
+ * Changes are applied under the write-intent lock, which the editor and diff APIs read under.
  */
 @Service(Service.Level.PROJECT)
 class ReviewDiffController(private val project: Project) : Disposable {
@@ -34,7 +35,7 @@ class ReviewDiffController(private val project: Project) : Disposable {
 
     init {
         seedUnifiedView()
-        service.addListener(BriefListener { onChanged() }, this)
+        service.addListener(BriefListener { WriteIntentReadAction.run { onChanged() } }, this)
     }
 
     private fun onChanged() {
@@ -83,9 +84,9 @@ class ReviewDiffController(private val project: Project) : Disposable {
     private fun stopChain(brief: LoadedBrief, index: Int): ReviewChain? {
         val stops: List<Stop> = brief.review.walkthrough
         if (index !in stops.indices) return null
-        val producers: List<DiffRequestProducer> = stops.map { stop ->
+        val producers: List<ReviewFileProducer> = stops.mapIndexed { position, stop ->
             val target: ScrollTarget? = stop.line?.let { ScrollTarget(if (stop.side == "L") Side.LEFT else Side.RIGHT, it) }
-            producer(brief, stop.path, null, target)
+            producer(brief, stop.path, null, StopFocus(stop, position, stops.size), target)
         }
         return ReviewChain("stops", producers, index)
     }
@@ -93,10 +94,10 @@ class ReviewDiffController(private val project: Project) : Disposable {
     private fun layerChain(brief: LoadedBrief, selection: Selection.LayerAt): ReviewChain? {
         val layer = service.layer(selection.index) ?: return null
         val paths: List<String> = layer.paths
-        val producers: List<DiffRequestProducer> = paths.map { path ->
+        val producers: List<ReviewFileProducer> = paths.map { path ->
             val first = layer.hunks.first { it.path == path }
             val target: ScrollTarget? = if (first.newCount > 0) ScrollTarget(Side.RIGHT, first.newStart) else null
-            producer(brief, path, layer.index, target)
+            producer(brief, path, layer.index, null, target)
         }
         return ReviewChain("layer:${layer.index}", producers, paths.indexOf(selection.file).coerceAtLeast(0))
     }
@@ -104,11 +105,11 @@ class ReviewDiffController(private val project: Project) : Disposable {
     private fun filesChain(brief: LoadedBrief, current: String?): ReviewChain? {
         val paths: List<String> = brief.review.changedPaths
         if (paths.isEmpty()) return null
-        val producers: List<DiffRequestProducer> = paths.map { producer(brief, it, null, null) }
+        val producers: List<ReviewFileProducer> = paths.map { producer(brief, it, null, null, null) }
         return ReviewChain("files", producers, paths.indexOf(current).coerceAtLeast(0))
     }
 
-    private fun producer(brief: LoadedBrief, path: String, layer: Int?, target: ScrollTarget?): DiffRequestProducer =
+    private fun producer(brief: LoadedBrief, path: String, layer: Int?, stop: StopFocus?, target: ScrollTarget?): ReviewFileProducer =
         ReviewFileProducer(
             project = project,
             review = brief.review,
@@ -116,6 +117,7 @@ class ReviewDiffController(private val project: Project) : Disposable {
             base = base ?: BaseTexts(null, null, brief.review),
             path = path,
             layer = layer,
+            stop = stop,
             scrollTo = target,
             notifier = { service.notify(it, NotificationType.WARNING) },
         )

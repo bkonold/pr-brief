@@ -1,6 +1,5 @@
 package io.github.bkonold.prbrief.diff
 
-import com.intellij.diff.chains.DiffRequestProducer
 import com.intellij.diff.editor.DiffVirtualFile
 import com.intellij.diff.editor.DiffVirtualFileWithTabName
 import com.intellij.diff.impl.DiffRequestProcessor
@@ -8,13 +7,14 @@ import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.project.Project
 
 /** What one diff tab holds: producers of the diffs to page through, and which one to open first. */
-class ReviewChain(val key: String, val producers: List<DiffRequestProducer>, val index: Int)
+class ReviewChain(val key: String, val producers: List<ReviewFileProducer>, val index: Int)
 
 /**
  * The one editor tab of the review. It is a single file instance per project, so showing it again focuses the tab that
- * is already open, and [processor] lets the controller put a new chain into that tab.
+ * is already open, and [processor] lets the controller put a new chain into that tab. The tab is named for the file
+ * shown and the stop or layer it is shown for.
  */
-class ReviewDiffFile : DiffVirtualFile("PR Brief"), DiffVirtualFileWithTabName {
+class ReviewDiffFile : DiffVirtualFile(ReviewCaptions.EMPTY_TAB_NAME), DiffVirtualFileWithTabName {
     /** The chain the next processor starts with; read when the editor opens the tab. */
     @Volatile
     var pending: ReviewChain? = null
@@ -28,5 +28,5 @@ class ReviewDiffFile : DiffVirtualFile("PR Brief"), DiffVirtualFileWithTabName {
         return created
     }
 
-    override fun getEditorTabName(project: Project, editors: List<FileEditor>): String = "PR Brief"
+    override fun getEditorTabName(project: Project, editors: List<FileEditor>): String = processor?.tabName ?: ReviewCaptions.EMPTY_TAB_NAME
 }

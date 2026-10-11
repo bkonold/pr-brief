@@ -23,10 +23,17 @@ abstract class StepStopAction(private val direction: Int) : AnAction(), DumbAwar
 
     private fun target(service: BriefService): Int? {
         val stops: Int = service.brief?.review?.walkthrough?.size ?: return null
-        val current: Int? = (service.selection as? Selection.StopAt)?.index
-        val next: Int = if (current == null) (if (direction > 0) 0 else stops - 1) else current + direction
-        return next.takeIf { it in 0 until stops }
+        return stepStop((service.selection as? Selection.StopAt)?.index, stops, direction)
     }
+}
+
+/**
+ * The position of the stop reached by stepping [direction] (1 forward, -1 back) from the [current] position in a
+ * walkthrough of [count] stops, or null past either end. With no current stop, forward reaches the first and back the last.
+ */
+fun stepStop(current: Int?, count: Int, direction: Int): Int? {
+    val next: Int = if (current == null) (if (direction > 0) 0 else count - 1) else current + direction
+    return next.takeIf { it in 0 until count }
 }
 
 class NextStopAction : StepStopAction(1)

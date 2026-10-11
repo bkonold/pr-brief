@@ -1,5 +1,6 @@
 package io.github.bkonold.prbrief.diff
 
+import com.intellij.icons.AllIcons
 import com.intellij.diff.DiffContext
 import com.intellij.diff.DiffExtension
 import com.intellij.diff.FrameDiffTool.DiffViewer
@@ -32,47 +33,58 @@ import java.awt.RenderingHints
 import javax.swing.Icon
 
 /**
- * Marks the hunks of other layers on the right side of a layer's diff: a tinted background and a numbered gutter badge
- * whose tooltip names the layer and whose click selects it. In the unified viewer the markers sit on lines the viewer
- * folds when they are far from a change, so they show once that region is expanded.
+ * Marks lines of a review diff. The hunks of other layers on the right side of a layer's diff get a tinted background and
+ * a numbered gutter badge whose tooltip names the layer and whose click selects it; the line a stop points at gets the
+ * same tint and an arrow whose tooltip is the stop's title. In the unified viewer the layer markers sit on lines the
+ * viewer folds when they are far from a change, so they show once that region is expanded.
  */
 class LayerMarkerExtension : DiffExtension() {
     override fun onViewerCreated(viewer: DiffViewer, context: DiffContext, request: DiffRequest) {
-        val markers: List<LayerMarker> = request.getUserData(LAYER_MARKERS) ?: return
+        val layerMarkers: List<LayerMarker> = request.getUserData(LAYER_MARKERS).orEmpty()
+        val stopMarker: StopMarker? = request.getUserData(STOP_MARKER)
         val project: Project = context.project ?: return
-        if (viewer !is DiffViewerBase || markers.isEmpty()) return
-        val painter = MarkerPainter(project, viewer, markers)
-        viewer.addListener(painter)
+        if (viewer !is DiffViewerBase || (layerMarkers.isEmpty() && stopMarker == null)) return
+        viewer.addListener(MarkerPainter(project, viewer, layerMarkers, stopMarker))
     }
 }
 
 private class MarkerPainter(
     private val project: Project,
     private val viewer: DiffViewerBase,
-    private val markers: List<LayerMarker>,
+    private val layerMarkers: List<LayerMarker>,
+    private val stopMarker: StopMarker?,
 ) : DiffViewerListener() {
     private var placed: List<Pair<Editor, RangeHighlighter>> = emptyList()
 
     override fun onAfterRediff() {
         clear()
         val next = ArrayList<Pair<Editor, RangeHighlighter>>()
-        for (marker in markers) {
-            val (editor, line) = rightSideLine(marker.startLine) ?: continue
-            val last: Int = rightSideLine(marker.endLine - 1)?.second ?: line
-            val document = editor.document
-            if (line !in 0 until document.lineCount) continue
-            val end: Int = last.coerceIn(line, document.lineCount - 1)
-            val highlighter: RangeHighlighter = editor.markupModel.addRangeHighlighter(
-                document.getLineStartOffset(line),
-                document.getLineEndOffset(end),
-                HighlighterLayer.ADDITIONAL_SYNTAX,
-                TextAttributes().apply { backgroundColor = Palette.selectedRow },
-                HighlighterTargetArea.LINES_IN_RANGE,
-            )
-            highlighter.gutterIconRenderer = MarkerRenderer(project, marker)
-            next.add(editor to highlighter)
+        for (marker in layerMarkers) {
+            val (editor, line) = sideLine(Side.RIGHT, marker.startLine) ?: continue
+            val last: Int = sideLine(Side.RIGHT, marker.endLine - 1)?.second ?: line
+            place(next, editor, line, last, MarkerRenderer(project, marker))
+        }
+        stopMarker?.let { marker ->
+            val (editor, line) = sideLine(marker.side, marker.line) ?: return@let
+            place(next, editor, line, line, StopRenderer(marker))
         }
         placed = next
+    }
+
+    /** Tints the lines `[first, last]` of the editor and puts the gutter icon on them; nothing when they lie outside the document. */
+    private fun place(into: MutableList<Pair<Editor, RangeHighlighter>>, editor: Editor, first: Int, last: Int, renderer: GutterIconRenderer) {
+        val document = editor.document
+        if (first !in 0 until document.lineCount) return
+        val end: Int = last.coerceIn(first, document.lineCount - 1)
+        val highlighter: RangeHighlighter = editor.markupModel.addRangeHighlighter(
+            document.getLineStartOffset(first),
+            document.getLineEndOffset(end),
+            HighlighterLayer.ADDITIONAL_SYNTAX,
+            TextAttributes().apply { backgroundColor = Palette.selectedRow },
+            HighlighterTargetArea.LINES_IN_RANGE,
+        )
+        highlighter.gutterIconRenderer = renderer
+        into.add(editor to highlighter)
     }
 
     override fun onDispose() = clear()
@@ -82,10 +94,10 @@ private class MarkerPainter(
         placed = emptyList()
     }
 
-    /** The editor that shows the right side and the line in it, for a 0-based line of the local file. */
-    private fun rightSideLine(line: Int): Pair<Editor, Int>? = when (val v = viewer) {
-        is UnifiedDiffViewer -> v.transferLineToOneside(Side.RIGHT, line).takeIf { it >= 0 }?.let { v.editor to it }
-        is TwosideTextDiffViewer -> v.getEditor(Side.RIGHT) to line
+    /** The editor that shows [side] and the line in it, for a 0-based line of that side's content. */
+    private fun sideLine(side: Side, line: Int): Pair<Editor, Int>? = when (val v = viewer) {
+        is UnifiedDiffViewer -> v.transferLineToOneside(side, line).takeIf { it >= 0 }?.let { v.editor to it }
+        is TwosideTextDiffViewer -> v.getEditor(side) to line
         else -> null
     }
 }
@@ -104,6 +116,16 @@ private class MarkerRenderer(private val project: Project, private val marker: L
     override fun isNavigateAction(): Boolean = true
 
     override fun equals(other: Any?): Boolean = other is MarkerRenderer && other.marker == marker
+
+    override fun hashCode(): Int = marker.hashCode()
+}
+
+private class StopRenderer(private val marker: StopMarker) : GutterIconRenderer() {
+    override fun getIcon(): Icon = AllIcons.General.ArrowRight
+
+    override fun getTooltipText(): String = marker.title
+
+    override fun equals(other: Any?): Boolean = other is StopRenderer && other.marker == marker
 
     override fun hashCode(): Int = marker.hashCode()
 }

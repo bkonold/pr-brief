@@ -7,6 +7,7 @@ import com.intellij.diff.chains.DiffRequestProducer
 import com.intellij.diff.util.DiffUserDataKeys
 import com.intellij.diff.util.DiffUserDataKeysEx.ScrollToPolicy
 import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolder
 import com.intellij.openapi.util.UserDataHolderBase
@@ -25,7 +26,7 @@ private fun placeContext(): UserDataHolder {
  * Pages through a chain of producers like the platform's chain processor, but the chain can be replaced while the tab
  * stays open, which is how clicking another layer or stop reuses the tab.
  */
-class ReviewDiffProcessor(project: Project, private val file: ReviewDiffFile, initial: ReviewChain) :
+class ReviewDiffProcessor(private val project: Project, private val file: ReviewDiffFile, initial: ReviewChain) :
     CacheDiffRequestProcessor.Simple(project, placeContext()) {
 
     var chain: ReviewChain = initial
@@ -37,17 +38,22 @@ class ReviewDiffProcessor(project: Project, private val file: ReviewDiffFile, in
     /** The name of the producer being shown, which is the file path for file-based chains. */
     val currentName: String? get() = chain.producers.getOrNull(index)?.name
 
+    /** The tab name for the producer being shown; null when the chain is empty. */
+    val tabName: String? get() = chain.producers.getOrNull(index)?.tabName
+
     fun setChain(next: ReviewChain) {
         chain = next
         index = next.index
         dropCaches()
         updateRequest()
+        refreshTab()
     }
 
     fun showIndex(next: Int) {
         if (next !in chain.producers.indices) return
         index = next
         updateRequest()
+        refreshTab()
     }
 
     override fun getCurrentRequestProvider(): DiffRequestProducer? = chain.producers.getOrNull(index)
@@ -60,6 +66,7 @@ class ReviewDiffProcessor(project: Project, private val file: ReviewDiffFile, in
         goToNextChangeImpl(fromDifferences) {
             index++
             updateRequest(false, ScrollToPolicy.FIRST_CHANGE)
+            refreshTab()
         }
     }
 
@@ -67,6 +74,7 @@ class ReviewDiffProcessor(project: Project, private val file: ReviewDiffFile, in
         goToPrevChangeImpl(fromDifferences) {
             index--
             updateRequest(false, ScrollToPolicy.LAST_CHANGE)
+            refreshTab()
         }
     }
 
@@ -74,6 +82,10 @@ class ReviewDiffProcessor(project: Project, private val file: ReviewDiffFile, in
 
     override fun createGoToChangeAction(): AnAction =
         GoToChangePopupBuilder.create(SimpleDiffRequestChain.fromProducers(chain.producers, index), Consumer { showIndex(it) }, index)
+
+    private fun refreshTab() {
+        FileEditorManager.getInstance(project).updateFilePresentation(file)
+    }
 
     override fun onDispose() {
         if (file.processor === this) file.processor = null

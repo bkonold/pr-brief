@@ -25,7 +25,7 @@ To install the zip: Settings, Plugins, the gear menu, Install Plugin from Disk.
 2. The plugin reads `owner/repo` from the git remote, finds the PR of the checked-out commit and reads the brief
    comment (the one marked `<!-- pr-brief:v1 -->`). If no PR or several match, it asks which one.
 3. Tabs:
-   - **Walkthrough**: the stops in reading order. Hover a row for its reason.
+   - **Walkthrough**: the stops in reading order, each with its file and line. Hover a row for its reason.
    - **Layers**: every change in layers, foundations first. Select a layer to expand its files; select it again, or
      press Show all, to clear. Mark judged / Unmark judged records your progress per repo, PR and head commit.
    - **Files**: the changed files by folder, with API, Data and Tests chips.
@@ -62,6 +62,10 @@ Against https://github.com/bkonold/pr-brief-demo/pull/1: clone the repo and chec
 - [ ] The tool window loads the brief on its own: the Layers tab says 6 layers and the source line names
       `bkonold/pr-brief-demo#1` and how it was read.
 - [ ] The Walkthrough lists 6 stops; clicking one opens its file at the stop's line in the review tab.
+- [ ] A stop opens with the tab titled `Stop <n> · <file>`, a banner with "n of 6", the title and the reason, and the
+      stop's line marked with an arrow and a tinted background; Previous stop and Next stop in the banner move the tab
+      to the neighbouring stop, and the first and last stop each omit one of them.
+- [ ] A layer opens with the tab titled `Layer <n> · <file>` and a banner with the layer's title and summary.
 - [ ] Selecting a layer opens its first file; the left side is that file before the layer, and only the layer's hunks
       differ. Clicking a file row in the expanded layer jumps to its first hunk.
 - [ ] Selecting another layer, a stop or a file reuses the same tab and never opens a second one.

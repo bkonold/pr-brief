@@ -21,6 +21,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationPanel
 import io.github.bkonold.prbrief.model.HunkRange
+import io.github.bkonold.prbrief.model.Layer
 import io.github.bkonold.prbrief.model.Review
 import java.io.File
 
@@ -30,7 +31,8 @@ data class ScrollTarget(val side: Side, val line: Int)
 /**
  * The diff of one file. The right side is the local file itself, so the editor on it is a normal one. The left side is
  * the base, or with a layer selected the head with that layer's hunks reverted to base, so the diff shows only that
- * layer's change in the file.
+ * layer's change in the file. Shown for a [stop] or a [layer], it carries a banner that says why, and a stop's line is
+ * marked in the diff.
  */
 class ReviewFileProducer(
     private val project: Project,
@@ -39,10 +41,17 @@ class ReviewFileProducer(
     private val base: BaseTexts,
     private val path: String,
     private val layer: Int?,
+    private val stop: StopFocus? = null,
     private val scrollTo: ScrollTarget? = null,
     private val notifier: (String) -> Unit,
 ) : DiffRequestProducer {
     override fun getName(): String = path
+
+    /** The name of the editor tab while this file is shown. */
+    val tabName: String = ReviewCaptions.tabName(
+        stop?.let { ReviewCaptions.stopHeading(it.stop) } ?: layer?.let { ReviewCaptions.layerHeading(it) },
+        path,
+    )
 
     override fun process(context: UserDataHolder, indicator: ProgressIndicator): DiffRequest {
         val local: VirtualFile? = findLocal()
@@ -50,13 +59,13 @@ class ReviewFileProducer(
         val headText: String? = local?.let { readHead(it) }
         val baseText: String? = base.of(path, BaseTexts.charsetOf(local))
         val fileHunks: List<HunkRange> = review.hunksOf(path)
-        val selected: Set<String> = review.layers.firstOrNull { it.index == layer }
-            ?.hunks?.filter { it.path == path }?.mapTo(HashSet()) { it.id }.orEmpty()
+        val shownLayer: Layer? = review.layers.firstOrNull { it.index == layer }
+        val selected: Set<String> = shownLayer?.hunks?.filter { it.path == path }?.mapTo(HashSet()) { it.id }.orEmpty()
 
         val matches: Boolean = headText == null || baseText == null || fileHunks.isEmpty() ||
             LayerFilter.leftText(headText, baseText, fileHunks, emptySet()) != null
         var leftText: String = baseText.orEmpty()
-        var leftTitle = "Base (merge base)"
+        var leftTitle = "Base"
         var warning: String? = null
         if (layer != null && selected.isNotEmpty() && headText != null && baseText != null) {
             val filtered: String? = LayerFilter.leftText(headText, baseText, fileHunks, selected)
@@ -79,16 +88,15 @@ class ReviewFileProducer(
         } else {
             factory.createEmpty()
         }
-        val request = SimpleDiffRequest(path, left, right, leftTitle, "Local file")
+        val request = SimpleDiffRequest(path, left, right, "$leftTitle · $path", "Local · $path")
 
-        if (warning != null) {
-            val text: String = warning
-            request.putUserData(
-                DiffUserDataKeys.NOTIFICATION_PROVIDERS,
-                listOf(DiffNotificationProvider { EditorNotificationPanel(EditorNotificationPanel.Status.Warning).apply { setText(text) } }),
-            )
-        }
+        val notifications: List<DiffNotificationProvider> = listOfNotNull(
+            stop?.let { ReviewBanners.stop(project, it) } ?: shownLayer?.let { ReviewBanners.layer(it) },
+            warning?.let { text -> DiffNotificationProvider { EditorNotificationPanel(EditorNotificationPanel.Status.Warning).apply { setText(text) } } },
+        )
+        if (notifications.isNotEmpty()) request.putUserData(DiffUserDataKeys.NOTIFICATION_PROVIDERS, notifications)
         scrollTo?.let { request.putUserData(DiffUserDataKeys.SCROLL_TO_LINE, Pair.create(it.side, it.line - 1)) }
+        if (stop != null && scrollTo != null) request.putUserData(STOP_MARKER, StopMarker(scrollTo.side, scrollTo.line - 1, stop.stop.title))
         if (layer != null && matches && local != null) request.putUserData(LAYER_MARKERS, markersFor(fileHunks))
         return request
     }
