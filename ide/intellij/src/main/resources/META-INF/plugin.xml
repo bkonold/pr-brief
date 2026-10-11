@@ -11,4 +11,20 @@
     <depends>Git4Idea</depends>
     <depends>org.jetbrains.plugins.github</depends>
 
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="PR Brief" anchor="right" secondary="false" icon="AllIcons.Actions.ShowAsTree"
+                    factoryClass="io.github.bkonold.prbrief.ui.PrBriefToolWindowFactory"/>
+        <applicationConfigurable parentId="tools" instance="io.github.bkonold.prbrief.ui.PrBriefSettings"
+                                 id="io.github.bkonold.prbrief.settings" displayName="PR Brief"/>
+    </extensions>
+
+    <actions>
+        <action id="PrBrief.Refresh" class="io.github.bkonold.prbrief.ui.RefreshBriefAction"
+                text="Refresh Brief" description="Read the PR brief again" icon="AllIcons.Actions.Refresh"/>
+        <action id="PrBrief.LoadFile" class="io.github.bkonold.prbrief.ui.LoadReviewFileAction"
+                text="Load review.json from File…" description="Open a review.json instead of fetching the brief"
+                icon="AllIcons.Actions.MenuOpen"/>
+        <action id="PrBrief.Settings" class="io.github.bkonold.prbrief.ui.OpenBriefSettingsAction"
+                text="PR Brief Settings…" description="Set the optional GitHub token" icon="AllIcons.General.Settings"/>
+    </actions>
 </idea-plugin>

@@ -1,0 +1,725 @@
+{
+  "schema": 4,
+  "repo": "bkonold/pr-brief-demo",
+  "pr": 1,
+  "head_sha": "e10b234727d7153f09aa9782d8de874ed6677ac2",
+  "variant": "layers",
+  "model": null,
+  "nodes": {},
+  "walkthrough": [
+    {
+      "i": 1,
+      "title": "The holds table",
+      "why": "Everything else reads this shape, so start with the schema.",
+      "path": "api/src/main/resources/db/migration/V3__holds.sql",
+      "side": "R",
+      "line": 1,
+      "node": null
+    },
+    {
+      "i": 2,
+      "title": "The hold entity",
+      "why": "Maps the table; check the status column and the queue position.",
+      "path": "api/src/main/java/dev/shelf/entities/HoldEntity.java",
+      "side": "R",
+      "line": 1,
+      "node": null
+    },
+    {
+      "i": 3,
+      "title": "Placing a hold",
+      "why": "The queue rules live here.",
+      "path": "api/src/main/java/dev/shelf/services/HoldService.java",
+      "side": "R",
+      "line": 20,
+      "node": null
+    },
+    {
+      "i": 4,
+      "title": "Loans honor the queue",
+      "why": "A checkout now checks who is first in line.",
+      "path": "api/src/main/java/dev/shelf/services/LoanService.java",
+      "side": "R",
+      "line": 50,
+      "node": null
+    },
+    {
+      "i": 5,
+      "title": "The hold endpoint",
+      "why": "The new public surface.",
+      "path": "api/src/main/java/dev/shelf/controllers/HoldController.java",
+      "side": "R",
+      "line": null,
+      "node": null
+    },
+    {
+      "i": 6,
+      "title": "The book page button",
+      "why": "Where a reader places a hold.",
+      "path": "web/src/BookPage.tsx",
+      "side": "R",
+      "line": 12,
+      "node": null
+    }
+  ],
+  "chunks": [
+    {
+      "i": 1,
+      "title": "Hold schema",
+      "summary": "Adds the holds table and the entity for it, and drops the unused books.notes column.",
+      "risk": "high",
+      "risk_reason": "A migration drops a column.",
+      "depends_on": [],
+      "hunks": [
+        {
+          "id": "h24",
+          "path": "api/src/main/resources/db/migration/V3__holds.sql",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            19
+          ],
+          "added": 19,
+          "removed": 0
+        },
+        {
+          "id": "h09",
+          "path": "api/src/main/java/dev/shelf/entities/HoldEntity.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            93
+          ],
+          "added": 93,
+          "removed": 0
+        },
+        {
+          "id": "h07",
+          "path": "api/src/main/java/dev/shelf/entities/BookEntity.java",
+          "change": "modified",
+          "old": [
+            27,
+            9
+          ],
+          "new": [
+            27,
+            6
+          ],
+          "added": 0,
+          "removed": 3
+        },
+        {
+          "id": "h08",
+          "path": "api/src/main/java/dev/shelf/entities/BookEntity.java",
+          "change": "modified",
+          "old": [
+            61,
+            12
+          ],
+          "new": [
+            58,
+            4
+          ],
+          "added": 0,
+          "removed": 8
+        },
+        {
+          "id": "h10",
+          "path": "api/src/main/java/dev/shelf/entities/LoanEntity.java",
+          "change": "modified",
+          "old": [
+            36,
+            6
+          ],
+          "new": [
+            36,
+            9
+          ],
+          "added": 3,
+          "removed": 0
+        },
+        {
+          "id": "h11",
+          "path": "api/src/main/java/dev/shelf/entities/LoanEntity.java",
+          "change": "modified",
+          "old": [
+            69,
+            6
+          ],
+          "new": [
+            72,
+            14
+          ],
+          "added": 8,
+          "removed": 0
+        }
+      ]
+    },
+    {
+      "i": 2,
+      "title": "Hold models and repository",
+      "summary": "The request, view and status types of a hold, its repository, and the fields other models gain.",
+      "risk": "low",
+      "risk_reason": null,
+      "depends_on": [
+        1
+      ],
+      "hunks": [
+        {
+          "id": "h12",
+          "path": "api/src/main/java/dev/shelf/models/Book.java",
+          "change": "modified",
+          "old": [
+            6,
+            18
+          ],
+          "new": [
+            6,
+            12
+          ],
+          "added": 1,
+          "removed": 7
+        },
+        {
+          "id": "h13",
+          "path": "api/src/main/java/dev/shelf/models/CheckoutRequest.java",
+          "change": "modified",
+          "old": [
+            1,
+            5
+          ],
+          "new": [
+            1,
+            10
+          ],
+          "added": 6,
+          "removed": 1
+        },
+        {
+          "id": "h14",
+          "path": "api/src/main/java/dev/shelf/models/Hold.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            24
+          ],
+          "added": 24,
+          "removed": 0
+        },
+        {
+          "id": "h15",
+          "path": "api/src/main/java/dev/shelf/models/HoldRequest.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            5
+          ],
+          "added": 5,
+          "removed": 0
+        },
+        {
+          "id": "h16",
+          "path": "api/src/main/java/dev/shelf/models/HoldStatus.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            14
+          ],
+          "added": 14,
+          "removed": 0
+        },
+        {
+          "id": "h17",
+          "path": "api/src/main/java/dev/shelf/repositories/HoldRepository.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            26
+          ],
+          "added": 26,
+          "removed": 0
+        },
+        {
+          "id": "h19",
+          "path": "api/src/main/java/dev/shelf/services/LoanService.java",
+          "change": "modified",
+          "old": [
+            1,
+            6
+          ],
+          "new": [
+            1,
+            7
+          ],
+          "added": 1,
+          "removed": 0
+        },
+        {
+          "id": "h20",
+          "path": "api/src/main/java/dev/shelf/services/LoanService.java",
+          "change": "modified",
+          "old": [
+            9,
+            8
+          ],
+          "new": [
+            10,
+            8
+          ],
+          "added": 1,
+          "removed": 1
+        }
+      ]
+    },
+    {
+      "i": 3,
+      "title": "Hold service",
+      "summary": "Placing, queueing and fulfilling holds, and loans that honor the queue.",
+      "risk": "medium",
+      "risk_reason": "The loan path now reads the hold queue.",
+      "depends_on": [
+        1,
+        2
+      ],
+      "hunks": [
+        {
+          "id": "h18",
+          "path": "api/src/main/java/dev/shelf/services/HoldService.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            129
+          ],
+          "added": 129,
+          "removed": 0
+        },
+        {
+          "id": "h21",
+          "path": "api/src/main/java/dev/shelf/services/LoanService.java",
+          "change": "modified",
+          "old": [
+            20,
+            18
+          ],
+          "new": [
+            21,
+            22
+          ],
+          "added": 7,
+          "removed": 3
+        },
+        {
+          "id": "h22",
+          "path": "api/src/main/java/dev/shelf/services/LoanService.java",
+          "change": "modified",
+          "old": [
+            39,
+            13
+          ],
+          "new": [
+            44,
+            23
+          ],
+          "added": 14,
+          "removed": 4
+        },
+        {
+          "id": "h23",
+          "path": "api/src/main/java/dev/shelf/services/LoanService.java",
+          "change": "modified",
+          "old": [
+            54,
+            8
+          ],
+          "new": [
+            69,
+            9
+          ],
+          "added": 3,
+          "removed": 2
+        }
+      ]
+    },
+    {
+      "i": 4,
+      "title": "Hold endpoint and contract",
+      "summary": "The controller, the OpenAPI additions and the regenerated client.",
+      "risk": "medium",
+      "risk_reason": "Adds a public endpoint.",
+      "depends_on": [
+        3
+      ],
+      "hunks": [
+        {
+          "id": "h06",
+          "path": "api/src/main/java/dev/shelf/controllers/HoldController.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            42
+          ],
+          "added": 42,
+          "removed": 0
+        },
+        {
+          "id": "h01",
+          "path": "api/openapi.json",
+          "change": "modified",
+          "old": [
+            93,
+            6
+          ],
+          "new": [
+            93,
+            71
+          ],
+          "added": 65,
+          "removed": 0
+        },
+        {
+          "id": "h02",
+          "path": "api/openapi.json",
+          "change": "modified",
+          "old": [
+            215,
+            6
+          ],
+          "new": [
+            280,
+            40
+          ],
+          "added": 34,
+          "removed": 0
+        },
+        {
+          "id": "h03",
+          "path": "api/openapi.json",
+          "change": "modified",
+          "old": [
+            269,
+            9
+          ],
+          "new": [
+            368,
+            6
+          ],
+          "added": 0,
+          "removed": 3
+        },
+        {
+          "id": "h04",
+          "path": "api/openapi.json",
+          "change": "modified",
+          "old": [
+            308,
+            6
+          ],
+          "new": [
+            404,
+            7
+          ],
+          "added": 1,
+          "removed": 0
+        },
+        {
+          "id": "h05",
+          "path": "api/openapi.json",
+          "change": "modified",
+          "old": [
+            319,
+            9
+          ],
+          "new": [
+            416,
+            73
+          ],
+          "added": 64,
+          "removed": 0
+        },
+        {
+          "id": "h33",
+          "path": "web/sdk/generated.ts",
+          "change": "modified",
+          "old": [
+            3,
+            7
+          ],
+          "new": [
+            3,
+            6
+          ],
+          "added": 0,
+          "removed": 1
+        },
+        {
+          "id": "h34",
+          "path": "web/sdk/generated.ts",
+          "change": "modified",
+          "old": [
+            18,
+            8
+          ],
+          "new": [
+            17,
+            31
+          ],
+          "added": 23,
+          "removed": 0
+        },
+        {
+          "id": "h35",
+          "path": "web/sdk/generated.ts",
+          "change": "modified",
+          "old": [
+            60,
+            8
+          ],
+          "new": [
+            82,
+            11
+          ],
+          "added": 3,
+          "removed": 0
+        }
+      ]
+    },
+    {
+      "i": 5,
+      "title": "Place a hold from the book page",
+      "summary": "The book page shows a hold button and its state.",
+      "risk": "low",
+      "risk_reason": null,
+      "depends_on": [
+        4
+      ],
+      "hunks": [
+        {
+          "id": "h37",
+          "path": "web/src/BookPage.tsx",
+          "change": "modified",
+          "old": [
+            1,
+            19
+          ],
+          "new": [
+            1,
+            27
+          ],
+          "added": 10,
+          "removed": 2
+        },
+        {
+          "id": "h38",
+          "path": "web/src/BookPage.tsx",
+          "change": "modified",
+          "old": [
+            23,
+            7
+          ],
+          "new": [
+            31,
+            9
+          ],
+          "added": 3,
+          "removed": 1
+        },
+        {
+          "id": "h36",
+          "path": "web/src/BookPage.test.tsx",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            36
+          ],
+          "added": 36,
+          "removed": 0
+        }
+      ]
+    },
+    {
+      "i": 6,
+      "title": "Tests",
+      "summary": "Service and controller tests for holds, and the loan tests that changed.",
+      "risk": "low",
+      "risk_reason": null,
+      "depends_on": [
+        3,
+        4
+      ],
+      "hunks": [
+        {
+          "id": "h25",
+          "path": "api/src/test/java/dev/shelf/controllers/HoldControllerTest.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            69
+          ],
+          "added": 69,
+          "removed": 0
+        },
+        {
+          "id": "h27",
+          "path": "api/src/test/java/dev/shelf/services/HoldServiceTest.java",
+          "change": "added",
+          "old": [
+            0,
+            0
+          ],
+          "new": [
+            1,
+            155
+          ],
+          "added": 155,
+          "removed": 0
+        },
+        {
+          "id": "h26",
+          "path": "api/src/test/java/dev/shelf/controllers/LoanControllerTest.java",
+          "change": "modified",
+          "old": [
+            25,
+            14
+          ],
+          "new": [
+            25,
+            23
+          ],
+          "added": 11,
+          "removed": 2
+        },
+        {
+          "id": "h28",
+          "path": "api/src/test/java/dev/shelf/services/LoanServiceTest.java",
+          "change": "modified",
+          "old": [
+            4,
+            9
+          ],
+          "new": [
+            4,
+            11
+          ],
+          "added": 2,
+          "removed": 0
+        },
+        {
+          "id": "h29",
+          "path": "api/src/test/java/dev/shelf/services/LoanServiceTest.java",
+          "change": "modified",
+          "old": [
+            17,
+            6
+          ],
+          "new": [
+            19,
+            7
+          ],
+          "added": 1,
+          "removed": 0
+        },
+        {
+          "id": "h30",
+          "path": "api/src/test/java/dev/shelf/services/LoanServiceTest.java",
+          "change": "modified",
+          "old": [
+            30,
+            8
+          ],
+          "new": [
+            33,
+            9
+          ],
+          "added": 2,
+          "removed": 1
+        },
+        {
+          "id": "h31",
+          "path": "api/src/test/java/dev/shelf/services/LoanServiceTest.java",
+          "change": "modified",
+          "old": [
+            48,
+            24
+          ],
+          "new": [
+            52,
+            37
+          ],
+          "added": 18,
+          "removed": 5
+        },
+        {
+          "id": "h32",
+          "path": "api/src/test/java/dev/shelf/services/LoanServiceTest.java",
+          "change": "modified",
+          "old": [
+            73,
+            7
+          ],
+          "new": [
+            90,
+            7
+          ],
+          "added": 1,
+          "removed": 1
+        }
+      ]
+    }
+  ],
+  "file_sets": {
+    "contract": [
+      "api/openapi.json",
+      "web/sdk/generated.ts"
+    ],
+    "data": [
+      "api/src/main/resources/db/migration/V3__holds.sql"
+    ],
+    "tests": [
+      "api/src/test/java/dev/shelf/controllers/HoldControllerTest.java",
+      "api/src/test/java/dev/shelf/controllers/LoanControllerTest.java",
+      "api/src/test/java/dev/shelf/services/HoldServiceTest.java",
+      "api/src/test/java/dev/shelf/services/LoanServiceTest.java",
+      "web/src/BookPage.test.tsx"
+    ]
+  }
+}
