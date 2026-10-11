@@ -51,10 +51,8 @@ re-run it instead.
   layer left with no hunk and renumbers the rest, resets a `risk` that is not low, medium or high to low, drops a
   `depends_on` entry that is not a whole number or does not name an earlier layer (and renumbers the rest after drops), and
   gathers the hunks no layer has into a last layer, `Unassigned`; each fix, a title over 8 words, a missing summary and a
-  count outside 1 to 7 leave a note in `error.txt`. The `### Layers` section of `body.md` follows the Data section: a
-  `<details>` per layer whose summary has its number, title, risk and risk reason, then its summary sentence and a link to
-  each hunk (`path:first–last`, the old lines for a deleted file) with its id; files with no hunk (a pure rename, a binary
-  file) are listed after the layers. `review.json` gets `chunks: [{i, title, summary, risk, risk_reason, depends_on, hunks:
+  count outside 1 to 7 leave a note in `error.txt`. The layers go to `review.json` for the browser extension, not to the comment: `body.md` and `body.html` have no Layers section.
+  `review.json` gets `chunks: [{i, title, summary, risk, risk_reason, depends_on, hunks:
   [{id, path, change, old: [start, count], new: [start, count], added, removed}]}]` only when the answer has a `chunks`
   key, `added` and `removed` being how many of the hunk's lines start with `+` and with `-` (a `\ No newline at end of
   file` marker is neither); the schema is still 4, the two counts being additive. Layers are additive: a missing diagram

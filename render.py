@@ -8,8 +8,8 @@ usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 Reads answer.yaml, run.json and pr.json from the run dir.
 Writes body.md and body.html, review.json and the diagram's SVG. On broken YAML it writes error.txt and an error page and exits 1.
 The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
-diagram's boxes, the walkthrough stops, the layers (the key `chunks`) and the file sets go to review.json. An answer with `chunks` also gets
-a Layers section after the Data section.
+diagram's boxes, the walkthrough stops, the layers (the key `chunks`) and the file sets go to review.json, where the browser extension reads
+them; the body has no section for the layers.
 """
 import argparse
 import html
@@ -498,21 +498,6 @@ def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: 
             draw("database", "No database changes", DATA_LEVELS, "data", data))
 
 
-def chunks_markdown(run: dict[str, Any], paths: list[str], chunks: list[dict[str, Any]], hunks: list[Hunk]) -> str:
-    """The Layers section of a body. The files of the PR that have no hunk, which no layer can hold, are listed after the
-    layers."""
-    repo: str = run["repo"]
-    number: str = str(run["pr"])
-
-    def link_of(hunk: Hunk) -> str:
-        side, start, _ = layout.hunk_target(hunk)
-        return line_link(repo, number, {"path": hunk.path, "side": side, "line": start})
-
-    with_hunks: set[str] = {hunk.path for hunk in hunks}
-    return layout.chunks_section(chunks, {hunk.id: hunk for hunk in hunks}, link_of,
-                                 [(path, diff_link(repo, number, path)) for path in paths if path not in with_hunks])
-
-
 # ---------------------------------------------------------------- body
 
 @dataclass
@@ -549,8 +534,6 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
     chunk_notes: list[str] = []
     if "chunks" in data:
         chunks, chunk_notes = resolve_chunks(data["chunks"], hunks)
-        if chunks:
-            ordered["chunks"] = chunks_markdown(run, paths, chunks, hunks)
     diagram: str = render_diagram(data.get("changes_diagram"))
     node_files: dict[str, list[str]] = {}
     titles: dict[str, str] = {}
@@ -579,7 +562,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
         if key == "changes_diagram":
             body += f"### Diagram Walkthrough\n\n{value}\n\n{caption + chr(10) * 2 if caption else ''}"
             continue
-        if key == "chunks" or (key in ("contract", "data") and value.startswith("<details")):
+        if key in ("contract", "data") and value.startswith("<details"):
             body += f"{value}\n"
         else:
             body += f"### {HEADINGS.get(key) or key.replace('_', ' ').capitalize()}\n"
@@ -589,7 +572,7 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
                 value = value.replace("\n-", "\n\n-").strip()
             body += f"{value}\n"
         if idx < len(ordered) - 1:
-            body += "\n\n" if key in ("contract", "data", "chunks") else "\n\n___\n\n"
+            body += "\n\n" if key in ("contract", "data") else "\n\n___\n\n"
     body += "\n\n___\n\n"
     return Brief(f"# {pr['title']}\n\n{body}", nodes, stops, sets, chunks, hunks)
 
