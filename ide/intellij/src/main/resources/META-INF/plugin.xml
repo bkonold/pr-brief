@@ -1,0 +1,14 @@
+<idea-plugin>
+    <id>io.github.bkonold.prbrief</id>
+    <name>PR Brief</name>
+    <vendor>bkonold</vendor>
+    <description><![CDATA[
+        Review a pull request from its PR Brief in the IDE: the walkthrough, the layers and the changed files, with the
+        diff's right side being your local file, so go to definition and find usages work on the code under review.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>Git4Idea</depends>
+    <depends>org.jetbrains.plugins.github</depends>
+
+</idea-plugin>
