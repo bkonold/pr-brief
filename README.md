@@ -159,6 +159,7 @@ and secret from the [API keys page](https://addons.mozilla.org/developers/addon/
 - [docs/rendering.md](docs/rendering.md): the variant, how the renderer treats the answer, and the run folder.
 - [docs/prompt.md](docs/prompt.md): how the brief's prompt is assembled, with an example.
 - [docs/context.md](docs/context.md): the context packs and how callers are matched.
+- [ide/intellij/](ide/intellij/README.md): a prototype IntelliJ plugin that reviews a brief against your local checkout.
 
 ## Vendored code
 

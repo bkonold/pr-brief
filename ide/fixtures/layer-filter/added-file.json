@@ -1,0 +1,17 @@
+{
+  "description": "An added file: base is empty, so reverting its hunk leaves nothing on the left.",
+  "path": "a.txt",
+  "base": "",
+  "head": "new 1\nnew 2\nnew 3\nnew 4\nnew 5\n",
+  "hunks": [
+    {
+      "id": "h01",
+      "path": "a.txt",
+      "change": "added",
+      "old": [0, 0],
+      "new": [1, 5]
+    }
+  ],
+  "selected": ["h01"],
+  "expected": ""
+}
