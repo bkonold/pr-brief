@@ -213,8 +213,8 @@
     return row;
   }
 
-  const TESTS_MODES = ["all", "hide", "only"];
-  const TESTS_CHOICES = [["all", "All"], ["hide", "Hidden"], ["only", "Only"]];
+  const TESTS_MODES = ["all", "unit", "integration", "hide", "only"];
+  const TESTS_CHOICES = [["all", "All"], ["unit", "Unit"], ["integration", "Integration"], ["hide", "Hidden"], ["only", "Only"]];
   // Octicons' triangle-down, 16-unit filled.
   const TRIANGLE_DOWN_ICON = "m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z";
 
@@ -376,12 +376,38 @@
     return dot < 0 ? name : name.slice(0, dot);
   }
 
-  // Whether `path` is a test: one of the review's test files, or a file of a JVM source set other than main whose name
-  // has "test" in it (test, integrationTest).
+  // Whether `path` is a test: one of the review's test files (the Set `testPaths`), or a file of a JVM source set other
+  // than main whose name has "test" in it (test, integrationTest). The pane's lists and the page's filter both ask this.
   function isTestPath(path, testPaths) {
     if (testPaths.has(path)) return true;
     const jvm = jvmFolderOf(dirOf(path));
     return Boolean(jvm) && jvm.set !== "main" && TEST_SOURCE_SET.test(jvm.set);
+  }
+
+  const FIXTURE_SOURCE_SET = /fixture/i;
+  const INTEGRATION_SOURCE_SET = /integration/i;
+  const INTEGRATION_JVM_NAME = /(?:IT|IntegrationTest)$/;
+  const INTEGRATION_JS_NAME = /\.integration\.(?:(?:test|spec)\.)?[cm]?[jt]sx?$/;
+
+  // The kind of a test, by its path and name alone: "fixture" for a file of a JVM source set with "fixture" in its name
+  // (testFixtures), "integration" for one of a source set with "integration" in its name (integrationTest), for a name
+  // ending in IT or IntegrationTest before its extension, and for a `.integration.test.ts` or `.integration.spec.js`
+  // style name (any js or ts extension), and "unit" for any other.
+  function testKind(path) {
+    const jvm = jvmFolderOf(dirOf(path));
+    if (jvm && FIXTURE_SOURCE_SET.test(jvm.set)) return "fixture";
+    if (jvm && INTEGRATION_SOURCE_SET.test(jvm.set)) return "integration";
+    const name = baseName(path);
+    return INTEGRATION_JVM_NAME.test(stemOf(name)) || INTEGRATION_JS_NAME.test(name) ? "integration" : "unit";
+  }
+
+  // Whether the Tests control's `mode` keeps a test of this `kind` out of view: "hide" keeps out every test, "unit" the
+  // integration tests and "integration" the unit tests; fixtures only go with "hide".
+  function hidesTestKind(mode, kind) {
+    if (mode === "hide") return true;
+    if (mode === "unit") return kind === "integration";
+    if (mode === "integration") return kind === "unit";
+    return false;
   }
 
   // The files of `sources` the test at `path` may test, by path and name alone. A JVM test tests the file of its
@@ -508,28 +534,28 @@
   }
 
   // The rows of a package line under the Tests control's mode, as [{ entry, nested, tag, hidden }] in order, and how many
-  // files it keeps out of view. "all" shows every file, a paired test under its file. "hide" shows no test: a paired test
-  // is counted in its file's `hidden`, an unpaired one is dropped. "only" shows only the tests: a file is dropped, and a
-  // test paired with it, no longer under a file, is a row of its own; none carries the "test" tag.
+  // files it keeps out of view. "all" shows every file, a paired test under its file. "hide", "unit" and "integration"
+  // keep out the tests `hidesTestKind` names: a paired one is counted in its file's `hidden`, an unpaired one is dropped,
+  // and the tests they leave show as in "all". "only" shows only the tests: a file is dropped, and a test paired with it,
+  // no longer under a file, is a row of its own; none carries the "test" tag.
   function packageRows(group, testsMode) {
     const rows = [];
     let hiddenCount = 0;
+    const hides = (test) => hidesTestKind(testsMode, testKind(test.path));
     for (const entry of group.files) {
-      if (testsMode === "hide") {
-        if (entry.test) hiddenCount += 1;
-        else {
-          rows.push({ entry, nested: false, tag: false, hidden: entry.tests });
-          hiddenCount += entry.tests.length;
-        }
-      } else if (testsMode === "only") {
+      if (testsMode === "only") {
         if (entry.test) rows.push({ entry, nested: false, tag: false, hidden: [] });
         else {
           hiddenCount += 1;
           for (const test of entry.tests) rows.push({ entry: test, nested: false, tag: false, hidden: [] });
         }
+      } else if (entry.test && hides(entry)) {
+        hiddenCount += 1;
       } else {
-        rows.push({ entry, nested: false, tag: entry.test, hidden: [] });
-        for (const test of entry.tests) rows.push({ entry: test, nested: true, tag: false, hidden: [] });
+        const hidden = entry.tests.filter(hides);
+        hiddenCount += hidden.length;
+        rows.push({ entry, nested: false, tag: entry.test, hidden });
+        for (const test of entry.tests.filter((other) => !hides(other))) rows.push({ entry: test, nested: true, tag: false, hidden: [] });
       }
     }
     return { rows, hiddenCount };
@@ -576,7 +602,8 @@
     }
     if (hiddenCount > 0) {
       const only = state.testsMode === "only";
-      const noun = only ? ["file", "files"] : ["test", "tests"];
+      const kind = { unit: "integration ", integration: "unit " }[state.testsMode] ?? "";
+      const noun = only ? ["file", "files"] : [`${kind}test`, `${kind}tests`];
       const note = make("div", "prf-chunk-hidden-note");
       note.append(filledIcon(only ? FILE_ICON : BEAKER_ICON, 14, "prf-chunk-note-icon"), make("span", undefined, `${hiddenCount} ${noun[hiddenCount === 1 ? 0 : 1]} hidden`));
       list.append(note);
@@ -843,7 +870,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, bar, filters, stopList, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, isTestPath, testKind, hidesTestKind, bar, filters, stopList, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

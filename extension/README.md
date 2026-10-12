@@ -66,17 +66,27 @@ has no Tests control and no test behaviour: it shows the files its file set choo
 | Option | Value | Shows |
 | --- | --- | --- |
 | All | `all` | every file |
+| Unit | `unit` | every file but the integration tests |
+| Integration | `integration` | every file but the unit tests |
 | Hidden | `hide` | every file but the tests |
 | Only | `only` | the test files only |
 
-- **Diff and tree.** In "Files", in "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
+A path is a test when it is in `file_sets.tests` or sits in a JVM source set other than `main` with "test" in its name; the pane's
+lists and the page's filter use that one definition. A test is classified by its path and name alone: a fixture when its JVM source set
+has "fixture" in its name (`src/testFixtures/`); an integration test when its source set has "integration" in its name
+(`src/integrationTest/`), its name ends in `IT` or `IntegrationTest` before the extension, or it is named like `foo.integration.test.ts`
+or `foo.integration.spec.js` (any js or ts extension); a unit test otherwise. "Unit" and "Integration" hide the other kind only, never a
+fixture; "Hidden" hides every test, fixtures included.
+
+- **Diff and tree.** In "Files", in "hide", "unit" and "integration" the page hides the diffs of the tests the mode hides and the host's tree rows for them, and a directory left
   with none, whatever the chip or the layer keeps (the `exclude` of `page.filter`, a third filter that only subtracts). In "only" the
   page is narrowed to the test files by the file filter (within the chosen chip, if any), so no list of the PR's other files is
   needed. Either way the host's own tree rows follow, as with a chip.
-- **Layer file list.** In the selected layer's file list, the files the mode keeps out of view (the test files in "hide", any other file in
-  "only") are not drawn, and neither is a package line or module header left with nothing. In "hide" a file's paired tests show as a small
-  beaker badge with their count after its name, its tooltip listing their file names; in "only" a test whose file is gone becomes a row
-  of its own, without the "test" tag. A muted line at the end, "N tests hidden" or "N files hidden", counts what the mode left out.
+- **Layer file list.** In the selected layer's file list, the files the mode keeps out of view (the tests the mode hides, any other file in
+  "only") are not drawn, and neither is a package line or module header left with nothing. In "hide", "unit" and "integration" a file's paired
+  tests that the mode hides show as a small beaker badge with their count after its name, its tooltip listing their file names, and the
+  tests it keeps stay under the file; in "only" a test whose file is gone becomes a row
+  of its own, without the "test" tag. A muted line at the end, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out.
 - **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
   hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
   whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening

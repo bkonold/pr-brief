@@ -1835,26 +1835,28 @@ test("the Tests control is drawn only when the review has test files, in Files a
   assert.deepEqual(testsControlOf({ mode: "review", tests: ["a.test.js"] }), []);
 });
 
-test("the Tests control reads Tests: All, Hidden or Only and selects the option matching the mode, All when there is none", () => {
+test("the Tests control reads Tests: All, Unit, Integration, Hidden or Only and selects the option matching the mode, All when there is none", () => {
   const view = (testsMode) => {
     const [control] = testsControlOf({ mode: "files", tests: ["a.test.js"], testsMode });
     const [select] = byClass(control, "prf-tests-select");
     return { label: byClass(control, "prf-tests-label")[0].textContent, value: byClass(control, "prf-tests-value")[0].textContent, selected: select.value };
   };
   assert.deepEqual(view("all"), { label: "Tests:", value: "All", selected: "all" });
+  assert.deepEqual(view("unit"), { label: "Tests:", value: "Unit", selected: "unit" });
+  assert.deepEqual(view("integration"), { label: "Tests:", value: "Integration", selected: "integration" });
   assert.deepEqual(view("hide"), { label: "Tests:", value: "Hidden", selected: "hide" });
   assert.deepEqual(view("only"), { label: "Tests:", value: "Only", selected: "only" });
   assert.deepEqual(view("bogus"), { label: "Tests:", value: "All", selected: "all" });
   assert.deepEqual(view(undefined), { label: "Tests:", value: "All", selected: "all" });
 });
 
-test("the Tests select is labelled Tests and offers All, Hidden and Only with the values all, hide and only", () => {
+test("the Tests select is labelled Tests and offers All, Unit, Integration, Hidden and Only in that order with the values all, unit, integration, hide and only", () => {
   const [control] = testsControlOf({ mode: "files", tests: ["a.test.js"] });
   const [select] = byClass(control, "prf-tests-select");
   assert.equal(select.tag, "select");
   assert.equal(select.attributes["aria-label"], "Tests");
   const options = select.children;
-  assert.deepEqual(options.map((option) => [option.tag, option.textContent, option.value]), [["option", "All", "all"], ["option", "Hidden", "hide"], ["option", "Only", "only"]]);
+  assert.deepEqual(options.map((option) => [option.tag, option.textContent, option.value]), [["option", "All", "all"], ["option", "Unit", "unit"], ["option", "Integration", "integration"], ["option", "Hidden", "hide"], ["option", "Only", "only"]]);
 });
 
 test("changing the Tests select sends its value as the mode", () => {
@@ -2627,6 +2629,77 @@ test("with every file shown the rows are as before: tests under their files, a t
     assert.deepEqual(rowsOf(result.row), [["foo.ts", false, 0], ["foo.test", true, 0], ["lone.test.ts", false, 1]]);
     assert.deepEqual([byClass(result.row, "prf-chunk-test-badge").length, result.note], [0, null]);
     assert.equal(byClass(result.row, "prf-dimmed").length, 0);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("testKind tells a fixture, an integration test and a unit test by path and name alone", () => {
+  const { testKind } = require("../tree.js");
+  const kinds = (...paths) => paths.map(testKind);
+  assert.deepEqual(kinds("acme-api/src/test/java/com/acme/FooTest.java", "acme-api/src/test/java/com/acme/FooTests.java", "web/foo.test.ts", "web/foo.spec.tsx", "README.md"), ["unit", "unit", "unit", "unit", "unit"]);
+  assert.deepEqual(kinds("acme-api/src/integrationTest/java/com/acme/FooTest.java", "acme-api/src/IntegrationTest/kotlin/com/acme/Foo.kt"), ["integration", "integration"]);
+  assert.deepEqual(kinds("acme-api/src/test/java/com/acme/FooIT.java", "acme-api/src/test/java/com/acme/FooIntegrationTest.java", "acme-api/src/test/java/com/acme/FooIT.kt"), ["integration", "integration", "integration"]);
+  assert.deepEqual(kinds("web/foo.integration.test.ts", "web/foo.integration.spec.tsx", "web/foo.integration.test.js", "web/foo.integration.spec.jsx", "web/foo.integration.ts"), ["integration", "integration", "integration", "integration", "integration"]);
+  assert.deepEqual(kinds("web/integration/foo.test.ts", "web/foo.integrations.test.ts", "acme-api/src/test/java/com/acme/EXITTest.java"), ["unit", "unit", "unit"]);
+  assert.deepEqual(kinds("acme-api/src/testFixtures/java/com/acme/FooIT.java", "acme-api/src/integrationTestFixtures/java/com/acme/Foo.java", "acme-api/src/testFixtures/java/com/acme/Support.java"), ["fixture", "fixture", "fixture"]);
+});
+
+test("hidesTestKind: hide hides every kind, unit the integration tests, integration the unit tests, and neither hides fixtures", () => {
+  const { hidesTestKind } = require("../tree.js");
+  const hides = (mode) => ["unit", "integration", "fixture"].map((kind) => hidesTestKind(mode, kind));
+  assert.deepEqual(["all", "only", "unit", "integration", "hide"].map(hides), [[false, false, false], [false, false, false], [false, true, false], [true, false, false], [true, true, true]]);
+});
+
+const MIXED = layerOf(
+  "acme-api/src/main/java/com/acme/a/Foo.java",
+  "acme-api/src/test/java/com/acme/a/FooTest.java",
+  "acme-api/src/integrationTest/java/com/acme/a/FooIT.java",
+  "acme-api/src/testFixtures/java/com/acme/a/FooFixture.java",
+  "acme-api/src/test/java/com/acme/a/LoneTest.java",
+  "acme-api/src/test/java/com/acme/b/OtherIT.java",
+  "acme-api/src/main/java/com/acme/c/Bar.java",
+);
+
+test("with Unit chosen the integration tests collapse into their file's badge or are dropped, and the unit tests and fixtures stay", () => {
+  globalThis.document = fakeDom();
+  try {
+    const result = shown([MIXED], "unit", []);
+    assert.deepEqual(rowsOf(result.row), [["Foo.java", false, 0], ["FooTest", true, 0], ["FooFixture.java", false, 1], ["LoneTest.java", false, 1], ["Bar.java", false, 0]]);
+    const [badge] = byClass(result.files[0], "prf-chunk-test-badge");
+    assert.deepEqual([badge.textContent, badge.title], ["1", "FooIT.java"]);
+    assert.deepEqual([result.folders, result.note.textContent], [["a", "c"], "2 integration tests hidden"]);
+    assert.equal(shown([layerOf("m/src/main/java/p/A.java", "m/src/integrationTest/java/p/AIT.java")], "unit", []).note.textContent, "1 integration test hidden");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with Integration chosen the unit tests collapse into their file's badge or are dropped, and the integration tests and fixtures stay", () => {
+  globalThis.document = fakeDom();
+  try {
+    const result = shown([MIXED], "integration", []);
+    assert.deepEqual(rowsOf(result.row), [["Foo.java", false, 0], ["FooIT", true, 0], ["FooFixture.java", false, 1], ["OtherIT.java", false, 1], ["Bar.java", false, 0]]);
+    const [badge] = byClass(result.files[0], "prf-chunk-test-badge");
+    assert.deepEqual([badge.textContent, badge.title], ["1", "FooTest.java"]);
+    assert.equal(result.note.textContent, "2 unit tests hidden");
+    const nothing = shown([layerOf("m/src/test/java/p/ATest.java")], "integration", []);
+    assert.deepEqual([nothing.modules, nothing.folders, nothing.files, nothing.note.textContent], [[], [], [], "1 unit test hidden"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with Unit or Integration chosen a test of the review's file_sets.tests is classified like any other", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/foo.integration.test.ts", "web/bar.ts")];
+    const tests = ["web/foo.test.ts", "web/foo.integration.test.ts"];
+    const unit = shown(chunks, "unit", tests);
+    assert.deepEqual([rowsOf(unit.row), unit.note.textContent], [[["foo.ts", false, 0], ["foo.test", true, 0], ["bar.ts", false, 0]], "1 integration test hidden"]);
+    const integration = shown(chunks, "integration", tests);
+    assert.deepEqual([rowsOf(integration.row), integration.note.textContent], [[["foo.ts", false, 0], ["foo.integration.test.ts", false, 1], ["bar.ts", false, 0]], "1 unit test hidden"]);
+    assert.equal(byClass(integration.files[0], "prf-chunk-test-badge")[0].title, "foo.test.ts");
   } finally {
     delete globalThis.document;
   }

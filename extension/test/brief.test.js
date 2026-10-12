@@ -312,6 +312,9 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       fileChips: require("../tree.js").fileChips,
       fileSetOf: require("../tree.js").fileSetOf,
       testsOf: require("../tree.js").testsOf,
+      isTestPath: require("../tree.js").isTestPath,
+      testKind: require("../tree.js").testKind,
+      hidesTestKind: require("../tree.js").hidesTestKind,
       widestWidth: require("../tree.js").widestWidth,
       stopCallout: (stop, stops, onGo, nodes) => withBox({ stop, stops, onGo, nodes }),
       chunkCallout: (chunk, chunks, onGo, onJudged, judged) => withBox({ chunk, chunks, onGo, onJudged, judged }),
@@ -1244,15 +1247,15 @@ async function loadTests(options = {}) {
 test("the Tests mode starts at all, shows every file and passes the review's test files to the pane", async () => {
   const { renders, excluded, filters, hunkFilters } = await loadTests();
   assert.deepEqual([renders.at(-1).state.tests, renders.at(-1).state.testsMode], [["db/V1.sql", "src/old.js"], "all"]);
-  assert.deepEqual([excluded.at(-1), filters.at(-1), hunkFilters.at(-1)], [null, null, null]);
+  assert.deepEqual([plain(excluded.at(-1)), filters.at(-1), hunkFilters.at(-1)], [null, null, null]);
 });
 
 test("a review with no test files lists none and shows every file whatever the stored mode", async () => {
   const { renders, excluded, filters } = loadContent({ run: null, view: "files", review: WALK_REVIEW, local: { [TESTS_KEY]: "only" } });
   await settle();
-  assert.deepEqual([renders.at(-1).state.tests, renders.at(-1).state.testsMode, excluded.at(-1), filters.at(-1)], [[], "all", null, null]);
+  assert.deepEqual([renders.at(-1).state.tests, renders.at(-1).state.testsMode, plain(excluded.at(-1)), filters.at(-1)], [[], "all", null, null]);
   await renders.at(-1).handlers.onTestsMode("hide");
-  assert.deepEqual([renders.at(-1).state.testsMode, excluded.at(-1)], ["all", null]);
+  assert.deepEqual([renders.at(-1).state.testsMode, plain(excluded.at(-1))], ["all", null]);
 });
 
 test("the Tests mode is saved as its string, read back on the next load, and an unknown value is ignored", async () => {
@@ -1266,7 +1269,7 @@ test("the Tests mode is saved as its string, read back on the next load, and an 
   await first.renders.at(-1).handlers.onTestsMode("all");
   assert.equal(first.local[TESTS_KEY], "all");
   const again = await loadTests({ local: { [TESTS_KEY]: "hide" } });
-  assert.deepEqual([again.renders.at(-1).state.testsMode, again.excluded.at(-1)], ["hide", ["db/V1.sql", "src/old.js"]]);
+  assert.deepEqual([again.renders.at(-1).state.testsMode, plain(again.excluded.at(-1))], ["hide", ["db/V1.sql", "src/old.js"]]);
   const garbled = await loadTests({ local: { [TESTS_KEY]: "nope" } });
   assert.equal(garbled.renders.at(-1).state.testsMode, "all");
 });
@@ -1274,13 +1277,52 @@ test("the Tests mode is saved as its string, read back on the next load, and an 
 test("hiding tests in Files excludes the test files; the walkthrough excludes nothing whatever the mode", async () => {
   const { renders, excluded, filters } = await loadTests();
   await renders.at(-1).handlers.onTestsMode("hide");
-  assert.deepEqual([excluded.at(-1), filters.at(-1)], [["db/V1.sql", "src/old.js"], null]);
+  assert.deepEqual([plain(excluded.at(-1)), filters.at(-1)], [["db/V1.sql", "src/old.js"], null]);
   await renders.at(-1).handlers.onSelectStop(2);
-  assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.testsMode, excluded.at(-1), filters.at(-1)], ["review", "hide", null, null]);
+  assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.testsMode, plain(excluded.at(-1)), filters.at(-1)], ["review", "hide", null, null]);
   await renders.at(-1).handlers.onMode("files");
-  assert.deepEqual(excluded.at(-1), ["db/V1.sql", "src/old.js"]);
+  assert.deepEqual(plain(excluded.at(-1)), ["db/V1.sql", "src/old.js"]);
   await renders.at(-1).handlers.onTestsMode("all");
   assert.equal(excluded.at(-1), null);
+});
+
+const KINDS_REVIEW = {
+  ...TESTS_REVIEW,
+  file_sets: { contract: [], data: [], tests: ["db/V1.sql", "src/old.js", "src/api.integration.test.js", "m/src/testFixtures/java/p/Support.java"] },
+};
+
+test("Unit excludes the integration tests from the page and Integration the unit tests, and neither excludes a fixture", async () => {
+  const { renders, excluded, filters } = await loadTests({ review: KINDS_REVIEW });
+  await renders.at(-1).handlers.onTestsMode("unit");
+  assert.deepEqual([renders.at(-1).state.testsMode, plain(excluded.at(-1)), filters.at(-1)], ["unit", ["src/api.integration.test.js"], null]);
+  await renders.at(-1).handlers.onTestsMode("integration");
+  assert.deepEqual([renders.at(-1).state.testsMode, plain(excluded.at(-1)), filters.at(-1)], ["integration", ["db/V1.sql", "src/old.js"], null]);
+  await renders.at(-1).handlers.onTestsMode("hide");
+  assert.deepEqual(plain(excluded.at(-1)), KINDS_REVIEW.file_sets.tests);
+  await renders.at(-1).handlers.onTestsMode("all");
+  assert.equal(excluded.at(-1), null);
+});
+
+test("a test in a JVM test source set is a test for the page's filter even when file_sets.tests does not list it", async () => {
+  const jvm = "m/src/test/java/p/FooTest.java";
+  const review = { ...KINDS_REVIEW, chunks: [...KINDS_REVIEW.chunks, { i: 5, title: "JVM", summary: "s", risk: "low", risk_reason: "", depends_on: [], hunks: [{ id: "h9", path: jvm, change: "modified", old: [1, 1], new: [1, 1] }] }] };
+  const { renders, excluded, filters } = await loadTests({ review });
+  await renders.at(-1).handlers.onTestsMode("hide");
+  assert.equal(plain(excluded.at(-1)).includes(jvm), true);
+  await renders.at(-1).handlers.onTestsMode("integration");
+  assert.equal(plain(excluded.at(-1)).includes(jvm), true);
+  await renders.at(-1).handlers.onTestsMode("unit");
+  assert.equal(plain(excluded.at(-1)).includes(jvm), false);
+  await renders.at(-1).handlers.onTestsMode("only");
+  assert.equal(plain(filters.at(-1)).includes(jvm), true);
+});
+
+test("Unit and Integration are saved and read back as their strings", async () => {
+  const first = await loadTests();
+  await first.renders.at(-1).handlers.onTestsMode("integration");
+  assert.equal(first.local[TESTS_KEY], "integration");
+  const again = await loadTests({ local: { [TESTS_KEY]: "unit" } });
+  assert.equal(again.renders.at(-1).state.testsMode, "unit");
 });
 
 test("showing only tests in Files narrows the page to the test files; nothing is excluded", async () => {
@@ -1288,7 +1330,7 @@ test("showing only tests in Files narrows the page to the test files; nothing is
   await renders.at(-1).handlers.onTestsMode("only");
   assert.deepEqual(plain([filters.at(-1), excluded.at(-1)]), [["db/V1.sql", "src/old.js"], null]);
   await renders.at(-1).handlers.onSelectStop(1);
-  assert.deepEqual([renders.at(-1).state.mode, filters.at(-1), excluded.at(-1)], ["review", null, null]);
+  assert.deepEqual([renders.at(-1).state.mode, filters.at(-1), plain(excluded.at(-1))], ["review", null, null]);
   await renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(filters.at(-1)), ["db/V1.sql", "src/old.js"]);
   await renders.at(-1).handlers.onTestsMode("all");
@@ -1300,9 +1342,9 @@ test("the walkthrough applies only the file set, whatever Tests mode is stored",
   for (const stored of ["all", "hide", "only"]) {
     const { renders, filters, excluded, hunkFilters } = await loadTests({ review, local: { [TESTS_KEY]: stored } });
     await renders.at(-1).handlers.onMode("review");
-    assert.deepEqual([renders.at(-1).state.mode, filters.at(-1), excluded.at(-1), hunkFilters.at(-1)], ["review", null, null, null]);
+    assert.deepEqual([renders.at(-1).state.mode, filters.at(-1), plain(excluded.at(-1)), hunkFilters.at(-1)], ["review", null, null, null]);
     await renders.at(-1).handlers.onFileSet("contract");
-    assert.deepEqual([plain(filters.at(-1)), excluded.at(-1)], [["db/V1.sql", "src/api.js"], null]);
+    assert.deepEqual([plain(filters.at(-1)), plain(excluded.at(-1))], [["db/V1.sql", "src/api.js"], null]);
   }
 });
 
@@ -1313,7 +1355,7 @@ test("a file set and the Tests mode both apply", async () => {
   await renders.at(-1).handlers.onTestsMode("only");
   assert.deepEqual(plain(filters.at(-1)), ["db/V1.sql"]);
   await renders.at(-1).handlers.onTestsMode("hide");
-  assert.deepEqual([filters.at(-1), excluded.at(-1)], [["db/V1.sql", "src/api.js"], ["db/V1.sql", "src/old.js"]]);
+  assert.deepEqual([filters.at(-1), plain(excluded.at(-1))], [["db/V1.sql", "src/api.js"], ["db/V1.sql", "src/old.js"]]);
 });
 
 test("the chunks tab drops the hidden files' ranges and puts the callout above the first shown file", async () => {
@@ -1324,7 +1366,7 @@ test("the chunks tab drops the hidden files' ranges and puts the callout above t
     { path: "src/ui.js", side: "R", start: 4, count: 5 },
     { path: "src/ui.js", side: "L", start: 4, count: 3 },
   ]);
-  assert.deepEqual(excluded.at(-1), ["db/V1.sql", "src/old.js"]);
+  assert.deepEqual(plain(excluded.at(-1)), ["db/V1.sql", "src/old.js"]);
   await renders.at(-1).handlers.onSelectChunk(4);
   assert.deepEqual(plain(hunkFilters.at(-1)), [
     { path: "src/api.js", side: "R", start: 5, count: 2 },
@@ -1350,7 +1392,7 @@ test("a chunk whose files are all kept out by the mode is shown whole, with its 
   await renders.at(-1).handlers.onTestsMode("hide");
   await renders.at(-1).handlers.onSelectChunk(2);
   assert.deepEqual(plain(hunkFilters.at(-1)), [{ path: "src/old.js", side: "L", start: 1, count: 20 }]);
-  assert.deepEqual(excluded.at(-1), ["db/V1.sql"]);
+  assert.deepEqual(plain(excluded.at(-1)), ["db/V1.sql"]);
   assert.deepEqual(callouts.at(-1).map((entry) => entry.anchor), ["diff-src/old.js"]);
   await renders.at(-1).handlers.onTestsMode("only");
   await renders.at(-1).handlers.onSelectChunk(3);
