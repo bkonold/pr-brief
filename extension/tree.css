@@ -55,6 +55,7 @@
   justify-content: space-between;
   gap: 8px;
   margin: 0 0 10px;
+  padding-right: 10px;
 }
 
 .prf-modes {
@@ -75,9 +76,9 @@
 /* Both segments share one box; only the selected one changes its background and border. */
 .prf-mode {
   display: inline-flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
-  padding: 3px 8px;
+  padding: 3px 6px;
   font-size: 12px;
   font-weight: 500;
   line-height: 20px;
@@ -570,21 +571,14 @@
   display: none;
 }
 
-/* The risk pill and judged tick, with the layer's line counts right-aligned on the line under them. */
-.prf-chunk-meta {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-end;
-  align-self: flex-start;
-  margin-left: auto;
-}
-
+/* The risk chip and judged tick, at the right of the title row, level with its first line. */
 .prf-chunk-badges {
   display: flex;
+  flex: none;
   gap: 6px;
   align-items: center;
+  align-self: flex-start;
+  margin-left: auto;
 }
 
 /* A folder line and a file button both have 4px of their own left padding, so a folder's icon lines up under the
@@ -667,23 +661,6 @@
   margin-left: 20px;
 }
 
-.prf-diffstat {
-  display: flex;
-  flex: none;
-  gap: 6px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.prf-stat-added {
-  color: var(--fgColor-success, #1a7f37);
-}
-
-.prf-stat-removed {
-  color: var(--fgColor-danger, #cf222e);
-}
-
 .prf-chunk-file {
   font: inherit;
   font-size: 14px;
@@ -702,7 +679,6 @@
 
 .prf-chunk-group .prf-chunk-paired {
   margin-left: 40px;
-  color: var(--fgColor-muted, #59636e);
 }
 
 .prf-chunk-test-badge {
@@ -743,17 +719,6 @@
   flex: none;
 }
 
-.prf-chunk-test-tag {
-  flex: none;
-  align-self: center;
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 14px;
-  color: var(--fgColor-default, #1f2328);
-  border: 1px solid var(--borderColor-default, #d0d7de);
-  border-radius: 999px;
-}
-
 .prf-chunk-file:hover {
   background: var(--control-transparent-bgColor-hover, rgba(208, 215, 222, 0.32));
 }
@@ -769,9 +734,12 @@
 
 .prf-risk {
   display: inline-block;
+  padding: 0 6px;
   font-size: 12px;
   line-height: 18px;
   color: var(--prf-risk, var(--fgColor-muted, #59636e));
+  border: 1px solid color-mix(in srgb, var(--prf-risk, #59636e) 40%, transparent);
+  border-radius: 6px;
 }
 
 .prf-risk-low {

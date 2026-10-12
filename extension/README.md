@@ -86,7 +86,7 @@ fixture; "Hidden" hides every test, fixtures included.
   "only") are not drawn, and neither is a package line or module header left with nothing. In "hide", "unit" and "integration" a file's paired
   tests that the mode hides show as a small beaker badge with their count after its name, its tooltip listing their file names, and the
   tests it keeps stay under the file; in "only" a test whose file is gone becomes a row
-  of its own, without the "test" tag. A muted line above the list, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out. In "Files" the same line, counting the distinct files the page filter excludes among the page's diff blocks and the brief's paths, ends the panel, directly above the host's tree; it is left out in "all" and when nothing is excluded.
+  of its own. A muted line above the list, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out. In "Files" the same line, counting the distinct files the page filter excludes among the page's diff blocks and the brief's paths, ends the panel, directly above the host's tree; it is left out in "all" and when nothing is excluded.
 - **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
   hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
   whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
@@ -187,9 +187,8 @@ numbers of the layers this one builds on, and each hunk `{id, path, change, old:
 being the lines the hunk adds and removes (a review made before they were written has none).
 A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" entry in the toggle.
 
-- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer: its number and title, and at the end a risk pill
-  (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"), with the layer's line counts over all its hunks
-  right-aligned on the line under them in GitHub's diffstat form (`+12` in the success green, `−34` in the danger red, 12px, tabular figures; both shown even when one is 0). The selected row is marked as a
+- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer: its number and title, and, at the right end of the title row, level with the title's first line, a quiet risk
+  chip (the risk word at 12px in green, amber or red for low, medium and high, with a 1px border in the same colour at 40%, no fill) and, once it is judged, a green check icon (tooltip "Judged"). The panel shows no line counts. The selected row is marked as a
   stop's is, and scrolled into view when a layer is opened from its callout.
 - The selected row, and only it, lists the files its layer touches, grouped by module and package. Each package is one line, not a button, with a
   muted folder icon (GitHub's `file-directory-fill`) and its label in the default text colour; a long label wraps rather than being cut off,
@@ -208,10 +207,10 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
   always leaving each folder one segment. The main and test source sets of a package share one line; a source set other than main
   or a test set is kept in the label, e.g. `acme-api generated › gen`. Modules and their packages come in the order of their first hunk.
 - A test is a file in `file_sets.tests`, or a file of a JVM source set other than `main` with "test" in its name. A test that tests
-  exactly one file of the layer is drawn under that file, indented, in muted text, with a beaker icon and no extension, and is a file
-  button like any other. A JVM test tests the file of its module and package named like it without a trailing `Test`, `Tests` or
+  exactly one file of the layer is drawn under that file, indented a level, and is a file button like any other.
+  Every test row has a beaker icon and its full file name. A JVM test tests the file of its module and package named like it without a trailing `Test`, `Tests` or
   `IT`; a `foo.test.ts` or `foo.spec.tsx` (also `.js` and `.jsx`) tests the `foo.ts`, `foo.tsx`, `foo.js` or `foo.jsx` beside it.
-  A test with no such file in the layer, or with several, stays a file of its package line with a small "test" tag after its name.
+  A test with no such file in the layer, or with several, stays a file of its package line, at file level.
 - Selecting a layer narrows the page to it: the diffs of the layer's files only, and in each only the rows that show a
   line inside one of the layer's hunks. A hunk's new range filters the right side and its old range the left, so removed
   lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own

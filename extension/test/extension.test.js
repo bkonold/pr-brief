@@ -1400,7 +1400,7 @@ test("a chunk row shows the number, title, risk and a tick when judged, and mark
     assert.deepEqual(rows.map((row) => byClass(row, "prf-judged-tick").length), [1, 0, 0]);
     const tick = byClass(rows[0], "prf-judged-tick")[0];
     assert.deepEqual([tick.title, tick.textContent, tick.children.map((child) => [child.tag, child.className, child.attributes.width])], ["Judged", "", [["svg", "prf-judged-icon", "16"]]]);
-    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-name", "prf-chunk-meta"]);
+    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-name", "prf-chunk-badges"]);
     assert.deepEqual(byClass(rows[1], "prf-chunk-badges")[0].children.map((child) => child.className), ["prf-risk prf-risk-high"]);
     assert.deepEqual(rows.map((row) => row.className.split(" ").includes("prf-selected")), [false, true, false]);
     assert.deepEqual(rows.map((row) => byClass(row, "prf-head-main")[0].attributes["aria-current"] ?? null), [null, "step", null]);
@@ -1432,40 +1432,17 @@ const COUNTED = [
   { i: 2, title: "Two", summary: "", risk: "high", risk_reason: "", depends_on: [], hunks: [{ id: "h4", path: "src/c.js", change: "added", old: [0, 0], new: [1, 9], added: 9, removed: 0 }] },
 ];
 
-test("a layer row shows its added and removed totals under its risk, and a file line its own sums over the layer's hunks", () => {
+test("a layer row and its file lines show no line counts", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const rows = byClass(chunkList({ chunks: COUNTED, selectedChunk: 1, judged: new Set([1]) }, {}), "prf-chunk");
-    const stats = (element) => byClass(element, "prf-diffstat").map((stat) => stat.children.map((part) => [part.className, part.textContent]));
     const main = byClass(rows[0], "prf-head-main")[0];
-    assert.deepEqual(main.children.map((child) => child.className.split(" ")[0]), ["prf-num", "prf-name", "prf-chunk-meta"]);
-    const meta = byClass(main, "prf-chunk-meta")[0];
-    assert.deepEqual(meta.children.map((child) => child.className.split(" ")[0]), ["prf-chunk-badges", "prf-diffstat"]);
-    assert.deepEqual(byClass(meta, "prf-chunk-badges")[0].children.map((child) => child.className.split(" ")[0]), ["prf-risk", "prf-judged-tick"]);
-    assert.deepEqual(stats(meta), [[["prf-stat-added", "+8"], ["prf-stat-removed", "\u221210"]]]);
-    assert.deepEqual(stats(byClass(rows[1], "prf-chunk-meta")[0]), [[["prf-stat-added", "+9"], ["prf-stat-removed", "\u22120"]]]);
+    assert.deepEqual(main.children.map((child) => child.className.split(" ")[0]), ["prf-num", "prf-name", "prf-chunk-badges"]);
+    assert.deepEqual(byClass(main, "prf-chunk-badges")[0].children.map((child) => child.className.split(" ")[0]), ["prf-risk", "prf-judged-tick"]);
     const files = byClass(rows[0], "prf-chunk-file");
-    assert.deepEqual(files.map((file) => byClass(file, "prf-chunk-file-name")[0].textContent), ["a.js", "b.js"]);
-    assert.deepEqual(files.map((file) => byClass(file, "prf-diffstat")), [[], []]);
-    assert.deepEqual(byClass(rows[1], "prf-chunk-file"), []);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a layer with a hunk that lacks its counts shows no counts", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const [counted] = COUNTED;
-    const withoutCounts = { id: "h9", path: "src/b.js", change: "modified", old: [9, 1], new: [9, 1] };
-    const half = { ...withoutCounts, id: "h8", path: "src/d.js", added: 4 };
-    const chunk = { ...counted, hunks: [...counted.hunks, withoutCounts, half] };
-    const row = byClass(chunkList({ chunks: [chunk, { ...counted, i: 2, hunks: [withoutCounts] }], selectedChunk: 1, judged: new Set() }, {}), "prf-chunk")[0];
-    assert.deepEqual(byClass(byClass(row, "prf-chunk-meta")[0], "prf-diffstat"), []);
-    const old = byClass(chunkList({ chunks: CHUNKS, selectedChunk: 2, judged: new Set() }, {}), "prf-chunk");
-    assert.deepEqual(old.map((element) => byClass(element, "prf-diffstat").length), [0, 0, 0]);
+    assert.deepEqual(files.map((file) => file.children.map((child) => child.className)), [["prf-chunk-icon", "prf-chunk-file-name"], ["prf-chunk-icon", "prf-chunk-file-name"]]);
+    assert.deepEqual(rows.map((row) => row.textContent.match(/[+\u2212]\d/)), [null, null]);
   } finally {
     delete globalThis.document;
   }
@@ -2059,7 +2036,22 @@ test("folderGroups keeps each file's hunks in the layer's order", () => {
   assert.deepEqual(groupsOf(layerOf(), []), []);
 });
 
-const rowsOf = (root) => byClass(root, "prf-chunk-file").map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.className.split(" ").includes("prf-chunk-paired"), byClass(file, "prf-chunk-test-tag").length]);
+const iconDOf = (file) => byClass(file, "prf-chunk-icon")[0].children[0].attributes.d;
+let iconKinds = null;
+const kindOfIcon = (d) => {
+  if (!iconKinds) {
+    const previous = globalThis.document;
+    globalThis.document = fakeDom();
+    try {
+      const [source, test] = byClass(require("../tree.js").chunkList({ chunks: [layerOf("web/foo.ts", "web/foo.test.ts")], selectedChunk: 1, judged: new Set(), tests: ["web/foo.test.ts"] }, {}), "prf-chunk-file");
+      iconKinds = new Map([[iconDOf(source), "file"], [iconDOf(test), "beaker"]]);
+    } finally {
+      globalThis.document = previous;
+    }
+  }
+  return iconKinds.get(d);
+};
+const rowsOf = (root) => byClass(root, "prf-chunk-file").map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, file.className.split(" ").includes("prf-chunk-paired"), kindOfIcon(iconDOf(file))]);
 
 test("the selected chunk lists a module header and a rail when it has two packages, and a package line over each package's files", () => {
   const { chunkList } = require("../tree.js");
@@ -2098,22 +2090,22 @@ test("the selected chunk lists a module header and a rail when it has two packag
   }
 });
 
-test("a paired test is a clickable file button under its file with a beaker, no extension and its path as tooltip, and an unpaired one carries a test tag", () => {
+test("every test is a clickable file button with a beaker and its full name, indented under its file when paired and at file level when not", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const picked = [];
     const chunks = [layerOf(`${JAVA}/Foo.java`, `${JAVA_TEST}/FooTest.java`, `${JAVA_TEST}/OtherTest.java`)];
     const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk")[0];
-    assert.deepEqual(rowsOf(row), [["Foo.java", false, 0], ["FooTest", true, 0], ["OtherTest.java", false, 1]]);
+    assert.deepEqual(rowsOf(row), [["Foo.java", false, "file"], ["FooTest.java", true, "beaker"], ["OtherTest.java", false, "beaker"]]);
     const [, paired, other] = byClass(row, "prf-chunk-file");
     assert.deepEqual(paired.children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-file-name"]]);
     assert.equal(paired.title, `${JAVA_TEST}/FooTest.java`);
-    assert.deepEqual(other.children.map((child) => child.className), ["prf-chunk-icon", "prf-chunk-file-name", "prf-chunk-test-tag"]);
-    assert.equal(byClass(other, "prf-chunk-test-tag")[0].textContent, "test");
+    assert.deepEqual(other.children.map((child) => child.className), ["prf-chunk-icon", "prf-chunk-file-name"]);
     paired.listeners.click();
     assert.deepEqual(picked, [[1, `${JAVA_TEST}/FooTest.java`]]);
-    assert.notEqual(byClass(paired, "prf-chunk-icon")[0].children[0].attributes.d, byClass(byClass(row, "prf-chunk-file")[0], "prf-chunk-icon")[0].children[0].attributes.d);
+    assert.equal(iconDOf(paired), iconDOf(other));
+    assert.notEqual(iconDOf(paired), iconDOf(byClass(row, "prf-chunk-file")[0]));
   } finally {
     delete globalThis.document;
   }
@@ -2631,7 +2623,7 @@ test("with only tests shown a file is dropped and its paired test becomes a row 
     const tests = ["web/foo.test.ts", "web/lone.test.ts"];
     const result = shown(chunks, "only", tests);
     assert.deepEqual(names(result.files), ["foo.test.ts", "lone.test.ts"]);
-    assert.deepEqual(result.files.map((file) => [file.className.split(" ").includes("prf-chunk-paired"), byClass(file, "prf-chunk-test-tag").length, byClass(file, "prf-chunk-test-badge").length]), [[false, 0, 0], [false, 0, 0]]);
+    assert.deepEqual(result.files.map((file) => [file.className.split(" ").includes("prf-chunk-paired"), byClass(file, "prf-chunk-test-badge").length]), [[false, 0], [false, 0]]);
     assert.deepEqual([result.modules, result.folders, result.note.textContent], [[], ["web"], "3 files hidden"]);
     const [promoted] = result.files;
     assert.deepEqual(promoted.children.map((child) => child.className), ["prf-chunk-icon", "prf-chunk-file-name"]);
@@ -2644,12 +2636,12 @@ test("with only tests shown a file is dropped and its paired test becomes a row 
   }
 });
 
-test("with every file shown the rows are as before: tests under their files, a tag on an unpaired test, no badge and no end line", () => {
+test("with every file shown the rows are as before: tests under their files, no badge and no end line", () => {
   globalThis.document = fakeDom();
   try {
     const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/lone.test.ts")];
     const result = shown(chunks, "all", ["web/foo.test.ts", "web/lone.test.ts"]);
-    assert.deepEqual(rowsOf(result.row), [["foo.ts", false, 0], ["foo.test", true, 0], ["lone.test.ts", false, 1]]);
+    assert.deepEqual(rowsOf(result.row), [["foo.ts", false, "file"], ["foo.test.ts", true, "beaker"], ["lone.test.ts", false, "beaker"]]);
     assert.deepEqual([byClass(result.row, "prf-chunk-test-badge").length, result.note], [0, null]);
     assert.equal(byClass(result.row, "prf-dimmed").length, 0);
   } finally {
@@ -2688,7 +2680,7 @@ test("with Unit chosen the integration tests collapse into their file's badge or
   globalThis.document = fakeDom();
   try {
     const result = shown([MIXED], "unit", []);
-    assert.deepEqual(rowsOf(result.row), [["Foo.java", false, 0], ["FooTest", true, 0], ["FooFixture.java", false, 1], ["LoneTest.java", false, 1], ["Bar.java", false, 0]]);
+    assert.deepEqual(rowsOf(result.row), [["Foo.java", false, "file"], ["FooTest.java", true, "beaker"], ["FooFixture.java", false, "beaker"], ["LoneTest.java", false, "beaker"], ["Bar.java", false, "file"]]);
     const [badge] = byClass(result.files[0], "prf-chunk-test-badge");
     assert.deepEqual([badge.textContent, badge.title], ["1", "FooIT.java"]);
     assert.deepEqual([result.folders, result.note.textContent], [["a", "c"], "2 integration tests hidden"]);
@@ -2702,7 +2694,7 @@ test("with Integration chosen the unit tests collapse into their file's badge or
   globalThis.document = fakeDom();
   try {
     const result = shown([MIXED], "integration", []);
-    assert.deepEqual(rowsOf(result.row), [["Foo.java", false, 0], ["FooIT", true, 0], ["FooFixture.java", false, 1], ["OtherIT.java", false, 1], ["Bar.java", false, 0]]);
+    assert.deepEqual(rowsOf(result.row), [["Foo.java", false, "file"], ["FooIT.java", true, "beaker"], ["FooFixture.java", false, "beaker"], ["OtherIT.java", false, "beaker"], ["Bar.java", false, "file"]]);
     const [badge] = byClass(result.files[0], "prf-chunk-test-badge");
     assert.deepEqual([badge.textContent, badge.title], ["1", "FooTest.java"]);
     assert.equal(result.note.textContent, "2 unit tests hidden");
@@ -2719,9 +2711,9 @@ test("with Unit or Integration chosen a test of the review's file_sets.tests is 
     const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/foo.integration.test.ts", "web/bar.ts")];
     const tests = ["web/foo.test.ts", "web/foo.integration.test.ts"];
     const unit = shown(chunks, "unit", tests);
-    assert.deepEqual([rowsOf(unit.row), unit.note.textContent], [[["foo.ts", false, 0], ["foo.test", true, 0], ["bar.ts", false, 0]], "1 integration test hidden"]);
+    assert.deepEqual([rowsOf(unit.row), unit.note.textContent], [[["foo.ts", false, "file"], ["foo.test.ts", true, "beaker"], ["bar.ts", false, "file"]], "1 integration test hidden"]);
     const integration = shown(chunks, "integration", tests);
-    assert.deepEqual([rowsOf(integration.row), integration.note.textContent], [[["foo.ts", false, 0], ["foo.integration.test.ts", false, 1], ["bar.ts", false, 0]], "1 unit test hidden"]);
+    assert.deepEqual([rowsOf(integration.row), integration.note.textContent], [[["foo.ts", false, "file"], ["foo.integration.test.ts", false, "beaker"], ["bar.ts", false, "file"]], "1 unit test hidden"]);
     assert.equal(byClass(integration.files[0], "prf-chunk-test-badge")[0].title, "foo.test.ts");
   } finally {
     delete globalThis.document;

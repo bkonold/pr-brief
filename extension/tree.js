@@ -319,18 +319,6 @@
     return make("span", `prf-risk prf-risk-${risk}`, risk);
   }
 
-  // GitHub's `+N −M` count of the lines `hunks` add and remove, or null when there are no hunks or any hunk lacks either
-  // count (a review made before the counts were written).
-  function diffStat(hunks) {
-    if (!hunks.length || !hunks.every((hunk) => Number.isInteger(hunk.added) && Number.isInteger(hunk.removed))) return null;
-    const stat = make("span", "prf-diffstat");
-    stat.append(
-      make("span", "prf-stat-added", `+${hunks.reduce((sum, hunk) => sum + hunk.added, 0)}`),
-      make("span", "prf-stat-removed", `\u2212${hunks.reduce((sum, hunk) => sum + hunk.removed, 0)}`),
-    );
-    return stat;
-  }
-
   // The files a layer touches, each with its hunks in the layer's order, listed in the order of each file's first hunk.
   function filesOf(chunk) {
     const files = new Map();
@@ -511,17 +499,13 @@
     return nodes;
   }
 
-  // One file's button: its icon, name and, at the right end, the lines the layer adds to and removes from it, with its full
-  // path as the tooltip. A test paired with a file (`nested`) is drawn under it with a beaker and without its extension; a
-  // test with no file to pair with carries a "test" tag unless every file shown is a test (`tag` false). `hidden` is the
-  // tests paired with the file that the Tests control keeps out of view: a badge after the name counts them, its tooltip
-  // listing their names.
-  function fileButton(entry, { nested = false, tag = false, hidden = [] }, chunk, handlers) {
+  // One file's button: its icon (a beaker for a test, a file otherwise) and its full name, with its full path as the
+  // tooltip. A test paired with a file (`nested`) is drawn indented under it. `hidden` is the tests paired with the file
+  // that the Tests control keeps out of view: a badge after the name counts them, its tooltip listing their names.
+  function fileButton(entry, { nested = false, hidden = [] }, chunk, handlers) {
     const file = button(nested ? "prf-chunk-file prf-chunk-paired" : "prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, entry.path));
     file.title = entry.path;
-    const name = nested ? stemOf(baseName(entry.path)) : baseName(entry.path);
-    file.append(filledIcon(nested ? BEAKER_ICON : FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", name));
-    if (tag) file.append(make("span", "prf-chunk-test-tag", "test"));
+    file.append(filledIcon(entry.test ? BEAKER_ICON : FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", baseName(entry.path)));
     if (hidden.length > 0) {
       const badge = make("span", "prf-chunk-test-badge");
       badge.title = hidden.map((test) => baseName(test.path)).join("\n");
@@ -531,29 +515,29 @@
     return file;
   }
 
-  // The rows of a package line under the Tests control's mode, as [{ entry, nested, tag, hidden }] in order, and how many
+  // The rows of a package line under the Tests control's mode, as [{ entry, nested, hidden }] in order, and how many
   // files it keeps out of view. "all" shows every file, a paired test under its file. "hide", "unit" and "integration"
   // keep out the tests `hidesTestKind` names: a paired one is counted in its file's `hidden`, an unpaired one is dropped,
   // and the tests they leave show as in "all". "only" shows only the tests: a file is dropped, and a test paired with it,
-  // no longer under a file, is a row of its own; none carries the "test" tag.
+  // no longer under a file, is a row of its own.
   function packageRows(group, testsMode) {
     const rows = [];
     let hiddenCount = 0;
     const hides = (test) => hidesTestKind(testsMode, testKind(test.path));
     for (const entry of group.files) {
       if (testsMode === "only") {
-        if (entry.test) rows.push({ entry, nested: false, tag: false, hidden: [] });
+        if (entry.test) rows.push({ entry, nested: false, hidden: [] });
         else {
           hiddenCount += 1;
-          for (const test of entry.tests) rows.push({ entry: test, nested: false, tag: false, hidden: [] });
+          for (const test of entry.tests) rows.push({ entry: test, nested: false, hidden: [] });
         }
       } else if (entry.test && hides(entry)) {
         hiddenCount += 1;
       } else {
         const hidden = entry.tests.filter(hides);
         hiddenCount += hidden.length;
-        rows.push({ entry, nested: false, tag: entry.test, hidden });
-        for (const test of entry.tests.filter((other) => !hides(other))) rows.push({ entry: test, nested: true, tag: false, hidden: [] });
+        rows.push({ entry, nested: false, hidden });
+        for (const test of entry.tests.filter((other) => !hides(other))) rows.push({ entry: test, nested: true, hidden: [] });
       }
     }
     return { rows, hiddenCount };
@@ -615,9 +599,8 @@
     return list;
   }
 
-  // One row per layer: its number and title, then at the end its risk and a tick once it is judged, with the layer's
-  // added and removed line counts right-aligned on the line under them. The current layer is marked and, as the only one,
-  // lists the files it touches under its title.
+  // One row per layer: its number and title, then at the end its risk and a tick once it is judged. The current layer is
+  // marked and, as the only one, lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
@@ -630,11 +613,7 @@
       tick.append(filledIcon(CHECK_ICON, 16, "prf-judged-icon"));
       badges.append(tick);
     }
-    const meta = make("span", "prf-chunk-meta");
-    meta.append(badges);
-    const stat = diffStat(chunk.hunks);
-    if (stat) meta.append(stat);
-    main.append(make("span", "prf-num", String(chunk.i)), make("span", "prf-name", chunk.title), meta);
+    main.append(make("span", "prf-num", String(chunk.i)), make("span", "prf-name", chunk.title), badges);
     const header = make("div", "prf-head");
     header.append(main);
     const element = make("section", "prf-group prf-chunk");
