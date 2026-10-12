@@ -207,7 +207,7 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
   always leaving each folder one segment. The main and test source sets of a package share one line; a source set other than main
   or a test set is kept in the label, e.g. `acme-api generated › gen`. Modules and their packages come in the order of their first hunk.
 - A test is a file in `file_sets.tests`, or a file of a JVM source set other than `main` with "test" in its name. A test that tests
-  exactly one file of the layer is drawn under that file, indented a level, and is a file button like any other.
+  exactly one file of the layer is drawn under that file, indented a level, and is a file button like any other; a JVM one also shows its source set (`src/test`, `src/integrationTest`) in 12px muted text at the row's right end, which never wraps (the name is cut off first), and a TS or JS test, which sits beside its source, shows none.
   Every test row has a beaker icon and its full file name. A JVM test tests the file of its module and package named like it without a trailing `Test`, `Tests` or
   `IT`; a `foo.test.ts` or `foo.spec.tsx` (also `.js` and `.jsx`) tests the `foo.ts`, `foo.tsx`, `foo.js` or `foo.jsx` beside it.
   A test with no such file in the layer, or with several, stays a file of its package line, at file level.

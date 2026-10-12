@@ -661,6 +661,17 @@
   margin-left: 20px;
 }
 
+.prf-chunk-source-set {
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+  padding-left: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fgColor-muted, #59636e);
+  white-space: nowrap;
+}
+
 .prf-chunk-file {
   font: inherit;
   font-size: 14px;

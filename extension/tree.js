@@ -500,12 +500,15 @@
   }
 
   // One file's button: its icon (a beaker for a test, a file otherwise) and its full name, with its full path as the
-  // tooltip. A test paired with a file (`nested`) is drawn indented under it. `hidden` is the tests paired with the file
+  // tooltip. A test paired with a file (`nested`) is drawn indented under it, and a JVM one also names the source set it
+  // lives in (`src/test`, `src/integrationTest`) at the row's right end. `hidden` is the tests paired with the file
   // that the Tests control keeps out of view: a badge after the name counts them, its tooltip listing their names.
   function fileButton(entry, { nested = false, hidden = [] }, chunk, handlers) {
     const file = button(nested ? "prf-chunk-file prf-chunk-paired" : "prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, entry.path));
     file.title = entry.path;
     file.append(filledIcon(entry.test ? BEAKER_ICON : FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", baseName(entry.path)));
+    const jvm = nested ? jvmFolderOf(dirOf(entry.path)) : null;
+    if (jvm) file.append(make("span", "prf-chunk-source-set", `src/${jvm.set}`));
     if (hidden.length > 0) {
       const badge = make("span", "prf-chunk-test-badge");
       badge.title = hidden.map((test) => baseName(test.path)).join("\n");

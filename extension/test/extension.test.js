@@ -2099,7 +2099,7 @@ test("every test is a clickable file button with a beaker and its full name, ind
     const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk")[0];
     assert.deepEqual(rowsOf(row), [["Foo.java", false, "file"], ["FooTest.java", true, "beaker"], ["OtherTest.java", false, "beaker"]]);
     const [, paired, other] = byClass(row, "prf-chunk-file");
-    assert.deepEqual(paired.children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-file-name"]]);
+    assert.deepEqual(paired.children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-file-name"], ["span", "prf-chunk-source-set"]]);
     assert.equal(paired.title, `${JAVA_TEST}/FooTest.java`);
     assert.deepEqual(other.children.map((child) => child.className), ["prf-chunk-icon", "prf-chunk-file-name"]);
     paired.listeners.click();
@@ -2675,6 +2675,24 @@ const MIXED = layerOf(
   "acme-api/src/test/java/com/acme/b/OtherIT.java",
   "acme-api/src/main/java/com/acme/c/Bar.java",
 );
+
+test("a paired JVM test names its source set at the row's right end, and no other row has a label", () => {
+  globalThis.document = fakeDom();
+  try {
+    const labels = (result) => result.files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, byClass(file, "prf-chunk-source-set").map((label) => label.textContent), file.title]);
+    const jvm = shown([MIXED], "all", []);
+    assert.deepEqual(
+      labels(jvm).map(([name, set]) => [name, set]),
+      [["Foo.java", []], ["FooTest.java", ["src/test"]], ["FooIT.java", ["src/integrationTest"]], ["FooFixture.java", []], ["LoneTest.java", []], ["OtherIT.java", []], ["Bar.java", []]],
+    );
+    const paired = byClass(jvm.files[1], "prf-chunk-source-set")[0];
+    assert.deepEqual([jvm.files[1].children.at(-1), jvm.files[1].title], [paired, "acme-api/src/test/java/com/acme/a/FooTest.java"]);
+    const ts = shown([layerOf("web/foo.ts", "web/foo.test.ts", "web/lone.test.ts")], "all", ["web/foo.test.ts", "web/lone.test.ts"]);
+    assert.deepEqual(labels(ts).map(([, set]) => set), [[], [], []]);
+  } finally {
+    delete globalThis.document;
+  }
+});
 
 test("with Unit chosen the integration tests collapse into their file's badge or are dropped, and the unit tests and fixtures stay", () => {
   globalThis.document = fakeDom();
