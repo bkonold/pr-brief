@@ -692,12 +692,15 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-bottom: 6px;
-  padding: 0 4px 6px;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 0 8px;
   font-size: 13px;
-  line-height: 20px;
-  color: var(--fgColor-muted, #59636e);
-  border-bottom: 1px solid var(--borderColor-muted, #d1d9e0b3);
+  line-height: 22px;
+  color: var(--fgColor-accent, #0969da);
+  background: var(--bgColor-accent-muted, #ddf4ff);
+  border: 1px solid var(--borderColor-accent-muted, #54aeff66);
+  border-radius: 6px;
 }
 
 .prf-tree > .prf-chunk-hidden-note {

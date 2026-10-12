@@ -512,7 +512,7 @@
     return element;
   }
 
-  // The muted line that says how many files the Tests control's `mode` keeps out of view: "N tests hidden", with
+  // The accent-tinted chip that says how many files the Tests control's `mode` keeps out of view: "N tests hidden", with
   // "integration" or "unit" before "tests" in the modes that hide only that kind, or "N files hidden" in "only", where it
   // is the files other than tests that are hidden. Shown above the layer's files and at the end of the "Files" panel.
   function hiddenNote(mode, count) {
@@ -526,7 +526,7 @@
 
   // The layer's files by module, each module with two or more package lines under a header (a box icon and its name) and
   // a rail down its left side, see `folderGroups`. The Tests control's mode leaves out the files it keeps out of view, and
-  // with them every package line and module header left with nothing; a muted line at the top says how many it left out.
+  // with them every package line and module header left with nothing; a tinted chip at the top says how many it left out.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
     const reviewPaths = state.chunks.flatMap((other) => other.hunks.map((hunk) => hunk.path));

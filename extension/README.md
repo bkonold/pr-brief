@@ -84,7 +84,7 @@ fixture; "Hidden" hides every test, fixtures included.
   needed. Either way the host's own tree rows follow, as with a chip.
 - **Layer file list.** In the selected layer's file list, the files the mode keeps out of view (the tests the mode hides, any other file in
   "only") are not drawn, and neither is a package line or module header left with nothing (a test source set's package line goes when all of its
-  files are hidden). A muted line above the list, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out. In "Files" the same line, counting the distinct files the page filter excludes among the page's diff blocks and the brief's paths, ends the panel, directly above the host's tree; it is left out in "all" and when nothing is excluded.
+  files are hidden). A blue-tinted chip above the list, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out. In "Files" the same chip, counting the distinct files the page filter excludes among the page's diff blocks and the brief's paths, ends the panel, directly above the host's tree; it is left out in "all" and when nothing is excluded.
 - **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
   hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
   whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
