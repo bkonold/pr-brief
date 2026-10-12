@@ -8,7 +8,7 @@
   const DIFF_ENTRY = 'div[class*="PullRequestDiffsList-module__diffEntry"]';
   const BLOCK_PATH = "[data-file-path]";
   const BLOCK_ANCHOR = "table[data-diff-anchor]";
-  const TREE_HOST = '#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]';
+  const TREE_HOST = '#pr-file-tree > [class*="FileTreeScrollable"]';
   // Primer's tree: a directory's row carries aria-expanded and a file's does not.
   const TREE_FILE = 'li[role="treeitem"]:not([aria-expanded])';
   const TREE_DIR = 'li[role="treeitem"][aria-expanded]';
