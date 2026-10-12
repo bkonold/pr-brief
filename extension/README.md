@@ -86,7 +86,7 @@ fixture; "Hidden" hides every test, fixtures included.
   "only") are not drawn, and neither is a package line or module header left with nothing. In "hide", "unit" and "integration" a file's paired
   tests that the mode hides show as a small beaker badge with their count after its name, its tooltip listing their file names, and the
   tests it keeps stay under the file; in "only" a test whose file is gone becomes a row
-  of its own, without the "test" tag. A muted line at the end, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out.
+  of its own, without the "test" tag. A muted line above the list, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out. In "Files" the same line, counting the distinct files the page filter excludes among the page's diff blocks and the brief's paths, ends the panel, directly above the host's tree; it is left out in "all" and when nothing is excluded.
 - **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
   hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
   whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
@@ -192,10 +192,10 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
   right-aligned on the line under them in GitHub's diffstat form (`+12` in the success green, `−34` in the danger red, 12px, tabular figures; both shown even when one is 0). The selected row is marked as a
   stop's is, and scrolled into view when a layer is opened from its callout.
 - The selected row, and only it, lists the files its layer touches, grouped by module and package. Each package is one line, not a button, with a
-  muted folder icon (GitHub's `file-directory-fill`) and its label in muted 12px text; a long label wraps rather than being cut off,
+  muted folder icon (GitHub's `file-directory-fill`) and its label in the default text colour; a long label wraps rather than being cut off,
   preferring to break after a `/`, and hangs under its own first character, not under the icon. The folder's full directory is the tooltip.
-  Its files sit under it, indented so each file's icon is under the label's first character: one button per file with a muted file icon (`file`) and the
-  file's name in the default text colour, and its full path as the tooltip, and at its right end that file's line counts over this layer's hunks only (the name keeps wrapping and shrinking, the counts stay on one line). A layer or file with a hunk that has no counts shows none. Files within a package come in the order of each file's first hunk. A click
+  Its files sit under it, each file's icon 20px right of the package icon (a module header, a package, a file and a paired test each step 20px, the rail under the centre of the header's icon; a module with no header starts its first level where it would be without one): one button per file with a muted file icon (`file`) and the
+  file's name in the default text colour, and its full path as the tooltip. Files within a package come in the order of each file's first hunk. A click
   jumps to that file's first hunk of the layer, at the line the layer's own jump would use, and stays in the tab: the
   selection and the page filter do not change. A click on a file of a layer that is not selected opens that layer first. A file the
   Tests control keeps out of view is not drawn (see "Tests control").

@@ -528,8 +528,6 @@
       badge.append(filledIcon(BEAKER_ICON, 12, "prf-chunk-badge-icon"), make("span", undefined, String(hidden.length)));
       file.append(badge);
     }
-    const stat = diffStat(entry.hunks);
-    if (stat) file.append(stat);
     return file;
   }
 
@@ -573,13 +571,26 @@
     return element;
   }
 
+  // The muted line that says how many files the Tests control's `mode` keeps out of view: "N tests hidden", with
+  // "integration" or "unit" before "tests" in the modes that hide only that kind, or "N files hidden" in "only", where it
+  // is the files other than tests that are hidden. Shown above the layer's files and at the end of the "Files" panel.
+  function hiddenNote(mode, count) {
+    const only = mode === "only";
+    const kind = { unit: "integration ", integration: "unit " }[mode] ?? "";
+    const noun = only ? ["file", "files"] : [`${kind}test`, `${kind}tests`];
+    const note = make("div", "prf-chunk-hidden-note");
+    note.append(filledIcon(only ? FILE_ICON : BEAKER_ICON, 14, "prf-chunk-note-icon"), make("span", undefined, `${count} ${noun[count === 1 ? 0 : 1]} hidden`));
+    return note;
+  }
+
   // The layer's files by module, each module with two or more package lines under a header (a box icon and its name) and
   // a rail down its left side, see `folderGroups`. The Tests control's mode leaves out the files it keeps out of view, and
-  // with them every package line and module header left with nothing; a muted line at the end says how many it left out.
+  // with them every package line and module header left with nothing; a muted line at the top says how many it left out.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
     const reviewPaths = state.chunks.flatMap((other) => other.hunks.map((hunk) => hunk.path));
     let hiddenCount = 0;
+    const elements = [];
     for (const { module, header, packages } of folderGroups(chunk, reviewPaths, state.tests ?? [])) {
       const groups = [];
       for (const group of packages) {
@@ -598,16 +609,9 @@
       } else {
         element.append(...groups);
       }
-      list.append(element);
+      elements.push(element);
     }
-    if (hiddenCount > 0) {
-      const only = state.testsMode === "only";
-      const kind = { unit: "integration ", integration: "unit " }[state.testsMode] ?? "";
-      const noun = only ? ["file", "files"] : [`${kind}test`, `${kind}tests`];
-      const note = make("div", "prf-chunk-hidden-note");
-      note.append(filledIcon(only ? FILE_ICON : BEAKER_ICON, 14, "prf-chunk-note-icon"), make("span", undefined, `${hiddenCount} ${noun[hiddenCount === 1 ? 0 : 1]} hidden`));
-      list.append(note);
-    }
+    list.append(...(hiddenCount > 0 ? [hiddenNote(state.testsMode, hiddenCount)] : []), ...elements);
     return list;
   }
 
@@ -744,9 +748,11 @@
   }
 
   // state: { mode: "review" | "chunks" | "files", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
-  // fileSet, tests, testsMode }, `judged` being a Set of layer numbers, `tests` the PR's test files' paths and `testsMode`
-  // "all" | "hide" | "only", which of the PR's files the Tests control shows in "Files" and "Layers". In "files" the panel
-  // holds only the bar and the filter line, over the host's own tree, which stays showing under it.
+  // fileSet, tests, testsMode, hiddenFiles }, `judged` being a Set of layer numbers, `tests` the PR's test files' paths,
+  // `testsMode` "all" | "hide" | "unit" | "integration" | "only", which of the PR's files the Tests control shows in "Files"
+  // and "Layers", and `hiddenFiles` how many files the mode keeps out of "Files". In "files" the panel holds only the bar,
+  // the filter line and, when `hiddenFiles` is not 0, the note saying so, over the host's own tree, which stays showing
+  // under it.
   // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onSelectFileInChunk(i, path), onFileSet(id), onTestsMode(mode),
   // onPaneOwner(owner)
   function render(review, state, handlers) {
@@ -767,6 +773,7 @@
       root.append(reviewMode ? stopList(state, handlers) : chunkList(state, handlers));
       root.querySelector(".prf-groups").scrollTop = scrolled;
     }
+    if (state.mode === "files" && state.hiddenFiles > 0) root.append(hiddenNote(state.testsMode, state.hiddenFiles));
   }
 
   // The slim bar that stands in for the panel while the pane is the host's: what the brief holds and a button that shows it
@@ -870,7 +877,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, isTestPath, testKind, hidesTestKind, bar, filters, stopList, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, isTestPath, testKind, hidesTestKind, bar, filters, stopList, chunkList, hiddenNote, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

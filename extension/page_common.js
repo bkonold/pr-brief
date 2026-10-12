@@ -752,10 +752,10 @@
       return document.querySelectorAll(spec.blockSelector).length;
     }
 
-    // How many files the PR changes as far as the page and the brief know: the files of the diff blocks loaded, joined by
+    // The files the PR changes as far as the page and the brief know: the files of the diff blocks loaded, joined by
     // `reviewPaths`, the files the brief names.
-    function changedFileCount(reviewPaths = []) {
-      return new Set([...fileBlocks().keys(), ...reviewPaths]).size;
+    function changedFilePaths(reviewPaths = []) {
+      return [...new Set([...fileBlocks().keys(), ...reviewPaths])];
     }
 
     // The elements whose arrival or removal changes what the extension draws: table rows, diff blocks and tree rows.
@@ -919,7 +919,7 @@
       showCallouts,
       filter,
       blockCount,
-      changedFileCount,
+      changedFilePaths,
       isStructural,
       quietly,
       ownsLine,

@@ -199,7 +199,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0, pageOrder = [], owner = "brief", blocks = new Map() }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0, pageOrder = [], owner = "brief", blocks = new Map(), pagePaths = [] }) {
   const log = [];
   const description = {
     name: "description",
@@ -280,7 +280,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
           quiet.depth -= 1;
         }
       },
-      changedFileCount: (paths) => (countArgs.push(paths), 9),
+      changedFilePaths: (paths) => (countArgs.push(paths), [...new Set([...pagePaths, ...paths])]),
       jumpToLine: async (...args) => jumps.push(args),
       jumpToFile: async (...args) => fileJumps.push(args),
     },
@@ -811,7 +811,7 @@ test("the sidebar opens in the walkthrough with every stop listed and none curre
   await settle();
   const { state } = renders.at(-1);
   assert.deepEqual([state.stops.map((stop) => stop.i), state.mode, state.selectedStop], [[1, 2, 3, 4], "review", null]);
-  assert.deepEqual(Object.keys(state).sort(), ["chips", "chunks", "fileSet", "judged", "mode", "note", "pageSha", "selectedChunk", "selectedStop", "stops", "tests", "testsMode"]);
+  assert.deepEqual(Object.keys(state).sort(), ["chips", "chunks", "fileSet", "hiddenFiles", "judged", "mode", "note", "pageSha", "selectedChunk", "selectedStop", "stops", "tests", "testsMode"]);
   assert.deepEqual(plain(emphasized.filter((nodes) => nodes !== null)), []);
 });
 
@@ -997,7 +997,7 @@ const SET_REVIEW = {
 };
 
 test("the chips are All with the page's changed-file count and each non-empty set, and the whole tree shows until one is chosen", async () => {
-  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW, pagePaths: ["p1", "p2", "p3", "p4", "p5"] });
   await settle();
   assert.deepEqual(plain(renders.at(-1).state.chips), [
     { id: "all", label: "All", count: 9 },
@@ -1301,6 +1301,16 @@ test("Unit excludes the integration tests from the page and Integration the unit
   assert.deepEqual(plain(excluded.at(-1)), KINDS_REVIEW.file_sets.tests);
   await renders.at(-1).handlers.onTestsMode("all");
   assert.equal(excluded.at(-1), null);
+});
+
+test("Files counts the distinct files the mode excludes among the page's diff blocks and the brief's paths", async () => {
+  const pagePaths = ["m/src/test/java/p/ExtraTest.java", "m/src/integrationTest/java/p/ExtraIT.java", "web/other.js", "db/V1.sql"];
+  const { renders } = await loadTests({ review: KINDS_REVIEW, pagePaths });
+  const hidden = async (mode) => {
+    await renders.at(-1).handlers.onTestsMode(mode);
+    return renders.at(-1).state.hiddenFiles;
+  };
+  assert.deepEqual([await hidden("all"), await hidden("hide"), await hidden("unit"), await hidden("integration"), await hidden("only")], [0, 6, 2, 3, 3]);
 });
 
 test("a test in a JVM test source set is a test for the page's filter even when file_sets.tests does not list it", async () => {

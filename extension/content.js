@@ -156,6 +156,7 @@
     page.showCallouts(calloutsShown(session));
     sizeCallouts(session);
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
+    const knownPaths = page.changedFilePaths(session.briefPaths);
     const mode = testsMode(session);
     const exempt = exemptPaths(session);
     const hidden = mode === "all" || mode === "only" ? null : testPaths(session).filter((path) => isExcluded(session, path) && !exempt.has(path));
@@ -181,10 +182,11 @@
         selectedChunk: session.selectedChunk,
         judged: session.judged,
         pageSha: page.headSha(),
-        chips: tree.fileChips(session.review, page.changedFileCount(session.briefPaths)),
+        chips: tree.fileChips(session.review, knownPaths.length),
         fileSet,
         tests: session.tests,
         testsMode: mode,
+        hiddenFiles: knownPaths.filter((path) => isExcluded(session, path)).length,
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
       handlersFor(session),

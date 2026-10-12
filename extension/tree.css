@@ -588,7 +588,7 @@
 }
 
 /* A folder line and a file button both have 4px of their own left padding, so a folder's icon lines up under the
-   title. A file is indented by an icon and its gap, so its icon sits under the folder label's first character. A file
+   title. Each level of the block (module, package, file, paired test) puts its icon 20px right of the one above. A file
    button spans the list's width to its right edge, so its hover background runs from 4px before the icon to 4px past the counts. */
 .prf-chunk-files {
   display: flex;
@@ -623,10 +623,11 @@
   overflow-wrap: anywhere;
 }
 
-/* The rail runs under the module's box icon, whose centre is 12px in: 4px of padding and half of the 16px icon. */
+/* The rail runs under the module's box icon, whose centre is 12px in: 4px of padding and half of the 16px icon. Its
+   padding puts the package lines' icons 20px right of the module icon. */
 .prf-chunk-rail {
   margin-left: 11px;
-  padding-left: 1px;
+  padding-left: 8px;
   border-left: 1px solid var(--borderColor-default, #d0d7de);
 }
 
@@ -663,7 +664,7 @@
 }
 
 .prf-chunk-group .prf-chunk-file {
-  margin-left: 14px;
+  margin-left: 20px;
 }
 
 .prf-diffstat {
@@ -673,11 +674,6 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.prf-chunk-file .prf-diffstat {
-  align-self: center;
-  margin-left: auto;
 }
 
 .prf-stat-added {
@@ -705,7 +701,7 @@
 }
 
 .prf-chunk-group .prf-chunk-paired {
-  margin-left: 28px;
+  margin-left: 40px;
   color: var(--fgColor-muted, #59636e);
 }
 
@@ -731,12 +727,16 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-top: 6px;
-  padding: 6px 4px 0;
+  margin-bottom: 6px;
+  padding: 0 4px 6px;
   font-size: 13px;
   line-height: 20px;
   color: var(--fgColor-muted, #59636e);
-  border-top: 1px solid var(--borderColor-muted, #d1d9e0b3);
+  border-bottom: 1px solid var(--borderColor-muted, #d1d9e0b3);
+}
+
+.prf-tree > .prf-chunk-hidden-note {
+  margin: 0 14px 8px 0;
 }
 
 .prf-chunk-note-icon {
