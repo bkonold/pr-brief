@@ -662,16 +662,6 @@
   white-space: nowrap;
 }
 
-.prf-chunk-folder.prf-dimmed .prf-chunk-folder-label,
-.prf-chunk-file.prf-dimmed .prf-chunk-file-name {
-  text-decoration: line-through;
-}
-
-.prf-chunk-folder.prf-dimmed .prf-chunk-icon,
-.prf-chunk-file.prf-dimmed .prf-chunk-icon {
-  opacity: 0.5;
-}
-
 .prf-chunk-group .prf-chunk-file {
   margin-left: 14px;
 }
@@ -698,10 +688,6 @@
   color: var(--fgColor-danger, #cf222e);
 }
 
-.prf-chunk-file.prf-dimmed .prf-diffstat {
-  opacity: 0.5;
-}
-
 .prf-chunk-file {
   font: inherit;
   font-size: 14px;
@@ -721,6 +707,40 @@
 .prf-chunk-group .prf-chunk-paired {
   margin-left: 28px;
   color: var(--fgColor-muted, #59636e);
+}
+
+.prf-chunk-test-badge {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+  align-items: center;
+  align-self: center;
+  padding: 0 5px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--fgColor-muted, #59636e);
+  border: 0.5px solid var(--borderColor-muted, #d1d9e0b3);
+  border-radius: 999px;
+}
+
+.prf-chunk-badge-icon {
+  flex: none;
+}
+
+.prf-chunk-hidden-note {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 6px 4px 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--fgColor-muted, #59636e);
+  border-top: 1px solid var(--borderColor-muted, #d1d9e0b3);
+}
+
+.prf-chunk-note-icon {
+  flex: none;
 }
 
 .prf-chunk-test-tag {
@@ -745,10 +765,6 @@
 .prf-chunk-file:focus-visible {
   outline: 2px solid var(--focus-outlineColor, #0969da);
   outline-offset: -2px;
-}
-
-.prf-chunk-file.prf-dimmed {
-  color: var(--fgColor-muted, #59636e);
 }
 
 .prf-risk {

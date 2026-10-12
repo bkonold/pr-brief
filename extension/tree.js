@@ -218,14 +218,6 @@
   // Octicons' triangle-down, 16-unit filled.
   const TRIANGLE_DOWN_ICON = "m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z";
 
-  // Whether the Tests control keeps `path` out of view: a test file while tests are hidden, any other file while only
-  // tests are shown.
-  function isExcludedByTests(state, path) {
-    if (state.testsMode === "hide") return (state.tests ?? []).includes(path);
-    if (state.testsMode === "only") return !(state.tests ?? []).includes(path);
-    return false;
-  }
-
   // A small dropdown button reading "Tests: All", "Tests: Hidden" or "Tests: Only", for which files the page shows: all of
   // them, all but the test files, or only the test files. A transparent native select covers the whole button, so a
   // click anywhere opens the browser's own menu and the keyboard works as on any select; choosing an option picks its
@@ -494,47 +486,83 @@
   }
 
   // One file's button: its icon, name and, at the right end, the lines the layer adds to and removes from it, with its full
-  // path as the tooltip. A test paired with a file (`nested`) is drawn under it with a beaker and without its extension;
-  // a test with no file to pair with carries a "test" tag. A file the Tests control keeps out of view is struck through.
-  function fileButton(entry, nested, chunk, state, handlers) {
+  // path as the tooltip. A test paired with a file (`nested`) is drawn under it with a beaker and without its extension; a
+  // test with no file to pair with carries a "test" tag unless every file shown is a test (`tag` false). `hidden` is the
+  // tests paired with the file that the Tests control keeps out of view: a badge after the name counts them, its tooltip
+  // listing their names.
+  function fileButton(entry, { nested = false, tag = false, hidden = [] }, chunk, handlers) {
     const file = button(nested ? "prf-chunk-file prf-chunk-paired" : "prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, entry.path));
-    file.classList.toggle("prf-dimmed", isExcludedByTests(state, entry.path));
     file.title = entry.path;
     const name = nested ? stemOf(baseName(entry.path)) : baseName(entry.path);
     file.append(filledIcon(nested ? BEAKER_ICON : FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", name));
-    if (entry.test && !nested) file.append(make("span", "prf-chunk-test-tag", "test"));
+    if (tag) file.append(make("span", "prf-chunk-test-tag", "test"));
+    if (hidden.length > 0) {
+      const badge = make("span", "prf-chunk-test-badge");
+      badge.title = hidden.map((test) => baseName(test.path)).join("\n");
+      badge.append(filledIcon(BEAKER_ICON, 12, "prf-chunk-badge-icon"), make("span", undefined, String(hidden.length)));
+      file.append(badge);
+    }
     const stat = diffStat(entry.hunks);
     if (stat) file.append(stat);
     return file;
   }
 
-  // One package line (a folder icon and its label, its directories as the tooltip) over its files, each followed by the
-  // tests paired with it. A package line is struck through when every file under it is.
-  function packageGroup(group, chunk, state, handlers) {
+  // The rows of a package line under the Tests control's mode, as [{ entry, nested, tag, hidden }] in order, and how many
+  // files it keeps out of view. "all" shows every file, a paired test under its file. "hide" shows no test: a paired test
+  // is counted in its file's `hidden`, an unpaired one is dropped. "only" shows only the tests: a file is dropped, and a
+  // test paired with it, no longer under a file, is a row of its own; none carries the "test" tag.
+  function packageRows(group, testsMode) {
+    const rows = [];
+    let hiddenCount = 0;
+    for (const entry of group.files) {
+      if (testsMode === "hide") {
+        if (entry.test) hiddenCount += 1;
+        else {
+          rows.push({ entry, nested: false, tag: false, hidden: entry.tests });
+          hiddenCount += entry.tests.length;
+        }
+      } else if (testsMode === "only") {
+        if (entry.test) rows.push({ entry, nested: false, tag: false, hidden: [] });
+        else {
+          hiddenCount += 1;
+          for (const test of entry.tests) rows.push({ entry: test, nested: false, tag: false, hidden: [] });
+        }
+      } else {
+        rows.push({ entry, nested: false, tag: entry.test, hidden: [] });
+        for (const test of entry.tests) rows.push({ entry: test, nested: true, tag: false, hidden: [] });
+      }
+    }
+    return { rows, hiddenCount };
+  }
+
+  // One package line (a folder icon and its label, its directories as the tooltip) over its rows.
+  function packageGroup(group, rows, chunk, handlers) {
     const element = make("div", "prf-chunk-group");
     const folder = make("div", "prf-chunk-folder");
     const folderLabel = make("span", "prf-chunk-folder-label");
     folderLabel.append(...labelNodes(group.label));
     folder.append(filledIcon(DIRECTORY_FILL_ICON, 16, "prf-chunk-icon"), folderLabel);
     folder.title = group.dirs.join("\n");
-    const entries = group.files.flatMap((entry) => [entry, ...entry.tests]);
-    folder.classList.toggle("prf-dimmed", entries.every((entry) => isExcludedByTests(state, entry.path)));
-    element.append(folder);
-    for (const entry of group.files) {
-      element.append(fileButton(entry, false, chunk, state, handlers));
-      for (const test of entry.tests) element.append(fileButton(test, true, chunk, state, handlers));
-    }
+    element.append(folder, ...rows.map((row) => fileButton(row.entry, row, chunk, handlers)));
     return element;
   }
 
   // The layer's files by module, each module with two or more package lines under a header (a box icon and its name) and
-  // a rail down its left side, see `folderGroups`.
+  // a rail down its left side, see `folderGroups`. The Tests control's mode leaves out the files it keeps out of view, and
+  // with them every package line and module header left with nothing; a muted line at the end says how many it left out.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
     const reviewPaths = state.chunks.flatMap((other) => other.hunks.map((hunk) => hunk.path));
+    let hiddenCount = 0;
     for (const { module, header, packages } of folderGroups(chunk, reviewPaths, state.tests ?? [])) {
+      const groups = [];
+      for (const group of packages) {
+        const shown = packageRows(group, state.testsMode);
+        hiddenCount += shown.hiddenCount;
+        if (shown.rows.length > 0) groups.push(packageGroup(group, shown.rows, chunk, handlers));
+      }
+      if (groups.length === 0) continue;
       const element = make("div", "prf-chunk-module");
-      const groups = packages.map((group) => packageGroup(group, chunk, state, handlers));
       if (header) {
         const head = make("div", "prf-chunk-module-head");
         head.append(filledIcon(PACKAGE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-module-name", module));
@@ -545,6 +573,13 @@
         element.append(...groups);
       }
       list.append(element);
+    }
+    if (hiddenCount > 0) {
+      const only = state.testsMode === "only";
+      const noun = only ? ["file", "files"] : ["test", "tests"];
+      const note = make("div", "prf-chunk-hidden-note");
+      note.append(filledIcon(only ? FILE_ICON : BEAKER_ICON, 14, "prf-chunk-note-icon"), make("span", undefined, `${hiddenCount} ${noun[hiddenCount === 1 ? 0 : 1]} hidden`));
+      list.append(note);
     }
     return list;
   }

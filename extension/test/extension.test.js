@@ -1474,18 +1474,6 @@ test("a layer or file with a hunk that lacks its counts shows no counts", () => 
   }
 });
 
-test("a file line the Tests control keeps out of view is dimmed with its counts", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const chunks = [{ ...COUNTED[0], hunks: [COUNTED[0].hunks[0], { ...COUNTED[0].hunks[1], path: "src/b.test.js" }] }];
-    const files = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/b.test.js"], testsMode: "hide" }, {}), "prf-chunk-file");
-    assert.deepEqual(files.map((file) => [file.className.split(" ").includes("prf-dimmed"), byClass(file, "prf-diffstat").length]), [[false, 1], [true, 1]]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
 test("only the selected chunk's row lists its files, by name with the path as the tooltip, and a click opens the file in the chunk", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
@@ -1897,21 +1885,6 @@ test("a stop row is not dimmed by the Tests mode", () => {
   }
 });
 
-test("a chunk's file button is struck through when the Tests mode keeps that file out of view", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const hunk = (id, path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
-    const chunks = [{ i: 1, title: "t", summary: "", risk: "low", depends_on: [], hunks: [hunk("h1", "src/a.js"), hunk("h2", "src/a.test.js")] }];
-    const struck = (testsMode) => byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/a.test.js"], testsMode }, {}), "prf-chunk-file").map((file) => file.className.split(" ").includes("prf-dimmed"));
-    assert.deepEqual(struck("all"), [false, false]);
-    assert.deepEqual(struck("hide"), [false, true]);
-    assert.deepEqual(struck("only"), [true, false]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
 const hunkAt = (path, id = path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1], added: 3, removed: 1 });
 const layerOf = (...paths) => ({ i: 1, title: "t", summary: "", risk: "low", depends_on: [], hunks: paths.map((path) => hunkAt(path)) });
 const groupsOf = (layer, review = [layer], tests = []) => require("../tree.js").folderGroups(layer, review.flatMap((other) => other.hunks.map((hunk) => hunk.path)), tests);
@@ -2147,27 +2120,6 @@ test("a paired test is a clickable file button under its file with a beaker, no 
   }
 });
 
-test("the Tests control strikes a paired test and its file separately, and the package line only when every row under it is struck", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/lone.test.ts")];
-    const tests = ["web/foo.test.ts", "web/lone.test.ts"];
-    const struck = (testsMode) => {
-      const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests, testsMode }, {}), "prf-chunk")[0];
-      return [byClass(row, "prf-chunk-folder"), byClass(row, "prf-chunk-file")].map((elements) => elements.map((element) => element.className.split(" ").includes("prf-dimmed")));
-    };
-    assert.deepEqual(struck("all"), [[false], [false, false, false]]);
-    assert.deepEqual(struck("hide"), [[false], [false, true, true]]);
-    assert.deepEqual(struck("only"), [[false], [true, false, false]]);
-    const onlyPaired = [layerOf("web/foo.ts", "web/foo.test.ts")];
-    const row = byClass(chunkList({ chunks: onlyPaired, selectedChunk: 1, judged: new Set(), tests: ["web/foo.test.ts", "web/foo.ts"], testsMode: "hide" }, {}), "prf-chunk")[0];
-    assert.deepEqual(byClass(row, "prf-chunk-folder").map((folder) => folder.className.split(" ").includes("prf-dimmed")), [true]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
 test("a folder label breaks after each / that has text after it, from text nodes and wbr elements", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
@@ -2177,23 +2129,6 @@ test("a folder label breaks after each / that has text after it, from text nodes
     assert.deepEqual(deep.children.map((child) => (typeof child === "string" ? child : child.tag)), ["web/", "wbr", "app/", "wbr", "routes"]);
     assert.equal(deep.textContent, "web/app/routes");
     assert.deepEqual(root.children, ["/"]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a folder line is struck through only when every file under it is", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const chunks = [layerOf("src/a.js", "src/a.test.js", "spec/b.test.js", "spec/c.test.js", "lib/d.js")];
-    const struck = (testsMode) => {
-      const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/a.test.js", "spec/b.test.js", "spec/c.test.js"], testsMode }, {}), "prf-chunk")[0];
-      return [byClass(row, "prf-chunk-folder"), byClass(row, "prf-chunk-file")].map((elements) => elements.map((element) => element.className.split(" ").includes("prf-dimmed")));
-    };
-    assert.deepEqual(struck("all"), [[false, false, false], [false, false, false, false, false]]);
-    assert.deepEqual(struck("hide"), [[false, true, false], [false, true, true, true, false]]);
-    assert.deepEqual(struck("only"), [[false, false, true], [true, false, false, false, true]]);
   } finally {
     delete globalThis.document;
   }
@@ -2596,4 +2531,103 @@ test("GitHub's entry for a diff block is the block's parent, and the block itsel
   assert.equal(githubPage.entryOf({ parentElement: parent }), parent);
   const orphan = { parentElement: null };
   assert.equal(githubPage.entryOf(orphan), orphan);
+});
+
+const shown = (chunks, testsMode, tests, selected = 1) => {
+  const row = byClass(require("../tree.js").chunkList({ chunks, selectedChunk: selected, judged: new Set(), tests, testsMode }, {}), "prf-chunk")[selected - 1];
+  return {
+    modules: byClass(row, "prf-chunk-module-head").map((head) => head.textContent),
+    folders: byClass(row, "prf-chunk-folder").map((folder) => folder.textContent),
+    files: byClass(row, "prf-chunk-file"),
+    note: byClass(row, "prf-chunk-hidden-note")[0] ?? null,
+    row,
+  };
+};
+const names = (files) => files.map((file) => byClass(file, "prf-chunk-file-name")[0].textContent);
+
+test("with tests hidden a paired test collapses into a badge after its file's name, with the count and the test names as the tooltip", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/foo.spec.ts", "web/bar.ts")];
+    const tests = ["web/foo.test.ts", "web/foo.spec.ts"];
+    const result = shown(chunks, "hide", tests);
+    assert.deepEqual(names(result.files), ["foo.ts", "bar.ts"]);
+    const [badge] = byClass(result.files[0], "prf-chunk-test-badge");
+    assert.deepEqual([badge.textContent, badge.title, badge.children.map((child) => child.tag)], ["2", "foo.test.ts\nfoo.spec.ts", ["svg", "span"]]);
+    assert.deepEqual(result.files[0].children.map((child) => child.className), ["prf-chunk-icon", "prf-chunk-file-name", "prf-chunk-test-badge", "prf-diffstat"]);
+    assert.equal(byClass(result.files[1], "prf-chunk-test-badge").length, 0);
+    assert.equal(byClass(result.row, "prf-chunk-paired").length, 0);
+    assert.equal(result.note.textContent, "2 tests hidden");
+    assert.deepEqual(shown(chunks, "hide", ["web/foo.test.ts"]).note.textContent, "1 test hidden");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with tests hidden an unpaired test is dropped, and a package line or module header left with nothing goes with it", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/app/a.ts", "web/lib/none.test.ts", "web/lib/other.test.ts", "docs/x.md")];
+    const tests = ["web/lib/none.test.ts", "web/lib/other.test.ts"];
+    const all = shown(chunks, "all", tests);
+    assert.deepEqual([all.modules, all.folders, names(all.files), all.note], [["web"], ["app", "lib", "docs"], ["a.ts", "none.test.ts", "other.test.ts", "x.md"], null]);
+    const hidden = shown(chunks, "hide", tests);
+    assert.deepEqual([hidden.modules, hidden.folders, names(hidden.files), hidden.note.textContent], [["web"], ["app", "docs"], ["a.ts", "x.md"], "2 tests hidden"]);
+    const onlyTests = shown([layerOf("web/app/a.test.ts", "web/lib/b.ts")], "hide", ["web/app/a.test.ts"]);
+    assert.deepEqual([onlyTests.modules, onlyTests.folders, names(onlyTests.files)], [["web"], ["lib"], ["b.ts"]]);
+    const nothing = shown([layerOf("web/app/a.test.ts", "web/lib/b.test.ts")], "hide", ["web/app/a.test.ts", "web/lib/b.test.ts"]);
+    assert.deepEqual([nothing.modules, nothing.folders, nothing.files, nothing.note.textContent], [[], [], [], "2 tests hidden"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("the end line is a muted line with a beaker or file icon and no control, and is left out when nothing is hidden", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts")];
+    const tests = ["web/foo.test.ts"];
+    assert.equal(shown(chunks, "all", tests).note, null);
+    assert.equal(shown([layerOf("web/foo.ts")], "hide", []).note, null);
+    const note = shown(chunks, "hide", tests).note;
+    assert.deepEqual([note.tag, note.children.map((child) => [child.tag, child.className]), note.listeners], ["div", [["svg", "prf-chunk-note-icon"], ["span", ""]], {}]);
+    assert.notEqual(note.children[0].children[0].attributes.d, shown(chunks, "only", tests).note.children[0].children[0].attributes.d);
+    assert.equal(shown(chunks, "only", tests).note.textContent, "1 file hidden");
+    assert.equal(shown([layerOf("web/a.ts", "web/b.ts", "web/b.test.ts")], "only", ["web/b.test.ts"]).note.textContent, "2 files hidden");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with only tests shown a file is dropped and its paired test becomes a row of its own without the test tag", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/lone.test.ts", "web/bar.ts", "docs/x.md")];
+    const tests = ["web/foo.test.ts", "web/lone.test.ts"];
+    const result = shown(chunks, "only", tests);
+    assert.deepEqual(names(result.files), ["foo.test.ts", "lone.test.ts"]);
+    assert.deepEqual(result.files.map((file) => [file.className.split(" ").includes("prf-chunk-paired"), byClass(file, "prf-chunk-test-tag").length, byClass(file, "prf-chunk-test-badge").length]), [[false, 0, 0], [false, 0, 0]]);
+    assert.deepEqual([result.modules, result.folders, result.note.textContent], [[], ["web"], "3 files hidden"]);
+    const [promoted] = result.files;
+    assert.deepEqual(promoted.children.map((child) => child.className), ["prf-chunk-icon", "prf-chunk-file-name", "prf-diffstat"]);
+    const picked = [];
+    const list = require("../tree.js").chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests, testsMode: "only" }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) });
+    byClass(list, "prf-chunk-file")[0].listeners.click();
+    assert.deepEqual(picked, [[1, "web/foo.test.ts"]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with every file shown the rows are as before: tests under their files, a tag on an unpaired test, no badge and no end line", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/lone.test.ts")];
+    const result = shown(chunks, "all", ["web/foo.test.ts", "web/lone.test.ts"]);
+    assert.deepEqual(rowsOf(result.row), [["foo.ts", false, 0], ["foo.test", true, 0], ["lone.test.ts", false, 1]]);
+    assert.deepEqual([byClass(result.row, "prf-chunk-test-badge").length, result.note], [0, null]);
+    assert.equal(byClass(result.row, "prf-dimmed").length, 0);
+  } finally {
+    delete globalThis.document;
+  }
 });

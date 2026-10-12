@@ -73,12 +73,14 @@ has no Tests control and no test behaviour: it shows the files its file set choo
   with none, whatever the chip or the layer keeps (the `exclude` of `page.filter`, a third filter that only subtracts). In "only" the
   page is narrowed to the test files by the file filter (within the chosen chip, if any), so no list of the PR's other files is
   needed. Either way the host's own tree rows follow, as with a chip.
-- **Dimming.** In the selected layer's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
-  its name muted and struck through.
+- **Layer file list.** In the selected layer's file list, the files the mode keeps out of view (the test files in "hide", any other file in
+  "only") are not drawn, and neither is a package line or module header left with nothing. In "hide" a file's paired tests show as a small
+  beaker badge with their count after its name, its tooltip listing their file names; in "only" a test whose file is gone becomes a row
+  of its own, without the "test" tag. A muted line at the end, "N tests hidden" or "N files hidden", counts what the mode left out.
 - **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
   hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
   whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
-  it still shows its lines and its callout. A click on a struck-through file in the layer's list has no row to land on.
+  it still shows its lines and its callout.
 - **Preference.** The mode is kept in this browser's `localStorage` under `prf-tests-mode` as the string `all`, `hide` or `only`
   (absent means `all`), across PRs, read and written in a try/catch. A review with no test files ignores it.
 
@@ -186,7 +188,7 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
   file's name in the default text colour, and its full path as the tooltip, and at its right end that file's line counts over this layer's hunks only (the name keeps wrapping and shrinking, the counts stay on one line). A layer or file with a hunk that has no counts shows none. Files within a package come in the order of each file's first hunk. A click
   jumps to that file's first hunk of the layer, at the line the layer's own jump would use, and stays in the tab: the
   selection and the page filter do not change. A click on a file of a layer that is not selected opens that layer first. A file the
-  Tests control keeps out of view is struck through, paired tests included, and so is a folder line whose files all are; their icons and line counts dim with them.
+  Tests control keeps out of view is not drawn (see "Tests control").
 - The files are grouped by module, then by package line. A JVM source folder, one shaped `<module>/src/<set>/<lang>/<package>`
   with `<lang>` java, kotlin, scala, groovy or resources, is in its module (`/` when `src` is at the repo root); any other path is
   in the module of its first directory (`/` for a file at the repo root), its package the rest of the directory. A module with two
