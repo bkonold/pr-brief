@@ -4,7 +4,7 @@
 // the DOM knowledge and nothing else; a host's spec lives in its own file (github_page.js, forgejo_page.js).
 //
 // spec: {
-//   name, treeLabel, hosts          display name, the label of the host's own tree, the location.host values it serves
+//   name, hosts                     display name, the location.host values it serves
 //   origin, changesPage, pullPage   a base for relative URLs, and the patterns of the files page and of any page of a
 //                                   PR, each capturing owner, repo and number
 //   conversationPage                the pattern of the conversation page (same captures)
@@ -31,9 +31,11 @@
 //   containerSelector               the diffs' container, watched for rows that appear
 //   contentSelector                 the diffs' column
 //   diagramHost()                   where the diagram panel docks (before the file pane), or null
-//   treeHost()                      the host's own file tree element, or null
-//   treeFileSelector                the tree's file rows, each being or holding a link whose href ends in the file's
-//                                   diff id (`#diff-…`)
+//   paneHost()                      the element holding the host's file-tree pane, or null. The extension's panel is
+//                                   mounted as its first child and the pane's other children are hidden while the panel
+//                                   shows; with no such element the panel floats at the left edge of the window
+//   treeFileSelector                optional: the file rows of the host's tree, looked up inside paneHost(), each being or
+//                                   holding a link whose href ends in the file's diff id (`#diff-…`)
 //   treeDirSelector                 optional: the tree's directory rows, which hold their files' rows
 //   descriptionHost()               the element the PR brief card is inserted before (the PR's opening comment on the
 //                                   conversation page), or null
@@ -49,6 +51,8 @@
   const FILE_HIDDEN = "prf-file-hidden";
   const HUNK_HIDDEN = "prf-hunk-hidden";
   const DIFF_LINK = 'a[href*="#diff-"]';
+  const PANE_HIDDEN = "prf-pane-hidden";
+  const PANE_FLOAT = "prf-pane-float";
   const FAR_VIEWPORTS = 1.5;
   const SCROLL_SETTLE_MS = 1200;
   const JUMP_TIMEOUT_MS = 10000;
@@ -605,14 +609,6 @@
       endHold();
     }
 
-    // The diff id a tree row links to, or null when it has no such link.
-    function treeRowId(row) {
-      const link = row.matches?.(DIFF_LINK) ? row : row.querySelector(DIFF_LINK);
-      const href = link?.getAttribute("href") ?? "";
-      const at = href.indexOf("#diff-");
-      return at < 0 ? null : href.slice(at + 1);
-    }
-
     // The diff ids of the files the page is narrowed to, keyed by the paths they came from; null for every file.
     let fileFilter = null;
     // The line ranges the page is narrowed to: { key, byId, loading }, `byId` mapping a diff id to the ranges
@@ -629,9 +625,24 @@
       return hunkFilter ? new Set(hunkFilter.byId.keys()) : (fileFilter?.ids ?? null);
     }
 
+    // The diff id a tree row links to, or null when it has no such link.
+    function treeRowId(row) {
+      const link = row.matches?.(DIFF_LINK) ? row : row.querySelector(DIFF_LINK);
+      const href = link?.getAttribute("href") ?? "";
+      const at = href.indexOf("#diff-");
+      return at < 0 ? null : href.slice(at + 1);
+    }
+
+    // The rows of the host's tree that `selector` matches inside the pane host, leaving out the extension's own panel.
+    function treeRows(selector) {
+      const host = spec.paneHost?.();
+      if (!host || !selector) return [];
+      return [...host.querySelectorAll(selector)].filter((row) => !mounted?.panel.contains(row));
+    }
+
     // Hides the diff blocks whose id is not in the filter or is excluded, and the tree's file rows whose diff is, then the
-    // directory rows left with no visible file. A row with no diff link is left alone, as is a directory whose files are not in the
-    // page (collapsed). The host re-renders its tree and loads diffs as the page scrolls, so this runs again on every
+    // directory rows left with no visible file. A row with no diff link is left alone, as is a directory whose files are not
+    // in the page (collapsed). The host loads diffs and re-renders its tree as the page scrolls, so this runs again on every
     // refresh.
     function applyFileFilter() {
       const ids = shownIds();
@@ -639,15 +650,12 @@
       for (const block of document.querySelectorAll(spec.blockSelector)) {
         block.classList.toggle(FILE_HIDDEN, hidden(block.id));
       }
-      const host = spec.treeHost();
-      if (!host) return;
-      const files = [...host.querySelectorAll(spec.treeFileSelector)];
+      const files = treeRows(spec.treeFileSelector);
       for (const row of files) {
         const id = ids || excluded ? treeRowId(row) : null;
         row.classList.toggle(FILE_HIDDEN, id !== null && hidden(id));
       }
-      if (!spec.treeDirSelector) return;
-      for (const dir of host.querySelectorAll(spec.treeDirSelector)) {
+      for (const dir of treeRows(spec.treeDirSelector)) {
         const inside = files.filter((row) => dir.contains(row));
         dir.classList.toggle(FILE_HIDDEN, Boolean(ids || excluded) && inside.length > 0 && inside.every((row) => row.classList.contains(FILE_HIDDEN)));
       }
@@ -707,7 +715,7 @@
     }
 
     // Sets the three filters at once and applies them with one pass over the page; each is null for none.
-    //   files    the paths the diff and the host's tree are narrowed to.
+    //   files    the paths the diff is narrowed to.
     //   hunks    [{ path, side, start, count }]: only the files they name are shown, and in each only the rows showing a line
     //            inside one of its ranges. It takes the place of `files` while set.
     //   exclude  the paths hidden whatever the other two keep.
@@ -744,10 +752,10 @@
       return document.querySelectorAll(spec.blockSelector).length;
     }
 
-    // How many files the page lists as changed: the tree's rows, or the `blocks` loaded when the tree is not showing.
-    function changedFileCount(blocks = blockCount()) {
-      const rows = spec.treeHost()?.querySelectorAll(spec.treeFileSelector).length ?? 0;
-      return Math.max(rows, blocks);
+    // How many files the PR changes as far as the page and the brief know: the files of the diff blocks loaded, joined by
+    // `reviewPaths`, the files the brief names.
+    function changedFileCount(reviewPaths = []) {
+      return new Set([...fileBlocks().keys(), ...reviewPaths]).size;
     }
 
     // The elements whose arrival or removal changes what the extension draws: table rows, diff blocks and tree rows.
@@ -792,6 +800,77 @@
       }
     }
 
+    // The panel in the pane host: { panel, hideRest, host, hidden, stop }. `hidden` holds the pane's children that carry
+    // PANE_HIDDEN, and `stop` ends the watch on the host.
+    let mounted = null;
+
+    // Puts the panel first in the pane host, or floating in the page when there is no host, and hides the host's other
+    // children when asked to. The changes it makes are the ones it checks for, so a call that finds everything in place
+    // changes nothing.
+    function settlePane() {
+      const { panel, hideRest, hidden } = mounted;
+      const host = spec.paneHost();
+      if (host !== mounted.host) {
+        mounted.host = host;
+        watchPane();
+      }
+      panel.classList.toggle(PANE_FLOAT, !host);
+      if (!host) {
+        if (panel.parentElement !== document.body) document.body.append(panel);
+      } else if (host.firstElementChild !== panel) {
+        host.prepend(panel);
+      }
+      const rest = hideRest && host ? [...host.children].filter((child) => child !== panel) : [];
+      for (const child of hidden) {
+        if (rest.includes(child)) continue;
+        child.classList.remove(PANE_HIDDEN);
+        hidden.delete(child);
+      }
+      for (const child of rest) {
+        child.classList.add(PANE_HIDDEN);
+        hidden.add(child);
+      }
+    }
+
+    // The host re-renders its pane: it drops our panel, adds children of its own or replaces the host element. With no
+    // host to watch, the page is watched for one to appear.
+    function watchPane() {
+      mounted.stop?.();
+      mounted.stop = null;
+      if (!globalThis.MutationObserver) return;
+      const { host } = mounted;
+      const observer = new MutationObserver(() => {
+        if (mounted) quietly(settlePane);
+      });
+      if (host) {
+        observer.observe(host, { childList: true });
+        if (host.parentElement) observer.observe(host.parentElement, { childList: true });
+      } else {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+      mounted.stop = () => observer.disconnect();
+    }
+
+    // Shows `panel` in the host's pane. With `hideRest: false` the pane's own children stay showing under it. Calling again
+    // with the same panel keeps it in place, and with another panel replaces the first.
+    function mount(panel, { hideRest = true } = {}) {
+      if (mounted && mounted.panel !== panel) unmount();
+      mounted ??= { panel, hideRest, host: undefined, hidden: new Set(), stop: null };
+      mounted.hideRest = hideRest;
+      settlePane();
+    }
+
+    // Removes the panel and shows what it hid.
+    function unmount() {
+      if (!mounted) return;
+      const { panel, hidden, stop } = mounted;
+      stop?.();
+      for (const child of hidden) child.classList.remove(PANE_HIDDEN);
+      panel.classList.remove(PANE_FLOAT);
+      panel.remove();
+      mounted = null;
+    }
+
     // A PR tab can change page under the content script without a reload.
     function onNavigate(callback) {
       const events = [
@@ -808,7 +887,6 @@
 
     return {
       name: spec.name,
-      treeLabel: spec.treeLabel,
       hosts: spec.hosts,
       prFromUrl,
       filesUrl,
@@ -847,7 +925,9 @@
       ownsLine,
       cancelJump,
       diagramHost: spec.diagramHost,
-      treeHost: spec.treeHost,
+      paneHost: spec.paneHost,
+      mount,
+      unmount,
       descriptionHost: spec.descriptionHost,
       onChange,
       onNavigate,

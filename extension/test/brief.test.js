@@ -199,7 +199,7 @@ test("the card leaves the diagram out when the run has none, or when it is not a
 
 // content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
 // is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0, pageOrder = [] }) {
+function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0, pageOrder = [], owner = "brief", blocks = new Map() }) {
   const log = [];
   const description = {
     name: "description",
@@ -232,6 +232,11 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const hunkFilters = [];
   const excluded = [];
   const properties = {};
+  const ownerChanges = [];
+  const ownerSaved = [];
+  const bars = [];
+  const diagramRemoved = [];
+  const countArgs = [];
   const measuring = { appended: [], removed: [], measured: 0 };
   const withBox = (card) =>
     Object.defineProperties(card, {
@@ -256,7 +261,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       onChange: (callback) => (changes.push(callback), () => {}),
       cancelJump: () => lineEvents.push("cancelJump"),
       clearLineTarget: () => lineEvents.push("clearLineTarget"),
-      fileBlocks: () => new Map(),
+      fileBlocks: () => blocks,
       headSha: () => null,
       restoreLineTarget() {},
       ownsLine: (node) => Boolean(node?.owned),
@@ -275,13 +280,16 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
           quiet.depth -= 1;
         }
       },
-      changedFileCount: () => 9,
+      changedFileCount: (paths) => (countArgs.push(paths), 9),
       jumpToLine: async (...args) => jumps.push(args),
       jumpToFile: async (...args) => fileJumps.push(args),
     },
     source: {
       loadBrief: async (...args) => (briefArgs.push(args), runs ? runs.shift() : run),
       loadReview: async () => review,
+      loadPaneOwner: async () => owner,
+      savePaneOwner: async (next) => ownerSaved.push(next),
+      onPaneOwnerChange: (callback) => (ownerChanges.push(callback), () => {}),
       runStatus: async (target) => (calls.push(["status", target]), status),
       startRun: async (target) => (calls.push(["start", target]), { ok: true, key: target.key, state: startState }),
       cancelRun: async (target) => (calls.push(["cancel", target]), { ok: true, key: target.key, state: "canceled" }),
@@ -297,6 +305,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
     tree: {
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers, quiet: quiet.depth > 0 }),
       renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
+      offBar: (counts, onShow) => bars.push({ counts, onShow }),
+      briefPaths: require("../tree.js").briefPaths,
       stopsOf: require("../tree.js").stopsOf,
       chunksOf: require("../tree.js").chunksOf,
       fileChips: require("../tree.js").fileChips,
@@ -315,7 +325,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       render: (svg, handlers) => diagramHandlers.push(handlers),
       emphasize: (nodes) => emphasized.push(nodes),
       centerOn: (nodeIds, options) => (centered.push(nodeIds), centeredWith.push(options)),
-      remove() {},
+      remove: () => diagramRemoved.push(true),
       owns: () => false,
     },
     alive: () => true,
@@ -333,7 +343,7 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, localStorage, location: { href: "x", host: "forge.example", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, document: fakeDocument };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters, hunkFilters, excluded, local, properties, measuring };
+  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters, hunkFilters, excluded, local, properties, measuring, ownerChanges, ownerSaved, bars, diagramRemoved, countArgs };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -708,10 +718,8 @@ test("renderMarkdown reads a pipe table with an escaped pipe and leaves a lone p
 test("the callouts are shown in the review and removed in the host's own tree view", async () => {
   const { renders, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(plain(callouts.at(-1)), []);
-  await renders.at(-1).handlers.onMode("review");
   assert.equal(callouts.at(-1).length, 4);
-  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(callouts.at(-1)), []);
 });
 
@@ -795,19 +803,20 @@ test("opening the files page on a stop's diff anchor goes to that stop", async (
   assert.deepEqual(plain(emphasized.at(-1)), ["b"]);
 });
 
-test("the sidebar opens in Files mode with every stop listed and none current", async () => {
+test("the sidebar opens in the walkthrough with every stop listed and none current", async () => {
   const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   const { state } = renders.at(-1);
-  assert.deepEqual([state.stops.map((stop) => stop.i), state.mode, state.selectedStop], [[1, 2, 3, 4], "github", null]);
+  assert.deepEqual([state.stops.map((stop) => stop.i), state.mode, state.selectedStop], [[1, 2, 3, 4], "review", null]);
   assert.deepEqual(Object.keys(state).sort(), ["chips", "chunks", "fileSet", "judged", "mode", "note", "pageSha", "selectedChunk", "selectedStop", "stops", "tests", "testsMode"]);
   assert.deepEqual(plain(emphasized.filter((nodes) => nodes !== null)), []);
 });
 
-test("a fresh load selects nothing: Files mode, no jump, no pan, no emphasis and no callouts", async () => {
+test("a fresh load selects nothing: the walkthrough, no jump, no pan and no emphasis", async () => {
   const { renders, emphasized, centered, revealed, jumps, fileJumps, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.selectedStop, emphasized.filter((nodes) => nodes !== null), centered, revealed, jumps, fileJumps, callouts.at(-1)]), ["github", null, [], [], [], [], [], []]);
+  assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.selectedStop, emphasized.filter((nodes) => nodes !== null), centered, revealed, jumps, fileJumps]), ["review", null, [], [], [], [], []]);
+  assert.equal(callouts.at(-1).length, 4);
 });
 
 test("a page URL naming a diff line other than a stop's selects nothing and jumps nowhere", async () => {
@@ -835,17 +844,17 @@ test("choosing a stop in the list goes to it and makes it the current stop", asy
   assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.at(-1)]), [3, ["a"]]);
 });
 
-test("a reload lands in Files mode with nothing selected, whatever was selected before, and nothing is remembered", async () => {
+test("a reload lands in the walkthrough with nothing selected, whatever was selected before, and nothing is remembered", async () => {
   const first = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
   await first.renders.at(-1).handlers.onSelectStop(3);
   first.diagramHandlers.at(-1).onNode("b");
   await settle();
-  await first.renders.at(-1).handlers.onMode("github");
+  await first.renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(first.stored), {});
   const again = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
   await settle();
-  assert.deepEqual(plain([again.renders.at(-1).state.mode, again.renders.at(-1).state.selectedStop, again.emphasized.at(-1), again.centered]), ["github", null, null, []]);
+  assert.deepEqual(plain([again.renders.at(-1).state.mode, again.renders.at(-1).state.selectedStop, again.emphasized.at(-1), again.centered]), ["review", null, null, []]);
 });
 
 test("every action that focuses a box centres the diagram on it", async () => {
@@ -860,7 +869,7 @@ test("every action that focuses a box centres the diagram on it", async () => {
   const { onGo, stops } = callouts.at(-1)[0].render();
   await onGo(stops[2]);
   assert.deepEqual(plain(centered.at(-1)), ["a"]);
-  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(centered.at(-1)), ["a"]);
 });
 
@@ -909,12 +918,12 @@ test("Reset leaves a mode of GitHub's own tree in place", async () => {
   await settle();
   diagramHandlers.at(-1).onNode("b");
   await settle();
-  await renders.at(-1).handlers.onMode("github");
-  assert.equal(renders.at(-1).state.mode, "github");
+  await renders.at(-1).handlers.onMode("files");
+  assert.equal(renders.at(-1).state.mode, "files");
   assert.equal(emphasized.at(-1), null);
   diagramHandlers.at(-1).onReset();
   await settle();
-  assert.equal(renders.at(-1).state.mode, "github");
+  assert.equal(renders.at(-1).state.mode, "files");
   diagramHandlers.at(-1).onNode("b");
   await settle();
   assert.deepEqual(plain(emphasized.at(-1)), ["b"]);
@@ -976,7 +985,7 @@ test("a context box, which covers no file, and a box the review does not list do
 test("the sidebar's state and handlers are the stops and the mode", async () => {
   const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJudged", "onMode", "onSelectChunk", "onSelectFileInChunk", "onSelectStop", "onTestsMode"]);
+  assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJudged", "onMode", "onPaneOwner", "onSelectChunk", "onSelectFileInChunk", "onSelectStop", "onTestsMode"]);
 });
 
 const SET_REVIEW = {
@@ -1017,7 +1026,7 @@ test("switching the mode keeps the chip and its filter", async () => {
   await renders.at(-1).handlers.onMode("review");
   assert.equal(renders.at(-1).state.fileSet.id, "contract");
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
-  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onMode("files");
   assert.equal(renders.at(-1).state.fileSet.id, "contract");
   assert.deepEqual(plain(filters.at(-1)), ["src/api.js", "api.json"]);
 });
@@ -1142,7 +1151,7 @@ test("every mode other than chunks clears the hunk filter, and the chunks tab ap
   await renders.at(-1).handlers.onMode("chunks");
   assert.equal(hunkFilters.at(-1).length, 3);
   assert.deepEqual(callouts.at(-1).map((entry) => entry.key), ["chunk:1"]);
-  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onMode("files");
   assert.deepEqual([hunkFilters.at(-1), callouts.at(-1).length], [null, 0]);
   await renders.at(-1).handlers.onMode("chunks");
   await renders.at(-1).handlers.onSelectStop(2);
@@ -1199,6 +1208,7 @@ test("an unreadable judged list is an empty one, and only chunk numbers are read
 test("a run with no chunks passes none and has no chunk callout", async () => {
   const { renders, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
   await settle();
+  await renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(renders.at(-1).state.chunks), []);
   assert.deepEqual(plain(callouts.at(-1)), []);
 });
@@ -1227,6 +1237,7 @@ const TESTS_REVIEW = {
 async function loadTests(options = {}) {
   const loaded = loadContent({ run: null, view: "files", review: TESTS_REVIEW, ...options });
   await settle();
+  await loaded.renders.at(-1).handlers.onMode("files");
   return loaded;
 }
 
@@ -1266,7 +1277,7 @@ test("hiding tests in Files excludes the test files; the walkthrough excludes no
   assert.deepEqual([excluded.at(-1), filters.at(-1)], [["db/V1.sql", "src/old.js"], null]);
   await renders.at(-1).handlers.onSelectStop(2);
   assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.testsMode, excluded.at(-1), filters.at(-1)], ["review", "hide", null, null]);
-  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onMode("files");
   assert.deepEqual(excluded.at(-1), ["db/V1.sql", "src/old.js"]);
   await renders.at(-1).handlers.onTestsMode("all");
   assert.equal(excluded.at(-1), null);
@@ -1278,7 +1289,7 @@ test("showing only tests in Files narrows the page to the test files; nothing is
   assert.deepEqual(plain([filters.at(-1), excluded.at(-1)]), [["db/V1.sql", "src/old.js"], null]);
   await renders.at(-1).handlers.onSelectStop(1);
   assert.deepEqual([renders.at(-1).state.mode, filters.at(-1), excluded.at(-1)], ["review", null, null]);
-  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(filters.at(-1)), ["db/V1.sql", "src/old.js"]);
   await renders.at(-1).handlers.onTestsMode("all");
   assert.equal(filters.at(-1), null);
@@ -1380,15 +1391,13 @@ test("the callout width is measured from every stop when the walkthrough is show
   const widths = { 1: 400.2, 2: 612.4, 3: 530, 4: 480 };
   const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: WALK_REVIEW, cardWidth: (card) => widths[card.stop.i] });
   await settle();
-  assert.deepEqual([properties, measuring.measured], [{}, 0]);
-  await renders.at(-1).handlers.onMode("review");
   assert.deepEqual(properties, { [WIDTH]: "613px" });
   const [host] = measuring.appended;
   assert.deepEqual(
     [measuring.appended.length, measuring.removed, host.style, host.children.map((card) => [card.stop.i, card.style.width])],
     [1, [host], { position: "absolute", visibility: "hidden", left: "-10000px", top: "0" }, [[1, "max-content"], [2, "max-content"], [3, "max-content"], [4, "max-content"]]],
   );
-  await renders.at(-1).handlers.onMode("github");
+  await renders.at(-1).handlers.onMode("files");
   assert.deepEqual([properties, measuring.measured], [{ [WIDTH]: "613px" }, 4]);
 });
 
@@ -1411,10 +1420,12 @@ test("a mode switch measures the layers, and the layers' own widths count, not t
 });
 
 test("every layer is measured, not only the selected one", async () => {
-  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, cardWidth: (card) => [0, 520, 700, 610][card.chunk.i] });
+  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, cardWidth: (card) => (card.chunk ? [0, 520, 700, 610][card.chunk.i] : 0) });
   await settle();
+  await renders.at(-1).handlers.onMode("files");
+  const before = measuring.measured;
   await renders.at(-1).handlers.onSelectChunk(1);
-  assert.deepEqual([properties[WIDTH], measuring.measured], ["700px", 3]);
+  assert.deepEqual([properties[WIDTH], measuring.measured - before], ["700px", 3]);
 });
 
 test("changing the Tests mode builds the layer callouts again and measures them again", async () => {
@@ -1472,4 +1483,62 @@ test("the host dropping one of our panels schedules a refresh, and a change insi
 
 test("structural nodes that are ours schedule no refresh", async () => {
   assert.equal(await refreshesAfter([record({ added: [{ structural: true, owned: true }] })]), 0);
+});
+
+test("with the pane handed to the host, nothing of the brief is drawn but the off bar, and the page's filters and callouts are cleared", async () => {
+  const { renders, bars, callouts, filters, hunkFilters, excluded, diagramHandlers, diagramRemoved, lineEvents } = loadContent({ run: null, view: "files", review: WALK_REVIEW, owner: "host" });
+  await settle();
+  assert.deepEqual([renders.length, diagramHandlers.length, bars.length], [0, 0, 1]);
+  assert.deepEqual(plain(bars[0].counts), { stops: 4, layers: 0 });
+  assert.deepEqual(plain([callouts.at(-1), filters.at(-1), hunkFilters.at(-1), excluded.at(-1)]), [[], null, null, null]);
+  assert.equal(diagramRemoved.length > 0, true);
+  assert.equal(lineEvents.includes("clearLineTarget"), true);
+});
+
+test("the off bar's Show gives the pane back to the brief and keeps that choice", async () => {
+  const { renders, bars, ownerSaved, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW, owner: "host" });
+  await settle();
+  bars.at(-1).onShow();
+  await settle();
+  assert.deepEqual(ownerSaved, ["brief"]);
+  assert.deepEqual([renders.at(-1).state.mode, callouts.at(-1).length], ["review", 4]);
+});
+
+test("the panel's switch hands the pane to the host, keeps the choice and leaves only the off bar", async () => {
+  const { renders, bars, ownerSaved, callouts, filters } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  assert.equal(bars.length, 0);
+  renders.at(-1).handlers.onPaneOwner("host");
+  await settle();
+  assert.deepEqual([ownerSaved, bars.length, plain(callouts.at(-1)), filters.at(-1)], [["host"], 1, [], null]);
+});
+
+test("a change of the stored owner in another tab, or by the shortcut, is applied here without being saved again", async () => {
+  const { renders, bars, ownerChanges, ownerSaved, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  await settle();
+  const drawn = renders.length;
+  ownerChanges.at(-1)("brief");
+  await settle();
+  assert.equal(renders.length, drawn);
+  ownerChanges.at(-1)("host");
+  await settle();
+  assert.deepEqual([bars.length, plain(callouts.at(-1)), ownerSaved], [1, [], []]);
+  ownerChanges.at(-1)("brief");
+  await settle();
+  assert.deepEqual([renders.length > drawn, callouts.at(-1).length], [true, 4]);
+});
+
+test("a PR with no brief keeps the generate line and gets no off bar, whoever owns the pane", async () => {
+  const { lines, bars, renders } = loadContent({ run: null, view: "files", review: null, owner: "host" });
+  await settle();
+  assert.deepEqual([lines.length > 0, bars.length, renders.length], [true, 0, 0]);
+});
+
+test("the pane opens in the walkthrough for a brief with stops, else in its layers, else in the host's own files", async () => {
+  const opened = async (review) => {
+    const { renders } = loadContent({ run: null, view: "files", review });
+    await settle();
+    return renders.at(-1).state.mode;
+  };
+  assert.deepEqual([await opened(CHUNK_REVIEW), await opened({ ...CHUNK_REVIEW, walkthrough: [] }), await opened({ ...WALK_REVIEW, walkthrough: [] })], ["review", "chunks", "files"]);
 });

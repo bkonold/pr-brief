@@ -99,8 +99,56 @@
   const runStatus = (run) => ask({ type: "runStatus", ...run });
   const cancelRun = (run) => ask({ type: "cancelRun", ...run });
 
+  // Who owns the file pane: "brief" or "host". It is kept in chrome.storage.local under the key defaults.js calls
+  // PANE_OWNER_KEY, which a content script, not being a module, repeats here.
+  const PANE_OWNER_KEY = "paneOwner";
+  const PANE_OWNERS = ["brief", "host"];
+
+  function paneOwnerOf(value) {
+    return PANE_OWNERS.includes(value) ? value : "brief";
+  }
+
+  // The stored owner, "brief" when none is stored or the store cannot be read.
+  async function loadPaneOwner() {
+    if (!alive()) return "brief";
+    try {
+      return paneOwnerOf((await chrome.storage.local.get({ [PANE_OWNER_KEY]: "brief" }))[PANE_OWNER_KEY]);
+    } catch {
+      return "brief";
+    }
+  }
+
+  async function savePaneOwner(owner) {
+    if (!alive() || !PANE_OWNERS.includes(owner)) return;
+    try {
+      await chrome.storage.local.set({ [PANE_OWNER_KEY]: owner });
+    } catch {
+      // The choice holds for this page when the store cannot be written.
+    }
+  }
+
+  // Calls `callback(owner)` whenever the stored owner changes, in this tab or any other. Returns how to stop.
+  function onPaneOwnerChange(callback) {
+    if (!alive()) return () => {};
+    const listener = (changes, area) => {
+      if (area === "local" && Object.hasOwn(changes, PANE_OWNER_KEY)) callback(paneOwnerOf(changes[PANE_OWNER_KEY].newValue));
+    };
+    try {
+      chrome.storage.onChanged.addListener(listener);
+    } catch {
+      return () => {};
+    }
+    return () => {
+      try {
+        chrome.storage.onChanged.removeListener(listener);
+      } catch {
+        // The extension was reloaded; the listener went with it.
+      }
+    };
+  }
+
   ns.alive = alive;
-  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha };
+  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha, loadPaneOwner, savePaneOwner, onPaneOwnerChange, PANE_OWNER_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = { alive: globalThis.prFocus.alive, ...globalThis.prFocus.source };

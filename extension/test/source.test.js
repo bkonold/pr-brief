@@ -152,3 +152,69 @@ test("a dead extension context reads nothing, not even the comment", async () =>
     assert.deepEqual(fetched, []);
   });
 });
+
+async function withStorage({ stored = {}, throws = false, id = "abc" } = {}, body) {
+  const saved = globalThis.chrome;
+  const written = [];
+  const listeners = new Set();
+  globalThis.chrome = {
+    runtime: { id },
+    storage: {
+      local: {
+        get: async (defaults) => (throws ? Promise.reject(new Error("unreadable")) : { ...defaults, ...stored }),
+        set: async (items) => (throws ? Promise.reject(new Error("unwritable")) : written.push(items)),
+      },
+      onChanged: { addListener: (listener) => listeners.add(listener), removeListener: (listener) => listeners.delete(listener) },
+    },
+  };
+  try {
+    return await body({ written, listeners });
+  } finally {
+    globalThis.chrome = saved;
+  }
+}
+
+test("the pane owner is stored under the key defaults.js names, and is the brief's until the host is chosen", async () => {
+  const { PANE_OWNER_KEY } = await import("../defaults.js");
+  assert.equal(source.PANE_OWNER_KEY, PANE_OWNER_KEY);
+  await withStorage({}, async () => assert.equal(await source.loadPaneOwner(), "brief"));
+  await withStorage({ stored: { [PANE_OWNER_KEY]: "host" } }, async () => assert.equal(await source.loadPaneOwner(), "host"));
+  await withStorage({ stored: { [PANE_OWNER_KEY]: "nope" } }, async () => assert.equal(await source.loadPaneOwner(), "brief"));
+  await withStorage({ throws: true }, async () => assert.equal(await source.loadPaneOwner(), "brief"));
+  await withStorage({ id: undefined }, async () => assert.equal(await source.loadPaneOwner(), "brief"));
+});
+
+test("savePaneOwner writes the owner, and ignores a value that is not one or a store that cannot be written", async () => {
+  await withStorage({}, async ({ written }) => {
+    await source.savePaneOwner("host");
+    await source.savePaneOwner("brief");
+    await source.savePaneOwner("nope");
+    assert.deepEqual(written, [{ paneOwner: "host" }, { paneOwner: "brief" }]);
+  });
+  await withStorage({ throws: true }, async () => {
+    await source.savePaneOwner("host");
+  });
+});
+
+test("onPaneOwnerChange reports a change of the stored owner only, and stops when asked", async () => {
+  await withStorage({}, async ({ listeners }) => {
+    const seen = [];
+    const stop = source.onPaneOwnerChange((owner) => seen.push(owner));
+    const [listener] = listeners;
+    listener({ paneOwner: { newValue: "host" } }, "local");
+    listener({ paneOwner: { newValue: "bogus" } }, "local");
+    listener({ paneOwner: { newValue: "host" } }, "sync");
+    listener({ baseUrl: { newValue: "x" } }, "local");
+    listener({ paneOwner: {} }, "local");
+    assert.deepEqual(seen, ["host", "brief", "brief"]);
+    stop();
+    assert.equal(listeners.size, 0);
+  });
+  const saved = globalThis.chrome;
+  globalThis.chrome = { runtime: { id: "abc" } };
+  try {
+    source.onPaneOwnerChange(() => {})();
+  } finally {
+    globalThis.chrome = saved;
+  }
+});
