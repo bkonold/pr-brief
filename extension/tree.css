@@ -663,11 +663,11 @@
 
 .prf-chunk-source-set {
   flex: none;
-  align-self: center;
+  align-self: flex-start;
   margin-left: auto;
   padding-left: 6px;
   font-size: 12px;
-  line-height: 18px;
+  line-height: 21px;
   color: var(--fgColor-muted, #59636e);
   white-space: nowrap;
 }
@@ -686,28 +686,6 @@
 
 .prf-chunk-group .prf-chunk-file {
   padding: 2px 4px;
-}
-
-.prf-chunk-group .prf-chunk-paired {
-  margin-left: 40px;
-}
-
-.prf-chunk-test-badge {
-  display: inline-flex;
-  flex: none;
-  gap: 3px;
-  align-items: center;
-  align-self: center;
-  padding: 0 5px;
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--fgColor-default, #1f2328);
-  border: 0.5px solid var(--borderColor-muted, #d1d9e0b3);
-  border-radius: 999px;
-}
-
-.prf-chunk-badge-icon {
-  flex: none;
 }
 
 .prf-chunk-hidden-note {

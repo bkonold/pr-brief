@@ -355,9 +355,6 @@
   }
 
   const TEST_SOURCE_SET = /test/i;
-  const JVM_TEST_NAME = /^(.+?)(?:Tests?|IT)$/;
-  const JS_TEST_NAME = /^(.+)\.(?:test|spec)\.(?:tsx?|jsx?)$/;
-  const JS_SOURCE_NAME = /^(.+)\.(?:tsx?|jsx?)$/;
 
   function stemOf(name) {
     const dot = name.lastIndexOf(".");
@@ -398,69 +395,46 @@
     return false;
   }
 
-  // The files of `sources` the test at `path` may test, by path and name alone. A JVM test tests the file of its
-  // module and package whose name is the test's without a trailing Test, Tests or IT; a `foo.test.ts` or `foo.spec.js`
-  // (tsx and jsx too) tests the `foo.ts`, `foo.tsx`, `foo.js` or `foo.jsx` beside it.
-  function sourcesTestedBy(path, sources) {
-    const dir = dirOf(path);
-    const name = baseName(path);
-    const jvm = jvmFolderOf(dir);
-    if (jvm) {
-      const base = JVM_TEST_NAME.exec(stemOf(name))?.[1];
-      if (!base) return [];
-      return sources.filter((source) => {
-        const other = jvmFolderOf(dirOf(source.path));
-        return other?.module === jvm.module && other.segments.join("/") === jvm.segments.join("/") && stemOf(baseName(source.path)) === base;
-      });
-    }
-    const base = JS_TEST_NAME.exec(name)?.[1];
-    if (!base) return [];
-    return sources.filter((source) => dirOf(source.path) === dir && JS_SOURCE_NAME.exec(baseName(source.path))?.[1] === base);
-  }
-
-  // Where a path's package line goes: its module, the key its package line is merged under and its label as a line
-  // under a module header (`label`) or alone (`inline`). A JVM source folder (<module>/src/<set>/<lang>/<package>) is
-  // in its module, its package line is shared by every test source set of that package, and the package drops the
-  // `prefix` leading segments all the review's JVM folders share. Any other path is in the module of
-  // its first directory segment, its package the rest of the directory; a file at the repo root is in the module `/`.
+  // Where a path's package line goes: its module, the key its package line is merged under, its label as a line under
+  // a module header (`label`) or alone (`inline`), the test source set it is a line of (`testSet`, empty for any other)
+  // and whether it is a test line. A JVM source folder (<module>/src/<set>/<lang>/<package>) is in its module, each of
+  // its source sets with its own package line, and the package drops the `prefix` leading segments all the review's JVM
+  // folders share. A source set that is neither main nor a test one is named in the label. Any other path is in the
+  // module of its first directory segment, its package the rest of the directory; a file at the repo root is in the
+  // module `/`.
   function placeOf(path, prefix) {
     const dir = dirOf(path);
     const jvm = jvmFolderOf(dir);
     if (jvm) {
-      const set = jvm.set !== "main" && !TEST_SOURCE_SET.test(jvm.set) ? jvm.set : "";
+      const testSet = jvm.set !== "main" && TEST_SOURCE_SET.test(jvm.set) ? jvm.set : "";
+      const named = jvm.set !== "main" && !testSet ? jvm.set : "";
       const segments = jvm.segments.slice(prefix);
       return {
         module: jvm.module || "/",
-        key: `${set}\0${segments.join("/")}`,
-        label: set ? `${set} \u203a ${segments.join("/")}` : segments.join("/"),
-        inline: jvmLabel({ module: jvm.module, set: set || "main" }, segments),
+        key: `${jvm.set}\0${segments.join("/")}`,
+        label: named ? `${named} \u203a ${segments.join("/")}` : segments.join("/"),
+        inline: jvmLabel({ module: jvm.module, set: named || "main" }, segments),
+        testSet,
       };
     }
     const slash = dir.indexOf("/");
     const module = dir === "/" ? "/" : slash < 0 ? dir : dir.slice(0, slash);
     const rest = dir === "/" || slash < 0 ? "" : dir.slice(slash + 1);
-    return { module, key: `/\0${rest}`, label: rest || "/", inline: dir };
+    return { module, key: `/\0${rest}`, label: rest || "/", inline: dir, testSet: "" };
   }
 
   // The layer's files grouped by module and, in each, by package, as
-  // [{ module, header, packages: [{ dirs, label, files: [{ path, hunks, test, tests }] }] }], modules and their packages
-  // in the order of their first hunk, a package's files in the order of each file's first hunk. `reviewPaths` is every
-  // path in the review and `testPaths` its test files. A module has `header` set when the layer has two or more package
-  // lines under it; the label of its package lines is then the package alone, else the module, then `\u203a` and the
-  // package (a non-JVM directory is labelled in full). The main and test sources of a package share a line, whose
-  // `dirs` are all their directories. A file is a test (`test`) when `isTestPath` says so; a test that tests exactly one
-  // other file of the layer (see `sourcesTestedBy`) is not a line of its own but in that file's `tests`.
+  // [{ module, header, packages: [{ dirs, label, testSet, files: [{ path, hunks, test }] }] }], modules in the order of
+  // their first hunk and, in each, the package lines of the main and other sources first and then those of the test
+  // source sets (`testSet` is the set's name, empty for any other line), each in the order of its first hunk, a
+  // package's files in the order of each file's first hunk. `reviewPaths` is every path in the review and `testPaths`
+  // its test files. A module has `header` set when the layer has two or more package lines under it, test lines
+  // counted; the label of its package lines is then the package alone, else the module, then `\u203a` and the package
+  // (a non-JVM directory is labelled in full). Each source set of a JVM package has its own line. A file is a test
+  // (`test`) when `isTestPath` says so.
   function folderGroups(chunk, reviewPaths, testPaths = []) {
     const testSet = new Set(testPaths);
-    const files = filesOf(chunk).map((file) => ({ ...file, test: isTestPath(file.path, testSet), tests: [] }));
-    const sources = files.filter((file) => !file.test);
-    const paired = new Set();
-    for (const file of files.filter((candidate) => candidate.test)) {
-      const tested = sourcesTestedBy(file.path, sources);
-      if (tested.length !== 1) continue;
-      tested[0].tests.push(file);
-      paired.add(file);
-    }
+    const files = filesOf(chunk).map((file) => ({ ...file, test: isTestPath(file.path, testSet) }));
     const jvmPackages = [...new Set(reviewPaths.map(dirOf))].map((dir) => jvmFolderOf(dir)?.segments).filter(Boolean);
     const prefix = jvmPackages.length ? sharedSegments(jvmPackages) : 0;
     const modules = new Map();
@@ -468,17 +442,19 @@
       const place = placeOf(file.path, prefix);
       if (!modules.has(place.module)) modules.set(place.module, { module: place.module, header: false, packages: new Map() });
       const { packages } = modules.get(place.module);
-      if (!packages.has(place.key)) packages.set(place.key, { dirs: new Set(), label: place.label, inline: place.inline, files: [] });
+      if (!packages.has(place.key)) packages.set(place.key, { dirs: new Set(), label: place.label, inline: place.inline, testSet: place.testSet, files: [] });
       const group = packages.get(place.key);
       group.dirs.add(dirOf(file.path));
-      if (!paired.has(file)) group.files.push(file);
+      group.files.push(file);
     }
     return [...modules.values()].map(({ module, packages }) => {
       const header = packages.size >= 2;
+      const lines = [...packages.values()];
+      const ordered = [...lines.filter((group) => !group.testSet), ...lines.filter((group) => group.testSet)];
       return {
         module,
         header,
-        packages: [...packages.values()].map((group) => ({ dirs: [...group.dirs], label: header ? group.label : group.inline, files: group.files })),
+        packages: ordered.map((group) => ({ dirs: [...group.dirs], label: header ? group.label : group.inline, testSet: group.testSet, files: group.files })),
       };
     });
   }
@@ -500,61 +476,39 @@
   }
 
   // One file's button: its icon (a beaker for a test, a file otherwise) and its full name, with its full path as the
-  // tooltip. A test paired with a file (`nested`) is drawn indented under it, and a JVM one also names the source set it
-  // lives in (`src/test`, `src/integrationTest`) at the row's right end. `hidden` is the tests paired with the file
-  // that the Tests control keeps out of view: a badge after the name counts them, its tooltip listing their names.
-  function fileButton(entry, { nested = false, hidden = [] }, chunk, handlers) {
-    const file = button(nested ? "prf-chunk-file prf-chunk-paired" : "prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, entry.path));
+  // tooltip.
+  function fileButton(entry, chunk, handlers) {
+    const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, entry.path));
     file.title = entry.path;
     file.append(filledIcon(entry.test ? BEAKER_ICON : FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", baseName(entry.path)));
-    const jvm = nested ? jvmFolderOf(dirOf(entry.path)) : null;
-    if (jvm) file.append(make("span", "prf-chunk-source-set", `src/${jvm.set}`));
-    if (hidden.length > 0) {
-      const badge = make("span", "prf-chunk-test-badge");
-      badge.title = hidden.map((test) => baseName(test.path)).join("\n");
-      badge.append(filledIcon(BEAKER_ICON, 12, "prf-chunk-badge-icon"), make("span", undefined, String(hidden.length)));
-      file.append(badge);
-    }
     return file;
   }
 
-  // The rows of a package line under the Tests control's mode, as [{ entry, nested, hidden }] in order, and how many
-  // files it keeps out of view. "all" shows every file, a paired test under its file. "hide", "unit" and "integration"
-  // keep out the tests `hidesTestKind` names: a paired one is counted in its file's `hidden`, an unpaired one is dropped,
-  // and the tests they leave show as in "all". "only" shows only the tests: a file is dropped, and a test paired with it,
-  // no longer under a file, is a row of its own.
+  // The files of a package line the Tests control's `mode` shows, in order, and how many it keeps out of view. "all"
+  // shows every file. "hide", "unit" and "integration" keep out the tests `hidesTestKind` names. "only" shows only the
+  // tests.
   function packageRows(group, testsMode) {
     const rows = [];
     let hiddenCount = 0;
-    const hides = (test) => hidesTestKind(testsMode, testKind(test.path));
     for (const entry of group.files) {
-      if (testsMode === "only") {
-        if (entry.test) rows.push({ entry, nested: false, hidden: [] });
-        else {
-          hiddenCount += 1;
-          for (const test of entry.tests) rows.push({ entry: test, nested: false, hidden: [] });
-        }
-      } else if (entry.test && hides(entry)) {
-        hiddenCount += 1;
-      } else {
-        const hidden = entry.tests.filter(hides);
-        hiddenCount += hidden.length;
-        rows.push({ entry, nested: false, hidden });
-        for (const test of entry.tests.filter((other) => !hides(other))) rows.push({ entry: test, nested: true, hidden: [] });
-      }
+      const hidden = testsMode === "only" ? !entry.test : entry.test && hidesTestKind(testsMode, testKind(entry.path));
+      if (hidden) hiddenCount += 1;
+      else rows.push(entry);
     }
     return { rows, hiddenCount };
   }
 
-  // One package line (a folder icon and its label, its directories as the tooltip) over its rows.
+  // One package line (a folder icon and its label, its directories as the tooltip, and for a test source set the
+  // `src/<set>` it is at the right end) over its rows.
   function packageGroup(group, rows, chunk, handlers) {
     const element = make("div", "prf-chunk-group");
     const folder = make("div", "prf-chunk-folder");
     const folderLabel = make("span", "prf-chunk-folder-label");
     folderLabel.append(...labelNodes(group.label));
     folder.append(filledIcon(DIRECTORY_FILL_ICON, 16, "prf-chunk-icon"), folderLabel);
+    if (group.testSet) folder.append(make("span", "prf-chunk-source-set", `src/${group.testSet}`));
     folder.title = group.dirs.join("\n");
-    element.append(folder, ...rows.map((row) => fileButton(row.entry, row, chunk, handlers)));
+    element.append(folder, ...rows.map((entry) => fileButton(entry, chunk, handlers)));
     return element;
   }
 
