@@ -598,8 +598,31 @@
   flex-direction: column;
 }
 
-.prf-chunk-group + .prf-chunk-group {
+.prf-chunk-group + .prf-chunk-group,
+.prf-chunk-module + .prf-chunk-module {
   margin-top: 4px;
+}
+
+.prf-chunk-module-head {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 1px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.prf-chunk-module-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The rail runs under the module's box icon, whose centre is 12px in: 4px of padding and half of the 16px icon. */
+.prf-chunk-rail {
+  margin-left: 11px;
+  padding-left: 8px;
+  border-left: 1px solid var(--borderColor-default, #d0d7de);
 }
 
 .prf-chunk-folder,
@@ -680,6 +703,21 @@
 
 .prf-chunk-group .prf-chunk-file {
   padding: 2px 4px;
+}
+
+.prf-chunk-group .prf-chunk-paired {
+  margin-left: 44px;
+  color: var(--fgColor-muted, #59636e);
+}
+
+.prf-chunk-test-tag {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--fgColor-muted, #59636e);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 999px;
 }
 
 .prf-chunk-file:hover {
