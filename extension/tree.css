@@ -641,7 +641,7 @@
 }
 
 .prf-chunk-folder {
-  color: var(--fgColor-muted, #59636e);
+  color: var(--fgColor-default, #1f2328);
 }
 
 .prf-chunk-icon {
@@ -718,7 +718,7 @@
   padding: 0 5px;
   font-size: 12px;
   line-height: 16px;
-  color: var(--fgColor-muted, #59636e);
+  color: var(--fgColor-default, #1f2328);
   border: 0.5px solid var(--borderColor-muted, #d1d9e0b3);
   border-radius: 999px;
 }
@@ -749,7 +749,7 @@
   padding: 0 6px;
   font-size: 11px;
   line-height: 14px;
-  color: var(--fgColor-muted, #59636e);
+  color: var(--fgColor-default, #1f2328);
   border: 1px solid var(--borderColor-default, #d0d7de);
   border-radius: 999px;
 }
