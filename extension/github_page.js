@@ -149,6 +149,8 @@
     contentSelector: DIFF_CONTENT,
     diagramHost,
     paneHost,
+    // GitHub's pane has its own divider.
+    nativeResize: true,
     treeFileSelector: TREE_FILE,
     treeDirSelector: TREE_DIR,
     descriptionHost: () => document.querySelector(DESCRIPTION),

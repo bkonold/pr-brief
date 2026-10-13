@@ -340,7 +340,7 @@ test("chooseAdapter picks the adapter that serves the host and none for any othe
 test("each adapter names itself and its pane for the interface", () => {
   assert.deepEqual([githubPage.name, forgejoPage.name], ["GitHub", "Forgejo"]);
   for (const page of [githubPage, forgejoPage]) {
-    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "firstInPage", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "paneHost", "mount", "unmount", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
+    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "firstInPage", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "paneHost", "mount", "unmount", "resizePane", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
       assert.equal(typeof page[member], "function", `${page.name}.${member}`);
     }
   }

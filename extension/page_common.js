@@ -34,6 +34,10 @@
 //   paneHost()                      the element holding the host's file-tree pane, or null. The extension's panel is
 //                                   mounted as its first child and the pane's other children are hidden while the panel
 //                                   shows; with no such element the panel floats at the left edge of the window
+//   nativeResize                    optional: true when the host draws its own divider for resizing the file pane, so the
+//                                   extension adds none
+//   paneResize(options)             optional: makes the host's file pane resizable and keeps it so as the host re-renders
+//                                   it; returns how to stop. `options` is { load, save } for the stored width
 //   treeFileSelector                optional: the file rows of the host's tree, looked up inside paneHost(), each being or
 //                                   holding a link whose href ends in the file's diff id (`#diff-…`)
 //   treeDirSelector                 optional: the tree's directory rows, which hold their files' rows
@@ -157,6 +161,39 @@
       };
       setTimeout(poll, IDLE_POLL_MS);
     });
+  }
+
+  // A drag handle that resizes something horizontally by its right edge: dragging right widens it. `widthOf()` is the
+  // current width when a drag starts, `setWidth(width)` is called with each new width, `onStart()` when the drag begins,
+  // `onEnd(width)` when it ends (null when the pointer never moved) and, when given, `onReset()` on a double-click. The
+  // caller decides what the width is clamped to. The element carries `className`; the caller places it.
+  function resizeHandle({ className, title = "Drag to resize", widthOf, setWidth, onStart, onEnd, onReset }) {
+    const handle = document.createElement("div");
+    handle.className = className;
+    handle.title = title;
+    let drag = null;
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      handle.setPointerCapture(event.pointerId);
+      drag = { x: event.clientX, width: widthOf(), last: null };
+      onStart?.();
+      event.preventDefault();
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      drag.last = drag.width + event.clientX - drag.x;
+      setWidth(drag.last);
+    });
+    const end = () => {
+      if (!drag) return;
+      const { last } = drag;
+      drag = null;
+      onEnd?.(last);
+    };
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    if (onReset) handle.addEventListener("dblclick", onReset);
+    return handle;
   }
 
   function createPage(spec) {
@@ -871,6 +908,12 @@
       mounted = null;
     }
 
+    // Makes the host's file pane resizable, unless the host has a divider of its own. Returns how to stop.
+    function resizePane(options) {
+      if (spec.nativeResize || !spec.paneResize) return () => {};
+      return spec.paneResize(options);
+    }
+
     // A PR tab can change page under the content script without a reload.
     function onNavigate(callback) {
       const events = [
@@ -926,6 +969,8 @@
       cancelJump,
       diagramHost: spec.diagramHost,
       paneHost: spec.paneHost,
+      nativeResize: Boolean(spec.nativeResize),
+      resizePane,
       mount,
       unmount,
       descriptionHost: spec.descriptionHost,
@@ -934,7 +979,7 @@
     };
   }
 
-  ns.pageCommon = { createPage };
+  ns.pageCommon = { createPage, resizeHandle };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.pageCommon;
