@@ -1,15 +1,15 @@
-// The GitHub adapter: the only module that knows GitHub's DOM. Class names carry hashed suffixes, so every
-// selector matches a stable prefix with [class*="..."]. What is not about GitHub's DOM is in page_common.js.
+// The GitHub adapter: the only module that knows GitHub's DOM. Class names carry hashed suffixes, so selectors
+// prefer ids, ARIA roles and data attributes, and match a class prefix with [class*="..."] only where nothing else
+// identifies the element. What is not about GitHub's DOM is in page_common.js.
 (() => {
   const ns = (globalThis.prFocus ??= {});
   const { createPage } = ns.pageCommon ?? require("./page_common.js");
 
-  const DIFF_BLOCK = 'div[id^="diff-"][class*="Diff-module__diffTargetable"]';
-  const DIFF_ENTRY = 'div[class*="PullRequestDiffsList-module__diffEntry"]';
+  const DIFF_BLOCK = 'div[role="region"][id^="diff-"]';
   const BLOCK_PATH = "[data-file-path]";
   const BLOCK_ANCHOR = "table[data-diff-anchor]";
-  const TREE_HOST = '#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]';
-  // Primer's tree: a directory's row carries aria-expanded and a file's does not.
+  const PANE_HOST = "pr-file-tree";
+  // The tree's rows are ARIA tree items inside the pane host: a file has no `aria-expanded`, a directory has it.
   const TREE_FILE = 'li[role="treeitem"]:not([aria-expanded])';
   const TREE_DIR = 'li[role="treeitem"][aria-expanded]';
   const LOAD_BUTTON = 'button[data-component="Button"]';
@@ -27,7 +27,7 @@
   const HEAD_SHA = /"head(?:Oid|Sha)"\s*:\s*"([0-9a-f]{40})"/;
   const ARIA_PREFIX = "Diff for: ";
   const FILE_HEADER = '[class*="diffHeaderWrapper"], [class*="DiffFileHeader"], [class*="diff-file-header"]';
-  const STICKY_SKIP = `${DIFF_ENTRY}, #pr-focus-tree, #pr-focus-diagram, .prd-overlay, svg, script, style`;
+  const STICKY_SKIP = `${DIFF_BLOCK}, #pr-focus-tree, #pr-focus-diagram, .prd-overlay, svg, script, style`;
 
   const CHANGES_PAGE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/(?:changes|files)(?:\/|$)/;
   const PULL_PAGE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:\/|$)/;
@@ -115,15 +115,14 @@
     return { content, pane, top: pane ? getComputedStyle(pane).top : "0px", order: getComputedStyle(anchor).order };
   }
 
-  // GitHub's own tree, including its "File tree" heading. The filter box above it is a sibling and
-  // stays visible, so a list mounted before this element sits between the two.
-  function treeHost() {
-    return document.querySelector(TREE_HOST);
+  // The file-tree pane: its "Filter files" box and its tree. Found by its id alone, since the classes inside it are
+  // generated.
+  function paneHost() {
+    return document.getElementById(PANE_HOST);
   }
 
   const page = createPage({
     name: "GitHub",
-    treeLabel: "Files",
     hosts: ["github.com"],
     origin: "https://github.com",
     changesPage: CHANGES_PAGE,
@@ -138,7 +137,7 @@
     blockSelector: DIFF_BLOCK,
     pathOfBlock,
     // The whole entry of one file's diff, which holds the file callout above its header.
-    entryOf: (block) => block.closest(DIFF_ENTRY) ?? block,
+    entryOf: (block) => block.parentElement ?? block,
     diffId,
     findRow,
     rowLines,
@@ -149,7 +148,7 @@
     containerSelector: DIFF_CONTAINER,
     contentSelector: DIFF_CONTENT,
     diagramHost,
-    treeHost,
+    paneHost,
     treeFileSelector: TREE_FILE,
     treeDirSelector: TREE_DIR,
     descriptionHost: () => document.querySelector(DESCRIPTION),

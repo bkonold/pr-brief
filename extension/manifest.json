@@ -17,6 +17,12 @@
       "run_at": "document_idle"
     }
   ],
+  "commands": {
+    "toggle-brief": {
+      "suggested_key": { "default": "Alt+B" },
+      "description": "Switch the file pane between the PR Brief and the host's own tree"
+    }
+  },
   "options_ui": {
     "page": "options.html",
     "open_in_tab": true

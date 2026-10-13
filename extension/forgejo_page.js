@@ -12,10 +12,9 @@
   const DIFF_BLOCK = `${DIFF_CONTAINER} .diff-file-box[id^="diff-"]`;
   // The diffs' column, a sibling of the tree after it.
   const DIFF_CONTENT = "#diff-content-container";
-  // The sticky tree column. Its Vue-rendered tree is the first child; the page's own tree is hidden by
-  // hiding that child, and our list is mounted before it inside the column.
+  // The sticky tree column. Its Vue-rendered tree sits in `.diff-file-tree-items`, which is the pane host.
   const DIFF_PANE = "#diff-file-tree";
-  const TREE_HOST = `${DIFF_PANE} > .diff-file-tree-items`;
+  const PANE_HOST = `${DIFF_PANE} > .diff-file-tree-items`;
   // A file's row in the tree is a link to the file's diff. Directory rows are not matched: they stay.
   const TREE_FILE = ".item-file";
   // A file's header: a sticky bar (top 44px) inside the box, under the sticky summary bar `.diff-detail-box`
@@ -143,14 +142,14 @@
     return { content, pane, top: pane ? getComputedStyle(pane).top : "0px", order: getComputedStyle(anchor).order };
   }
 
-  function treeHost() {
+  // The element holding Forgejo's own tree.
+  function paneHost() {
     installTheme();
-    return document.querySelector(TREE_HOST);
+    return document.querySelector(PANE_HOST);
   }
 
   const page = createPage({
     name: "Forgejo",
-    treeLabel: "Files",
     hosts: ["localhost:3300"],
     origin: "http://localhost:3300",
     changesPage: CHANGES_PAGE,
@@ -179,7 +178,7 @@
       installTheme();
       return diagramHost();
     },
-    treeHost,
+    paneHost,
     treeFileSelector: TREE_FILE,
     descriptionHost: () => {
       installTheme();

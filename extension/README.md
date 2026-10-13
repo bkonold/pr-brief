@@ -1,7 +1,7 @@
 # PR Brief extension
 
 A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
-(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the brief's `review.json` (schema 4, written by `render.py`) from the PR's own comment, or from an optional local server, and replaces the host's file tree with the walkthrough's list of stops. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
+(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the brief's `review.json` (schema 4, written by `render.py`) from the PR's own comment, or from an optional local server, and puts the walkthrough's stops and the layers in the host's file pane, with the host's own tree one tab away. A switch in the list's header, or Alt+B, hands the whole page back to the host. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
 where it describes the page, and the Forgejo selectors are in their own table at the end.
 
 ## Where the brief comes from
@@ -25,10 +25,10 @@ not found. A comment over GitHub's size limit has no "Brief data" block (`post.p
 either. The block is read from whichever commenter posted it: the extension does not check the author, and takes the
 earliest block in the page.
 
-What the list shows, in GitHub's left column between the "Filter files" box and the tree:
+What the list shows, in GitHub's left column (the file tree's pane, `#pr-file-tree`, where it is the first child; in "Walkthrough" and "Layers" the pane's own children are hidden under it, in "Files" they stay; with no pane, as when GitHub's tree is closed, the list floats at the page's left edge):
 
-- A toggle, "Walkthrough" / "Layers" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Files", which shows the host's own file tree (GitHub's, or Forgejo's); "Walkthrough"
-  swaps in the stop list, "Layers" (only for a brief that has layers, see "Layers tab") the layer list, and the toggle stays so you can switch again. No mode or stop ever hides a diff, except a layer, which narrows the page to its hunks, and the Tests control in "Files" and "Layers", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
+- A toggle, "Walkthrough" / "Layers" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Walkthrough" for a brief that has stops, else in "Layers", else in "Files". "Files" shows the host's own file tree (GitHub's, or Forgejo's) under the toggle and the chips (see "Files tab"); "Walkthrough"
+  is the stop list and "Layers" (only for a brief that has layers, see "Layers tab") the layer list, and the toggle stays so you can switch again. At the toggle's right end a button labelled "← GitHub" (or "← Forgejo"), with the tooltip "Switch to GitHub's own view (Alt+B)", hands the page back to the host (see "Handing the page back"). No mode or stop ever hides a diff, except a layer, which narrows the page to its hunks, and the Tests control in "Files" and "Layers", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
 - Under the toggle, a filter line. In "Walkthrough" and "Files" its left side holds chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
@@ -46,9 +46,9 @@ What the list shows, in GitHub's left column between the "Filter files" box and 
 
 - In "Walkthrough" mode the list is the stops whose file is in the set, in walkthrough order, each with its file's name
   under its title. A set whose files have no stop says so.
-- In both modes the diff shows only the set's files. In "Files" mode the host's own tree hides the others too, and a
+- In every mode the diff shows only the set's files. In "Files" mode the host's own tree hides the others too, and a
   directory left with no visible file. The host re-renders its tree and loads diffs as the page scrolls, so the hiding is
-  applied again on every refresh, as the callouts are. A tree row is matched to a file by the `#diff-…` link it holds.
+  applied again on every refresh, as the callouts are. A tree row is matched to a file by the `#diff-…` link it holds; a row with no such link is left showing.
 - A click on a diagram box, or on a stop, in a file outside the set puts the chip back on "All" first, so the file shows.
 
 ## Tests control
@@ -138,9 +138,34 @@ variant) is not shown: see "Older runs".
   line flashes, and not when the host re-renders the row. Under `prefers-reduced-motion` it does not flash.
 - A banner appears when the review was generated for an older head commit than the page's.
 
-Nothing about the review's state is remembered, except which layers are judged (see "Layers tab") and the Tests control's mode (see "Tests control"): every load and every navigation into the files page opens as GitHub would,
-in "Files" mode with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
+Nothing about the review's state is remembered, except which layers are judged (see "Layers tab"), the Tests control's mode (see "Tests control") and who owns the pane (see "Handing the page back"): every load and every navigation into the files page opens
+in "Walkthrough" mode (or "Layers", or "Files" for a brief with neither) with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
 link to a stop's line selects that stop. The one thing kept is whether the diagram panel is expanded (see below).
+
+## Files tab
+
+"Files" is the host's own file tree, under the extension's toggle and chip line. The panel holds only those two; the pane's own children (GitHub's "Filter files" box and tree, Forgejo's tree) stay showing below it.
+
+- The chips and the Tests control filter the tree's rows as they filter the diff: a file row whose diff is hidden is hidden, then a
+  directory row left with no visible file. A row is matched to its diff by the `#diff-…` link it is or holds, and a row with no
+  such link is left showing. The rows are looked up inside the pane host only, never in the extension's own panel. Leaving "Files",
+  choosing "All", or handing the page back shows every row again.
+- GitHub's rows are ARIA tree items inside `#pr-file-tree`: `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory. Forgejo's file rows are `.item-file`, and its directory rows are left showing.
+- The host re-renders its tree and re-opens directories as the reader browses it, so a tree row the host adds or drops schedules a refresh that applies the filters again.
+- The "All" chip counts the files of the diffs the page holds joined by every path the brief names.
+
+## Handing the page back
+
+The pane has one owner, the brief (the default) or the host.
+
+- The button at the right end of the list's toggle, "← GitHub" or "← Forgejo", gives the pane to the host: the list, the
+  callouts, the file filter, the focus marks and the diagram panel are removed, and the page is as the host draws it, apart from a slim bar
+  at the top of its file pane, `PR Brief · 6 stops, 3 layers` with a Show button, which gives the pane back.
+- Alt+B does the same from the keyboard, in either direction (`commands.toggle-brief` in the manifests; rebind it at
+  `chrome://extensions/shortcuts`). `background.js` flips the stored owner and every open PR page follows.
+- The owner is kept in `chrome.storage.local` under `paneOwner`, `brief` or `host`, the same for every PR, and a change in one tab is applied in the others.
+- A PR with no brief has no switch and no bar: the page is the host's, and the "Generate brief" line or the note about the page server works as before.
+- The conversation page's brief card is not part of the pane, and stays as it is while the host owns the pane.
 
 ## Layers tab
 
@@ -171,7 +196,7 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
 - Selecting a layer narrows the page to it: the diffs of the layer's files only, and in each only the rows that show a
   line inside one of the layer's hunks. A hunk's new range filters the right side and its old range the left, so removed
   lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own
-  tree is behind the sidebar in this tab, but its rows for the other files are hidden as in a file set. The view then
+  tree is hidden under the panel in this tab, but its rows for the other files are hidden as in a file set. The view then
   lands on the layer's callout above its file's header, the way a stop on a file does, and the selection clears any stop, box or chip. Selecting a stop, a box or a file leaves the
   tab and shows the whole diff again; opening the tab with a layer already selected narrows to it again, and with none
   selects nothing and filters nothing.
@@ -193,8 +218,8 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
 
 ## When the page server is down
 
-This applies only when a server URL is set and the PR's comment has no brief. If fetching `review.json` fails outright (connection refused, a network error), the list's place above GitHub's tree shows a
-note with the base URL, the command to start the server (`pd serve`) and a Retry button; GitHub's tree stays visible. Retry
+This applies only when a server URL is set and the PR's comment has no brief. If fetching `review.json` fails outright (connection refused, a network error), the list's place at the top of the pane shows a
+note with the base URL, the command to start the server (`pd serve`) and a Retry button; the host's own tree stays visible under it. Retry
 fetches again and mounts the full list on success. A 404 shows the "Generate brief" line below, and an older run shows the "Older runs" line, unless the run server says it will not run that repository.
 
 ## Boxes and files
@@ -368,20 +393,20 @@ Run the pure tests with `node --test test/*.test.js`.
 
 | File | Role |
 | --- | --- |
-| `background.js` | When a server URL is set: fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers. With none set it answers `unset` and requests nothing |
+| `background.js` | Flips the stored pane owner on the Alt+B command. When a server URL is set: fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers. With none set it answers `unset` and requests nothing |
 | `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
 | `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
-| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, the file, hunk and exclude filters, change watching. `createPage(spec)` builds an adapter from a host's spec |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, the file, hunk and exclude filters, mounting the panel in the host's file pane, change watching. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
 | `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Marks the active file's header, and scrolls to a diff. It hides nothing |
-| `tree.js`, `tree.css`, `focus.css` | The stop list and the layer list, the stop and layer callout cards with their previous and next, and the classes `focus.js` and the line jump toggle |
+| `tree.js`, `tree.css`, `focus.css` | The stop list and the layer list, the off bar, the stop and layer callout cards with their previous and next, and the classes `focus.js` and the line jump toggle |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state, the layer selection and the judged marks |
 | `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
 | `comment_source.js` | Reads the brief from the PR's "Brief data" comment block (inflate, split, fetch the conversation page). Loaded before `source.js` |
-| `source.js` | Content-script side of loading: the PR's comment first, then the background script |
+| `source.js` | Content-script side of loading: the PR's comment first, then the background script; and the stored pane owner |
 | `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
 | `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |
 
@@ -389,25 +414,25 @@ The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in 
 
 ### The page adapter
 
-Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`, `treeLabel`,
+Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`,
 `prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `conversationUrl(pr)`, `isConversationPage(pr?)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
 `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
-`restoreLineTarget`, `ownsLine`, `cancelJump`, `filter({ files, hunks, exclude })` (each `null` for none: `files` and `exclude` are paths, `hunks` is `[{path, side, start, count}]`; one call sets all three and applies them in one pass), `blockCount()`, `changedFileCount(blocks?)`, `diagramHost`, `treeHost`, `descriptionHost`, `onChange`, `quietly(fn)` (runs `fn` so that the `onChange` watchers do not see its own changes to the page, after handing them the changes made before it), `isStructural(node)` (whether a node a mutation added or removed is, or holds, a table row, diff block or tree row) and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `filter({ files, hunks, exclude })` (each `null` for none: `files` and `exclude` are paths, `hunks` is `[{path, side, start, count}]`; one call sets all three and applies them in one pass), `blockCount()`, `changedFileCount(reviewPaths?)` (the files of the diff blocks in the page joined by the paths the brief names), `diagramHost`, `paneHost()` (the element of the host's file pane, or null; the host's tree rows are looked up inside it), `mount(panel, { hideRest })` (puts the panel first in the pane, hides the pane's other children unless `hideRest` is false, floats it at the page's left edge when there is no pane, and puts it back when the host re-renders the pane), `unmount()` (removes the panel and shows what it hid), `descriptionHost`, `onChange`, `quietly(fn)` (runs `fn` so that the `onChange` watchers do not see its own changes to the page, after handing them the changes made before it), `isStructural(node)` (whether a node a mutation added or removed is, or holds, a table row, diff block or tree row) and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)
 
-All in `github_page.js`. Class names carry hashed suffixes, so they match on a `[class*="..."]` prefix.
+All in `github_page.js`. Class names carry hashed suffixes, so the stable hooks are ids, ARIA roles and data attributes; a `[class*="..."]` prefix is the last resort (the page and pane wrappers below).
 
 | What | Selector or rule |
 | --- | --- |
-| Diff block | `div[id^="diff-"]` with class containing `Diff-module__diffTargetable`; id is `diff-` + sha256 hex of the file path |
-| Entry | the block's ancestor `div[class*="PullRequestDiffsList-module__diffEntry"]` |
+| Diff block | `div[role="region"][id^="diff-"]`; id is `diff-` + sha256 hex of the file path |
+| Entry | the block's parent element, which holds only the block |
 | Block path, first choice | `"diff-" + sha256(path)` looked up with `getElementById` |
 | Block path, fallbacks | a descendant `[data-file-path]`, else `table[data-diff-anchor]` with `aria-label` `Diff for: <path>` |
 | Diagram host | `[class*="prc-PageLayout-PaneWrapper"]` (the file pane) and `[class*="prc-PageLayout-ContentWrapper"]` (the diffs' column), both inside `#diff-comparison-viewer-container`. The panel is inserted right before the pane with the pane's computed `order` (before the column with the column's order when there is no pane), so DOM order places it first and no GitHub element is restyled. Top offset copied from the pane |
-| Tree host | `#pr-file-tree > [class*="PullRequestFileTree-module__FileTreeScrollable"]`: GitHub's tree with its "File tree" heading. `#pr-file-tree` also holds the "Filter files" box as its first child, so the list is inserted before the host and the host is hidden with a class |
-| Tree rows | `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory; a file row is matched to its diff by the `a[href*="#diff-"]` it holds (the diff's id). A directory row is hidden only when it has file rows in the page and all of them are hidden |
+| Pane host | `#pr-file-tree`, by id alone: the pane holding the "Filter files" box and the tree. The panel goes first in it; in "Walkthrough" and "Layers" its other children are hidden with a class |
+| Tree rows | `li[role="treeitem"]` inside the pane host, whose class names are generated and so not used: without `aria-expanded` a file, with it a directory; a file row is matched to its diff by the `a[href*="#diff-"]` it holds (the diff's id). A directory row is hidden only when it has file rows in the page and all of them are hidden |
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed, and its callout row is scrolled to the stop place. |
 | Row lines, hunk rows | `rowLines(tr)` reads the row's `[data-line-anchor]` cell as `diff-<hash>(L\|R)<n>`, one per row: R for an added or a context line, L for a removed one. `hunkRow(tr)` is a row holding `td.diff-hunk-cell`: the `@@` header and the expand-context row. That cell carries an anchor too, for the line just before or after the hunk (`R0` above a new file's first hunk, `R133` above a hunk starting at 134), so it is skipped as a line. Observed 2026-10-09 on a files page in the React view
 | Load Diff control | A diff GitHub does not render by default (observed 2026-10-09 on the `/changes` page: "Large diffs are not rendered by default.", "Some generated files are not rendered by default.") is the same diff block with no `tr` and no `[data-line-anchor]`, holding a `button[data-component="Button"]` whose trimmed text is "Load Diff" (inner `span[data-component="text"]`) beside a `span.fgColor-muted` with the sentence. `loadDiff(id)` clicks that button, found by its text and not by the sentence. A second later (1 to 9 s) the block is replaced by a new node with the same id (the old one is detached), so the jump looks the block up by id again after the wait; the entry wrapper stays |
@@ -418,7 +443,7 @@ All in `github_page.js`. Class names carry hashed suffixes, so they match on a `
 If the list is missing, or the list says it couldn't find the diff blocks, GitHub changed these;
 update `github_page.js` only.
 
-When GitHub's file tree pane is closed there is no tree host, so no list is shown until the pane is reopened.
+When GitHub's file tree pane is closed there is no pane host, so the panel floats at the page's left edge until the pane is reopened, when it moves into it.
 
 ## Forgejo selectors (observed 2026-10-05 on a local Forgejo's pull request files page)
 
@@ -432,7 +457,7 @@ All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
 | File header | `.diff-file-header`, sticky at 44px inside the box, under the sticky summary bar `.diff-detail-box` (top 0, 44px) that the scroll offset is measured against |
 | Line row | `.lines-num [rel="diff-<sha1 of path>R<line>"]` (`L` for a removed line); its closest `tr`. The cell is `td.lines-num-new` / `td.lines-num-old` with `data-line-num` |
 | Row lines, hunk rows | `rowLines(tr)` reads every `.lines-num [rel]` span as `diff-<sha1>(L\|R)<n>`; an added row's old-number span and a removed row's new-number span have an empty `rel` and give no line. `hunkRow(tr)` is `tr.tag-code` (`data-line-type="tag"`): the `@@` header row (`td.lines-code.blob-hunk` holding `@ -a,b +c,d @@`). The expand-context row is assumed to share the class: the `@@` rows were observed 2026-10-09 in the files pages of local PRs, which had no expand rows |
-| Tree host | `#diff-file-tree > .diff-file-tree-items`: the Vue-rendered tree inside the sticky 380px column `#diff-file-tree`. The list is mounted before it in that column and the tree is hidden with a class |
+| Pane host | `#diff-file-tree > .diff-file-tree-items`: the Vue-rendered tree inside the sticky 380px column `#diff-file-tree`. The panel goes first in it; in "Walkthrough" and "Layers" its other children are hidden with a class |
 | Tree rows | `.item-file` is a file row, matched to its diff by the `a[href*="#diff-"]` it is or holds. Directory rows are left showing |
 | Diagram host | pane `#diff-file-tree`, content `#diff-content-container`, both children of the flex row `#diff-container`; the panel goes right after the pane |
 | Description host (conversation page) | `.ui.timeline > .timeline-item.comment.first`: the PR's opening comment, which the card is inserted before |

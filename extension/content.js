@@ -15,6 +15,10 @@
   let shutDown = false;
   let briefState = null;
   let briefToken = 0;
+  // Who owns the pane: "brief" shows the extension's panel there, "host" hands the whole page back. It is the reader's
+  // choice for every PR, kept in the browser and shared by its tabs.
+  let paneOwner = "brief";
+  let stopPaneWatch = null;
 
   // The PR brief card, on the conversation page: { key, card, stop }. `card` stays null while the run loads. There is
   // one card per page; it is moved back above the description whenever the page drops or moves it, never built twice.
@@ -142,6 +146,10 @@
       return;
     }
     if (!session?.review || !live()) return;
+    if (paneOwner === "host") {
+      handBack(session);
+      return;
+    }
     renderDiagram(session);
     focus.markBox(session.activeBox?.paths ?? []);
     page.restoreLineTarget();
@@ -161,8 +169,7 @@
     }
 
     const waited = Date.now() - session.startedAt;
-    const blocks = page.blockCount();
-    const noBlocks = blocks === 0;
+    const noBlocks = page.blockCount() === 0;
     if (noBlocks && waited < LOAD_GRACE_MS) schedule(LOAD_GRACE_MS - waited + SETTLE_MS);
     tree.render(
       session.review,
@@ -174,7 +181,7 @@
         selectedChunk: session.selectedChunk,
         judged: session.judged,
         pageSha: page.headSha(),
-        chips: tree.fileChips(session.review, page.changedFileCount(blocks)),
+        chips: tree.fileChips(session.review, page.changedFileCount(session.briefPaths)),
         fileSet,
         tests: session.tests,
         testsMode: mode,
@@ -182,6 +189,31 @@
       },
       handlersFor(session),
     );
+  }
+
+  // The page handed back to the host: nothing of the brief stays in it but the bar that shows the brief again.
+  function handBack(session) {
+    leaveLine();
+    page.showCallouts([]);
+    page.filter();
+    focus.clearBox();
+    diagram.remove();
+    tree.offBar({ stops: session.stops.length, layers: session.chunks.length }, () => setPaneOwner("brief"));
+  }
+
+  // Gives the pane to the brief or back to the host, and keeps the choice for every tab.
+  function setPaneOwner(owner) {
+    if (!live()) return;
+    paneOwner = owner;
+    source.savePaneOwner(owner);
+    if (current?.review) refresh();
+  }
+
+  // Another tab, or the keyboard shortcut, changed the owner.
+  function onPaneOwnerChange(owner) {
+    if (owner === paneOwner || !live()) return;
+    paneOwner = owner;
+    if (current?.review) refresh();
   }
 
   // Without a selected box, whether in "Files" mode or with nothing chosen, every node is shown.
@@ -581,6 +613,7 @@
       onSelectStop: (i) => selectStop(session, session.stops.find((stop) => stop.i === i)),
       onSelectChunk: (i) => selectChunk(session, i),
       onSelectFileInChunk: (i, path) => jumpInChunk(session, i, path),
+      onPaneOwner: setPaneOwner,
       onJudged: (i, on) => setJudged(session, i, on),
       onFileSet: (id) => change(session, () => (session.fileSet = id)),
       onTestsMode: (mode) => setTestsMode(session, mode),
@@ -600,7 +633,7 @@
     return null;
   }
 
-  // What the page shows on load: nothing is selected, and the diff stays where GitHub put it. A URL fragment that names
+  // What the page shows on load: nothing is selected, and the diff stays where the host put it. A URL fragment that names
   // a stop's diff line opens that stop, as a click on it would.
   async function selectLinkedStop(session) {
     if (!session?.review || !live()) return;
@@ -691,6 +724,8 @@
     teardown();
     stopNavigating?.();
     stopNavigating = null;
+    stopPaneWatch?.();
+    stopPaneWatch = null;
   }
 
   function live() {
@@ -698,6 +733,12 @@
     if (alive()) return true;
     shutdown();
     return false;
+  }
+
+  // Where the pane opens: the walkthrough when the brief has stops, else its layers, else the host's own files.
+  function openingMode(stops, chunks) {
+    if (stops.length > 0) return "review";
+    return chunks.length > 0 ? "chunks" : "files";
   }
 
   async function start() {
@@ -719,8 +760,9 @@
     current = { key };
 
     const token = loadToken;
-    const review = await source.loadReview(pr.owner, pr.repo, pr.pr, page.runKey(pr));
+    const [review, owner] = await Promise.all([source.loadReview(pr.owner, pr.repo, pr.pr, page.runKey(pr)), source.loadPaneOwner()]);
     if (!live()) return;
+    paneOwner = owner;
     if (token === loadToken && review?.error === "server") {
       current = { key, pr, offline: review.baseUrl, startedAt: Date.now() };
       stopObserving = page.onChange(onMutations);
@@ -732,17 +774,20 @@
       return;
     }
     if (token !== loadToken || !review) return;
+    const stops = tree.stopsOf(review);
+    const chunks = tree.chunksOf(review);
     current = {
       key,
       pr,
       review,
-      mode: "github",
+      mode: openingMode(stops, chunks),
       selectedNode: null,
       startedAt: Date.now(),
-      stops: tree.stopsOf(review),
+      stops,
       selectedStop: null,
-      chunks: tree.chunksOf(review),
+      chunks,
       selectedChunk: null,
+      briefPaths: tree.briefPaths(review),
       judged: new Set(),
       fileSet: "all",
       tests: tree.testsOf(review),
@@ -763,5 +808,6 @@
   }
 
   stopNavigating = page.onNavigate(start);
+  stopPaneWatch = source.onPaneOwnerChange(onPaneOwnerChange);
   start();
 })();

@@ -1,5 +1,28 @@
-.prf-tree-hidden {
+.prf-pane-hidden {
   display: none !important;
+}
+
+/* The panel in a page with no pane to hold it: fixed at the left edge, scrolling by itself. */
+.prf-pane-float {
+  position: fixed;
+  top: 60px;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  box-sizing: border-box;
+  width: 320px;
+  padding: 8px 0 8px 12px;
+  overflow-y: auto;
+  background: var(--bgColor-default, #ffffff);
+  border-right: 1px solid var(--borderColor-default, #d0d7de);
+}
+
+.prf-off.prf-pane-float {
+  bottom: auto;
+  width: auto;
+  max-width: 320px;
+  padding-right: 8px;
+  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
 }
 
 .prf-tree {
@@ -30,7 +53,7 @@
 .prf-bar {
   display: flex;
   flex: none;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -57,7 +80,7 @@
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  padding: 3px 10px;
+  padding: 3px 8px;
   font-size: 12px;
   font-weight: 500;
   line-height: 20px;
@@ -79,6 +102,57 @@
 
 .prf-mode-icon {
   flex: none;
+}
+
+.prf-off-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  height: 34px;
+  padding: 0 10px 0 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--fgColor-default, #1f2328);
+  cursor: pointer;
+  background: var(--controlTrack-bgColor-rest, #eff2f5);
+  border: 1px solid var(--controlTrack-borderColor-rest, transparent);
+  border-radius: 8px;
+}
+
+.prf-off-icon {
+  flex: none;
+}
+
+.prf-off-button:hover {
+  background: var(--controlTrack-bgColor-hover, #e6eaef);
+}
+
+.prf-off-button:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: 1px;
+}
+
+/* The bar that stands in for the panel while the host's own pane shows. */
+.prf-off {
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  background: var(--bgColor-muted, #f6f8fa);
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 8px;
+}
+
+.prf-off-text {
+  min-width: 0;
+  color: var(--fgColor-muted, #59636e);
+  overflow-wrap: anywhere;
 }
 
 /* The filter line under the toggle: what narrows the pane at its left, the Tests dropdown at its right. Its right padding
@@ -145,68 +219,6 @@
   opacity: 0;
 }
 
-.prf-banner {
-  box-sizing: border-box;
-  background: var(--bgColor-muted, #f6f8fa);
-  border: 1px solid var(--borderColor-default, #d0d7de);
-  border: 1px solid color-mix(in srgb, var(--borderColor-accent-emphasis, #0969da) 22%, var(--borderColor-default, #d0d7de));
-  border-radius: 8px;
-}
-
-.prf-bar {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 0 10px;
-}
-
-.prf-modes {
-  display: inline-flex;
-  padding: 2px;
-  background: var(--controlTrack-bgColor-rest, #eff2f5);
-  border: 1px solid var(--controlTrack-borderColor-rest, transparent);
-  border-radius: 8px;
-}
-
-.prf-mode,
-.prf-head-main {
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-/* Both segments share one box; only the selected one changes its background and border. */
-.prf-mode {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  padding: 3px 10px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 20px;
-  color: var(--fgColor-default, #1f2328);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-}
-
-.prf-mode:hover {
-  background: var(--controlTrack-bgColor-hover, #e6eaef);
-}
-
-.prf-mode[aria-pressed="true"],
-.prf-mode[aria-pressed="true"]:hover {
-  background: var(--controlKnob-bgColor-rest, #ffffff);
-  border-color: var(--controlKnob-borderColor-rest, #818b98);
-}
-
-.prf-mode-icon {
-  flex: none;
-}
-
 /* The filter line under the toggle: what narrows the pane at its left, the Tests dropdown at its right. Its right padding
    matches `.prf-groups`, so the line ends where the list does. */
 .prf-filters {
@@ -218,11 +230,6 @@
   margin: 0 0 8px;
   padding-right: 14px;
   font-size: 12px;
-}
-
-.prf-filters .prf-lede {
-  position: static;
-  margin: 0;
 }
 
 .prf-tests {

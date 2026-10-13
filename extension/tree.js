@@ -1,7 +1,6 @@
 (() => {
   const ns = (globalThis.prFocus ??= {});
   const ROOT_ID = "pr-focus-tree";
-  const HOST_HIDDEN = "prf-tree-hidden";
   const SHORT_SHA = 7;
   const SVG_NS = "http://www.w3.org/2000/svg";
   // Octicons' list-ordered and file-directory, 16-unit filled paths.
@@ -16,6 +15,7 @@
     "M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   // Octicons' check, 16-unit filled.
+  const ARROW_LEFT_ICON = "M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z";
   const CHECK_ICON = "M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z";
   // Three stacked layers, filled.
   const LAYERS_ICON = "M8 1 15 4.5 8 8 1 4.5ZM1 7.4 8 10.9 15 7.4V8.9L8 12.4 1 8.9ZM1 10.4 8 13.9 15 10.4V11.9L8 15.4 1 11.9Z";
@@ -186,7 +186,7 @@
     const toggle = make("div", "prf-modes");
     const modes = [["review", "Walkthrough", LIST_ORDERED_ICON]];
     if (state.chunks?.length) modes.push(["chunks", "Layers", LAYERS_ICON]);
-    modes.push(["github", ns.page.treeLabel, DIRECTORY_ICON]);
+    modes.push(["files", "Files", DIRECTORY_ICON]);
     for (const [mode, label, icon] of modes) {
       const choice = button("prf-mode", undefined, () => handlers.onMode(mode));
       choice.append(filledIcon(icon, 14, "prf-mode-icon"), make("span", undefined, label));
@@ -258,9 +258,15 @@
     return line.children.length > 0 ? line : null;
   }
 
+  // The mode toggle, and at its right the button that hands the pane back to the host's own tree.
   function bar(state, handlers) {
     const element = make("div", "prf-bar");
-    element.append(modeToggle(state, handlers));
+    const label = `Switch to ${ns.page.name}'s own view (Alt+B)`;
+    const off = button("prf-off-button", undefined, () => handlers.onPaneOwner("host"));
+    off.title = label;
+    off.setAttribute("aria-label", label);
+    off.append(filledIcon(ARROW_LEFT_ICON, 16, "prf-off-icon"), make("span", undefined, ns.page.name));
+    element.append(modeToggle(state, handlers), off);
     return element;
   }
 
@@ -476,6 +482,12 @@
     return list;
   }
 
+  // The paths the brief names: the files of its layers' hunks, of its stops and of its file sets.
+  function briefPaths(review) {
+    const sets = Object.values(review.file_sets ?? {}).filter(Array.isArray).flat();
+    return [...new Set([...chunksOf(review).flatMap((chunk) => chunk.hunks.map((hunk) => hunk.path)), ...stopsOf(review).map((stop) => stop.path), ...sets])];
+  }
+
   // The card shown above a layer's first line in the diff: which layer of how many this is and its title, its risk and
   // why, what it summarises, the layers it builds on (each a button that opens that layer), and, in a column beside
   // them, buttons to the previous and the next layer, each in a slot that is kept, hidden, when there is no such
@@ -545,32 +557,29 @@
     return Math.ceil(Math.max(...cards.map(measure)));
   }
 
-  // Our list sits just before GitHub's tree in the same column; GitHub's tree is hidden while ours shows.
-  function mountPoint() {
-    const host = ns.page.treeHost();
-    if (!host) return null;
+  // The panel's element, one per page.
+  function panelRoot() {
     let root = document.getElementById(ROOT_ID);
     if (!root) {
       root = make("div", "prf-tree");
       root.id = ROOT_ID;
     }
-    if (root.nextElementSibling !== host) host.before(root);
-    return { root, host };
+    return root;
   }
 
-  // state: { mode: "review" | "chunks" | "github", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
+  // state: { mode: "review" | "chunks" | "files", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
   // fileSet, tests, testsMode }, `judged` being a Set of layer numbers, `tests` the PR's test files' paths and `testsMode`
-  // "all" | "hide" | "only", which of the PR's files the Tests control shows in "Files" and "Layers"
-  // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onSelectFileInChunk(i, path), onFileSet(id), onTestsMode(mode)
+  // "all" | "hide" | "only", which of the PR's files the Tests control shows in "Files" and "Layers". In "files" the panel
+  // holds only the bar and the filter line, over the host's own tree, which stays showing under it.
+  // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onSelectFileInChunk(i, path), onFileSet(id), onTestsMode(mode),
+  // onPaneOwner(owner)
   function render(review, state, handlers) {
-    const mount = mountPoint();
-    if (!mount) return;
-    const { root, host } = mount;
+    const root = panelRoot();
     const reviewMode = state.mode === "review";
     const listMode = reviewMode || state.mode === "chunks";
     const scrolled = root.querySelector(".prf-groups")?.scrollTop ?? 0;
-    root.classList.toggle("prf-review", listMode);
-    host.classList.toggle(HOST_HIDDEN, listMode);
+    root.className = listMode ? "prf-tree prf-review" : "prf-tree";
+    ns.page.mount(root, { hideRest: listMode });
 
     root.replaceChildren(bar(state, handlers));
     const filterLine = filters(state, handlers);
@@ -584,16 +593,27 @@
     }
   }
 
+  // The slim bar that stands in for the panel while the pane is the host's: what the brief holds and a button that shows it
+  // again. `counts` is { stops, layers }. The host's own pane stays showing under it.
+  function offBar(counts, onShow) {
+    const root = panelRoot();
+    root.className = "prf-tree prf-off";
+    ns.page.mount(root, { hideRest: false });
+    const noun = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+    const summary = ["PR Brief", ...(counts.stops > 0 ? [noun(counts.stops, "stop")] : []), ...(counts.layers > 0 ? [noun(counts.layers, "layer")] : [])];
+    const text = summary.length > 1 ? `${summary[0]} \u00b7 ${summary.slice(1).join(", ")}` : summary[0];
+    root.replaceChildren(make("span", "prf-off-text", text), button("prf-retry prf-off-show", "Show", onShow));
+    return root;
+  }
+
   const SERVER_COMMAND = "pd serve";
   const OLD_BRIEF_MESSAGE = "This brief predates v1; re-run it.";
 
-  // The note shown instead of the list while the page server is down. GitHub's own tree stays visible. handlers: onRetry()
+  // The note shown instead of the list while the page server is down. The host's own tree stays visible. handlers: onRetry()
   function renderServerNote(baseUrl, handlers) {
-    const mount = mountPoint();
-    if (!mount) return;
-    const { root, host } = mount;
-    root.classList.remove("prf-review");
-    host.classList.remove(HOST_HIDDEN);
+    const root = panelRoot();
+    root.className = "prf-tree";
+    ns.page.mount(root, { hideRest: false });
     const note = make("div", "prf-banner prf-offline");
     note.append(make("p", undefined, `pr-brief server isn't running at ${baseUrl}`));
     const command = make("p");
@@ -610,15 +630,13 @@
       .filter((node) => node !== "");
   }
 
-  // The one line shown in the list's place when the PR has no brief yet, GitHub's own tree staying visible.
+  // The one line shown in the list's place when the PR has no brief yet, the host's own tree staying visible.
   // view: { kind: "none" } | { kind: "old" } | { kind: "running", stage, elapsed } | { kind: "error", message }
   // handlers: onGenerate(), onCancel()
   function renderGenerateLine(view, handlers) {
-    const mount = mountPoint();
-    if (!mount) return;
-    const { root, host } = mount;
-    root.classList.remove("prf-review");
-    host.classList.remove(HOST_HIDDEN);
+    const root = panelRoot();
+    root.className = "prf-tree";
+    ns.page.mount(root, { hideRest: false });
     const line = make("div", "prf-banner prf-offline prf-generate");
     if (view.kind === "running") {
       const stage = ns.runControl.STAGES.find((entry) => entry.id === view.stage)?.label ?? "";
@@ -668,8 +686,7 @@
   }
 
   function remove() {
-    document.getElementById(ROOT_ID)?.remove();
-    ns.page.treeHost()?.classList.remove(HOST_HIDDEN);
+    ns.page.unmount();
   }
 
   function owns(node) {
@@ -677,7 +694,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, bar, filters, stopList, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, bar, filters, stopList, chunkList, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;
