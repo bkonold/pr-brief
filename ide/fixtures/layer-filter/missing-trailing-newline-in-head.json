@@ -1,0 +1,17 @@
+{
+  "description": "Head has no newline at the end of file; reverting the hunk restores the base's.",
+  "path": "a.txt",
+  "base": "a\nb\nc\n",
+  "head": "a\nb\nc changed",
+  "hunks": [
+    {
+      "id": "h01",
+      "path": "a.txt",
+      "change": "modified",
+      "old": [1, 3],
+      "new": [1, 3]
+    }
+  ],
+  "selected": ["h01"],
+  "expected": "a\nb\nc\n"
+}

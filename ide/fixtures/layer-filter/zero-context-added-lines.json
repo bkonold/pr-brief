@@ -1,0 +1,17 @@
+{
+  "description": "A hunk with no context that only adds lines: its old range is [line before, 0].",
+  "path": "a.txt",
+  "base": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\n",
+  "head": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nnew a\nnew b\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\n",
+  "hunks": [
+    {
+      "id": "h01",
+      "path": "a.txt",
+      "change": "modified",
+      "old": [6, 0],
+      "new": [7, 2]
+    }
+  ],
+  "selected": ["h01"],
+  "expected": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\n"
+}

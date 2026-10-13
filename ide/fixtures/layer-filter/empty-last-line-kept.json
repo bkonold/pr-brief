@@ -1,0 +1,17 @@
+{
+  "description": "A blank last line is a line like another.",
+  "path": "a.txt",
+  "base": "a\n\n",
+  "head": "a\nb\n",
+  "hunks": [
+    {
+      "id": "h01",
+      "path": "a.txt",
+      "change": "modified",
+      "old": [1, 2],
+      "new": [1, 2]
+    }
+  ],
+  "selected": ["h01"],
+  "expected": "a\n\n"
+}

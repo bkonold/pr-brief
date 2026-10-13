@@ -1,0 +1,17 @@
+{
+  "description": "A deleted file: head is empty and reverting the hunk brings the whole base back.",
+  "path": "a.txt",
+  "base": "gone 1\ngone 2\ngone 3\ngone 4\ngone 5\n",
+  "head": "",
+  "hunks": [
+    {
+      "id": "h01",
+      "path": "a.txt",
+      "change": "deleted",
+      "old": [1, 5],
+      "new": [0, 0]
+    }
+  ],
+  "selected": ["h01"],
+  "expected": "gone 1\ngone 2\ngone 3\ngone 4\ngone 5\n"
+}

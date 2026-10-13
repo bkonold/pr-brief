@@ -1,0 +1,24 @@
+{
+  "description": "A hunk of the file is not in the review, so the unchanged lines cannot be matched.",
+  "path": "a.txt",
+  "base": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\n",
+  "head": "line 1\nline 2\nline 3 changed\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15 changed\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28 changed\nline 29\nline 30\n",
+  "hunks": [
+    {
+      "id": "h01",
+      "path": "a.txt",
+      "change": "modified",
+      "old": [1, 6],
+      "new": [1, 6]
+    },
+    {
+      "id": "h02",
+      "path": "a.txt",
+      "change": "modified",
+      "old": [12, 7],
+      "new": [12, 7]
+    }
+  ],
+  "selected": ["h01", "h02"],
+  "expected": null
+}
