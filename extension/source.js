@@ -147,8 +147,34 @@
     };
   }
 
+  // The width the reader dragged Forgejo's file pane to, in pixels. It is kept in chrome.storage.local under the key
+  // defaults.js calls PANE_WIDTH_KEY, repeated here for the same reason.
+  const PANE_WIDTH_KEY = "forgejoPaneWidth";
+
+  // The stored width, null when none is stored or the store cannot be read.
+  async function loadPaneWidth() {
+    if (!alive()) return null;
+    try {
+      const width = (await chrome.storage.local.get({ [PANE_WIDTH_KEY]: null }))[PANE_WIDTH_KEY];
+      return Number.isFinite(width) && width > 0 ? width : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Stores `width`, or forgets the stored width for null.
+  async function savePaneWidth(width) {
+    if (!alive()) return;
+    try {
+      if (width === null) await chrome.storage.local.remove(PANE_WIDTH_KEY);
+      else if (Number.isFinite(width) && width > 0) await chrome.storage.local.set({ [PANE_WIDTH_KEY]: width });
+    } catch {
+      // The width holds for this page when the store cannot be written.
+    }
+  }
+
   ns.alive = alive;
-  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha, loadPaneOwner, savePaneOwner, onPaneOwnerChange, PANE_OWNER_KEY };
+  ns.source = { loadReview, loadBrief, startRun, runStatus, cancelRun, headSha, loadPaneOwner, savePaneOwner, onPaneOwnerChange, PANE_OWNER_KEY, loadPaneWidth, savePaneWidth, PANE_WIDTH_KEY };
 })();
 
 if (typeof module !== "undefined") module.exports = { alive: globalThis.prFocus.alive, ...globalThis.prFocus.source };

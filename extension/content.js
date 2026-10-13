@@ -19,6 +19,7 @@
   // choice for every PR, kept in the browser and shared by its tabs.
   let paneOwner = "brief";
   let stopPaneWatch = null;
+  let stopPaneResize = null;
 
   // The PR brief card, on the conversation page: { key, card, stop }. `card` stays null while the run loads. There is
   // one card per page; it is moved back above the description whenever the page drops or moves it, never built twice.
@@ -740,6 +741,7 @@
     stopNavigating = null;
     stopPaneWatch?.();
     stopPaneWatch = null;
+    syncPaneResize(null);
   }
 
   function live() {
@@ -755,9 +757,20 @@
     return chunks.length > 0 ? "chunks" : "files";
   }
 
+  // The host's file pane can be resized on a files page whoever owns the pane, and not elsewhere.
+  function syncPaneResize(pr) {
+    if (pr?.view === "files") {
+      stopPaneResize ??= page.resizePane();
+      return;
+    }
+    stopPaneResize?.();
+    stopPaneResize = null;
+  }
+
   async function start() {
     if (!live()) return;
     const pr = page.prFromUrl(location);
+    syncPaneResize(pr);
     if (pr?.view === "conversation") {
       if (current || stopObserving) teardown();
       await mountBrief(pr);

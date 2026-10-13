@@ -1,5 +1,6 @@
 (() => {
   const ns = (globalThis.prFocus ??= {});
+  const { resizeHandle } = ns.pageCommon ?? require("./page_common.js");
   const ROOT_ID = "pr-focus-diagram";
   const COLLAPSED_KEY = "prFocus:diagramCollapsed";
   const ON = "prd-on";
@@ -304,30 +305,17 @@
 
   // Dragging the right edge rightwards widens the panel, and the file pane and diff column, its flex siblings,
   // narrow to match.
-  function resizeHandle(panel) {
-    const handle = make("div", "prd-handle");
-    handle.title = "Drag to resize";
-    let drag = null;
-    handle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      handle.setPointerCapture(event.pointerId);
-      drag = { x: event.clientX, width: panel.getBoundingClientRect().width };
-      panel.classList.add("prd-dragging");
-      event.preventDefault();
+  function panelHandle(panel) {
+    return resizeHandle({
+      className: "prd-handle",
+      widthOf: () => panel.getBoundingClientRect().width,
+      setWidth: (width) => {
+        draggedWidth = width;
+        setWidth(panel, width);
+      },
+      onStart: () => panel.classList.add("prd-dragging"),
+      onEnd: () => panel.classList.remove("prd-dragging"),
     });
-    handle.addEventListener("pointermove", (event) => {
-      if (!drag) return;
-      draggedWidth = drag.width + event.clientX - drag.x;
-      setWidth(panel, draggedWidth);
-    });
-    const end = () => {
-      if (!drag) return;
-      drag = null;
-      panel.classList.remove("prd-dragging");
-    };
-    handle.addEventListener("pointerup", end);
-    handle.addEventListener("pointercancel", end);
-    return handle;
   }
 
   const SHAPES = "rect, polygon, path, circle, ellipse";
@@ -671,7 +659,7 @@
     zoom.percent.addEventListener("click", () => canvas.actualSize());
     zoom.reset.addEventListener("click", resetAction(() => canvas, handlers));
     panel.classList.toggle("prd-collapsed", collapsed);
-    panel.append(resizeHandle(panel), header, cardElement, ...(caption ? [buildCaption(caption)] : []));
+    panel.append(panelHandle(panel), header, cardElement, ...(caption ? [buildCaption(caption)] : []));
     setWidth(panel, draggedWidth);
     return panel;
   }

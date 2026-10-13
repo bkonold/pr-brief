@@ -3,7 +3,7 @@
 // semantic ones. What is not about Forgejo's DOM is in page_common.js.
 (() => {
   const ns = (globalThis.prFocus ??= {});
-  const { createPage } = ns.pageCommon ?? require("./page_common.js");
+  const { createPage, resizeHandle } = ns.pageCommon ?? require("./page_common.js");
 
   // The flex row holding the file tree (a sticky 380px column) and the diffs' column.
   const DIFF_CONTAINER = "#diff-container";
@@ -148,6 +148,127 @@
     return document.querySelector(PANE_HOST);
   }
 
+  // The file pane has no divider of its own. A handle on its right edge sets its width, which replaces Forgejo's
+  // `flex: 0 0 20%; max-width: 380px`; a double-click on the handle gives that back.
+  const PANE_HANDLE = "prf-pane-handle";
+  const PANE_DRAGGING = "prf-pane-dragging";
+  const MIN_PANE_WIDTH = 240;
+  const MAX_PANE_SHARE = 0.5;
+
+  // A usable pane width for this viewport: at least MIN_PANE_WIDTH, at most MAX_PANE_SHARE of the viewport.
+  function clampPaneWidth(width, viewportWidth) {
+    return Math.round(Math.max(MIN_PANE_WIDTH, Math.min(width, viewportWidth * MAX_PANE_SHARE)));
+  }
+
+  // Makes the pane resizable and keeps it so: the handle is added once, as the first child, to each pane element the
+  // page holds, and the stored width is applied to it. The page re-renders the pane or replaces it, so the pane and
+  // its parent are watched, and the page itself while there is no pane. `options.load()` gives the stored width or null
+  // and `options.save(width)` stores one (null forgets it); they default to the stored width in source.js. Returns how
+  // to stop, which removes the handle and gives the pane back its own width.
+  function paneResize({ load = () => ns.source?.loadPaneWidth() ?? null, save = (width) => ns.source?.savePaneWidth(width) } = {}) {
+    let width = null;
+    let touched = false;
+    let stopped = false;
+    let watched;
+    let sized = null;
+    let observer = null;
+
+    const paneOf = () => document.querySelector(DIFF_PANE);
+    const handleOf = (pane) => [...pane.children].find((child) => child.classList.contains(PANE_HANDLE)) ?? null;
+
+    function apply(pane) {
+      if (width === null) {
+        pane.style.removeProperty("flex");
+        pane.style.removeProperty("max-width");
+      } else {
+        pane.style.setProperty("flex", `0 0 ${width}px`);
+        pane.style.setProperty("max-width", "none");
+      }
+      sized = pane;
+    }
+
+    function setWidth(pane, next) {
+      touched = true;
+      width = next === null ? null : clampPaneWidth(next, innerWidth);
+      apply(pane);
+    }
+
+    function buildHandle(pane) {
+      return resizeHandle({
+        className: PANE_HANDLE,
+        title: "Drag to resize, double-click to reset",
+        widthOf: () => pane.getBoundingClientRect().width,
+        setWidth: (next) => setWidth(pane, next),
+        onStart: () => pane.classList.add(PANE_DRAGGING),
+        onEnd: (last) => {
+          pane.classList.remove(PANE_DRAGGING);
+          if (last !== null) save(width);
+        },
+        onReset: () => {
+          setWidth(pane, null);
+          save(null);
+        },
+      });
+    }
+
+    // The handle is as tall as the pane's visible area, whatever the pane's scroll position.
+    function fitHandle(pane) {
+      handleOf(pane)?.style.setProperty("--prf-pane-handle-height", `${pane.clientHeight}px`);
+    }
+
+    function ensure() {
+      if (stopped) return;
+      const pane = paneOf();
+      if (pane !== watched) {
+        watched = pane;
+        watch(pane);
+      }
+      if (!pane) return;
+      if (!handleOf(pane)) pane.prepend(buildHandle(pane));
+      if (sized !== pane) apply(pane);
+      fitHandle(pane);
+    }
+
+    function watch(pane) {
+      observer?.disconnect();
+      observer = null;
+      if (!globalThis.MutationObserver) return;
+      observer = new MutationObserver(ensure);
+      if (pane) {
+        observer.observe(pane, { childList: true });
+        if (pane.parentElement) observer.observe(pane.parentElement, { childList: true });
+      } else {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    }
+
+    const refit = () => {
+      const pane = paneOf();
+      if (pane) fitHandle(pane);
+    };
+
+    ensure();
+    globalThis.addEventListener?.("resize", refit);
+    Promise.resolve(load()).then((stored) => {
+      if (stopped || touched || !Number.isFinite(stored) || stored <= 0) return;
+      width = clampPaneWidth(stored, innerWidth);
+      const pane = paneOf();
+      if (pane) apply(pane);
+    });
+
+    return () => {
+      stopped = true;
+      observer?.disconnect();
+      globalThis.removeEventListener?.("resize", refit);
+      const pane = paneOf();
+      if (!pane) return;
+      handleOf(pane)?.remove();
+      pane.classList.remove(PANE_DRAGGING);
+      width = null;
+      apply(pane);
+    };
+  }
+
   const page = createPage({
     name: "Forgejo",
     hosts: ["localhost:3300"],
@@ -179,6 +300,7 @@
       return diagramHost();
     },
     paneHost,
+    paneResize,
     treeFileSelector: TREE_FILE,
     descriptionHost: () => {
       installTheme();
