@@ -13,6 +13,11 @@
     "M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z";
   const FILE_ICON =
     "M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z";
+  // Octicons' package (a module's box) and beaker (a test), 16-unit filled paths.
+  const PACKAGE_ICON =
+    "m8.878.392 5.25 3.045c.54.314.872.89.872 1.514v6.098a1.75 1.75 0 0 1-.872 1.514l-5.25 3.045a1.75 1.75 0 0 1-1.756 0l-5.25-3.045A1.75 1.75 0 0 1 1 11.049V4.951c0-.624.332-1.201.872-1.514L7.122.392a1.75 1.75 0 0 1 1.756 0ZM7.875 1.69l-4.63 2.685L8 7.133l4.755-2.758-4.63-2.685a.248.248 0 0 0-.25 0ZM2.5 5.677v5.372c0 .09.047.171.125.216l4.625 2.683V8.432Zm6.25 8.271 4.625-2.683a.25.25 0 0 0 .125-.216V5.677L8.75 8.432Z";
+  const BEAKER_ICON =
+    "M5 5.782V2.5h-.25a.75.75 0 0 1 0-1.5h6.5a.75.75 0 0 1 0 1.5H11v3.282l3.666 5.76C15.619 13.04 14.543 15 12.767 15H3.233c-1.776 0-2.852-1.96-1.899-3.458Zm-2.4 6.565a.75.75 0 0 0 .633 1.153h9.534a.75.75 0 0 0 .633-1.153L12.225 10.5h-8.45ZM9.5 2.5h-3V6c0 .143-.04.283-.117.403L4.73 9h6.54L9.617 6.403A.746.746 0 0 1 9.5 6Z";
   const CHEVRON_ICON = "M6 3.5L10.5 8 6 12.5";
   // Octicons' check, 16-unit filled.
   const ARROW_LEFT_ICON = "M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z";
@@ -208,18 +213,10 @@
     return row;
   }
 
-  const TESTS_MODES = ["all", "hide", "only"];
-  const TESTS_CHOICES = [["all", "All"], ["hide", "Hidden"], ["only", "Only"]];
+  const TESTS_MODES = ["all", "unit", "integration", "hide", "only"];
+  const TESTS_CHOICES = [["all", "All"], ["unit", "Unit"], ["integration", "Integration"], ["hide", "Hidden"], ["only", "Only"]];
   // Octicons' triangle-down, 16-unit filled.
   const TRIANGLE_DOWN_ICON = "m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z";
-
-  // Whether the Tests control keeps `path` out of view: a test file while tests are hidden, any other file while only
-  // tests are shown.
-  function isExcludedByTests(state, path) {
-    if (state.testsMode === "hide") return (state.tests ?? []).includes(path);
-    if (state.testsMode === "only") return !(state.tests ?? []).includes(path);
-    return false;
-  }
 
   // A small dropdown button reading "Tests: All", "Tests: Hidden" or "Tests: Only", for which files the page shows: all of
   // them, all but the test files, or only the test files. A transparent native select covers the whole button, so a
@@ -322,18 +319,6 @@
     return make("span", `prf-risk prf-risk-${risk}`, risk);
   }
 
-  // GitHub's `+N −M` count of the lines `hunks` add and remove, or null when there are no hunks or any hunk lacks either
-  // count (a review made before the counts were written).
-  function diffStat(hunks) {
-    if (!hunks.length || !hunks.every((hunk) => Number.isInteger(hunk.added) && Number.isInteger(hunk.removed))) return null;
-    const stat = make("span", "prf-diffstat");
-    stat.append(
-      make("span", "prf-stat-added", `+${hunks.reduce((sum, hunk) => sum + hunk.added, 0)}`),
-      make("span", "prf-stat-removed", `\u2212${hunks.reduce((sum, hunk) => sum + hunk.removed, 0)}`),
-    );
-    return stat;
-  }
-
   // The files a layer touches, each with its hunks in the layer's order, listed in the order of each file's first hunk.
   function filesOf(chunk) {
     const files = new Map();
@@ -369,24 +354,109 @@
     return head ? `${head} \u203a ${segments.join("/")}` : segments.join("/");
   }
 
-  // The layer's files grouped by folder, folders in the order of their first hunk, each as { dir, label, files }.
-  // `reviewPaths` is every path in the review. A JVM source folder (<module>/src/<set>/<lang>/<package>) is labelled
-  // by module, source set and package, minus the package prefix all the review's JVM folders share; the module is
-  // always shown. Any other folder is labelled by its full directory, and a file at the repo root by `/`.
-  function folderGroups(chunk, reviewPaths) {
-    const groups = new Map();
-    for (const file of filesOf(chunk)) {
-      const dir = dirOf(file.path);
-      if (!groups.has(dir)) groups.set(dir, { dir, label: dir, files: [] });
-      groups.get(dir).files.push(file);
+  const TEST_SOURCE_SET = /test/i;
+
+  function stemOf(name) {
+    const dot = name.lastIndexOf(".");
+    return dot < 0 ? name : name.slice(0, dot);
+  }
+
+  // Whether `path` is a test: one of the review's test files (the Set `testPaths`), or a file of a JVM source set other
+  // than main whose name has "test" in it (test, integrationTest). The pane's lists and the page's filter both ask this.
+  function isTestPath(path, testPaths) {
+    if (testPaths.has(path)) return true;
+    const jvm = jvmFolderOf(dirOf(path));
+    return Boolean(jvm) && jvm.set !== "main" && TEST_SOURCE_SET.test(jvm.set);
+  }
+
+  const FIXTURE_SOURCE_SET = /fixture/i;
+  const INTEGRATION_SOURCE_SET = /integration/i;
+  const INTEGRATION_JVM_NAME = /(?:IT|IntegrationTest)$/;
+  const INTEGRATION_JS_NAME = /\.integration\.(?:(?:test|spec)\.)?[cm]?[jt]sx?$/;
+
+  // The kind of a test, by its path and name alone: "fixture" for a file of a JVM source set with "fixture" in its name
+  // (testFixtures), "integration" for one of a source set with "integration" in its name (integrationTest), for a name
+  // ending in IT or IntegrationTest before its extension, and for a `.integration.test.ts` or `.integration.spec.js`
+  // style name (any js or ts extension), and "unit" for any other.
+  function testKind(path) {
+    const jvm = jvmFolderOf(dirOf(path));
+    if (jvm && FIXTURE_SOURCE_SET.test(jvm.set)) return "fixture";
+    if (jvm && INTEGRATION_SOURCE_SET.test(jvm.set)) return "integration";
+    const name = baseName(path);
+    return INTEGRATION_JVM_NAME.test(stemOf(name)) || INTEGRATION_JS_NAME.test(name) ? "integration" : "unit";
+  }
+
+  // Whether the Tests control's `mode` keeps a test of this `kind` out of view: "hide" keeps out every test, "unit" the
+  // integration tests and "integration" the unit tests; fixtures only go with "hide".
+  function hidesTestKind(mode, kind) {
+    if (mode === "hide") return true;
+    if (mode === "unit") return kind === "integration";
+    if (mode === "integration") return kind === "unit";
+    return false;
+  }
+
+  // Where a path's package line goes: its module, the key its package line is merged under, its label as a line under
+  // a module header (`label`) or alone (`inline`), the test source set it is a line of (`testSet`, empty for any other)
+  // and whether it is a test line. A JVM source folder (<module>/src/<set>/<lang>/<package>) is in its module, each of
+  // its source sets with its own package line, and the package drops the `prefix` leading segments all the review's JVM
+  // folders share. A source set that is neither main nor a test one is named in the label. Any other path is in the
+  // module of its first directory segment, its package the rest of the directory; a file at the repo root is in the
+  // module `/`.
+  function placeOf(path, prefix) {
+    const dir = dirOf(path);
+    const jvm = jvmFolderOf(dir);
+    if (jvm) {
+      const testSet = jvm.set !== "main" && TEST_SOURCE_SET.test(jvm.set) ? jvm.set : "";
+      const named = jvm.set !== "main" && !testSet ? jvm.set : "";
+      const segments = jvm.segments.slice(prefix);
+      return {
+        module: jvm.module || "/",
+        key: `${jvm.set}\0${segments.join("/")}`,
+        label: named ? `${named} \u203a ${segments.join("/")}` : segments.join("/"),
+        inline: jvmLabel({ module: jvm.module, set: named || "main" }, segments),
+        testSet,
+      };
     }
+    const slash = dir.indexOf("/");
+    const module = dir === "/" ? "/" : slash < 0 ? dir : dir.slice(0, slash);
+    const rest = dir === "/" || slash < 0 ? "" : dir.slice(slash + 1);
+    return { module, key: `/\0${rest}`, label: rest || "/", inline: dir, testSet: "" };
+  }
+
+  // The layer's files grouped by module and, in each, by package, as
+  // [{ module, header, packages: [{ dirs, label, testSet, files: [{ path, hunks, test }] }] }], modules in the order of
+  // their first hunk and, in each, the package lines of the main and other sources first and then those of the test
+  // source sets (`testSet` is the set's name, empty for any other line), each in the order of its first hunk, a
+  // package's files in the order of each file's first hunk. `reviewPaths` is every path in the review and `testPaths`
+  // its test files. A module has `header` set when the layer has two or more package lines under it, test lines
+  // counted; the label of its package lines is then the package alone, else the module, then `\u203a` and the package
+  // (a non-JVM directory is labelled in full). Each source set of a JVM package has its own line. A file is a test
+  // (`test`) when `isTestPath` says so.
+  function folderGroups(chunk, reviewPaths, testPaths = []) {
+    const testSet = new Set(testPaths);
+    const files = filesOf(chunk).map((file) => ({ ...file, test: isTestPath(file.path, testSet) }));
     const jvmPackages = [...new Set(reviewPaths.map(dirOf))].map((dir) => jvmFolderOf(dir)?.segments).filter(Boolean);
     const prefix = jvmPackages.length ? sharedSegments(jvmPackages) : 0;
-    for (const group of groups.values()) {
-      const jvm = jvmFolderOf(group.dir);
-      if (jvm) group.label = jvmLabel(jvm, jvm.segments.slice(prefix));
+    const modules = new Map();
+    for (const file of files) {
+      const place = placeOf(file.path, prefix);
+      if (!modules.has(place.module)) modules.set(place.module, { module: place.module, header: false, packages: new Map() });
+      const { packages } = modules.get(place.module);
+      if (!packages.has(place.key)) packages.set(place.key, { dirs: new Set(), label: place.label, inline: place.inline, testSet: place.testSet, files: [] });
+      const group = packages.get(place.key);
+      group.dirs.add(dirOf(file.path));
+      group.files.push(file);
     }
-    return [...groups.values()];
+    return [...modules.values()].map(({ module, packages }) => {
+      const header = packages.size >= 2;
+      const lines = [...packages.values()];
+      const ordered = [...lines.filter((group) => !group.testSet), ...lines.filter((group) => group.testSet)];
+      return {
+        module,
+        header,
+        packages: ordered.map((group) => ({ dirs: [...group.dirs], label: header ? group.label : group.inline, testSet: group.testSet, files: group.files })),
+      };
+    });
   }
 
   // A folder label as text nodes with a `wbr` after each `/` that has more text after it, so a long label wraps at a
@@ -405,39 +475,89 @@
     return nodes;
   }
 
-  // The layer's files under one folder line each (a folder icon and its label, its full directory as the tooltip), each
-  // file a button (a file icon, its name and, at the right end, the lines the layer adds to and removes from it) with its full path as the tooltip. A file the Tests control keeps out of view is struck through, and so is a folder line
-  // whose files all are.
+  // One file's button: its icon (a beaker for a test, a file otherwise) and its full name, with its full path as the
+  // tooltip.
+  function fileButton(entry, chunk, handlers) {
+    const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, entry.path));
+    file.title = entry.path;
+    file.append(filledIcon(entry.test ? BEAKER_ICON : FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", baseName(entry.path)));
+    return file;
+  }
+
+  // The files of a package line the Tests control's `mode` shows, in order, and how many it keeps out of view. "all"
+  // shows every file. "hide", "unit" and "integration" keep out the tests `hidesTestKind` names. "only" shows only the
+  // tests.
+  function packageRows(group, testsMode) {
+    const rows = [];
+    let hiddenCount = 0;
+    for (const entry of group.files) {
+      const hidden = testsMode === "only" ? !entry.test : entry.test && hidesTestKind(testsMode, testKind(entry.path));
+      if (hidden) hiddenCount += 1;
+      else rows.push(entry);
+    }
+    return { rows, hiddenCount };
+  }
+
+  // One package line (a folder icon and its label, its directories as the tooltip, and for a test source set the
+  // `src/<set>` it is at the right end) over its rows.
+  function packageGroup(group, rows, chunk, handlers) {
+    const element = make("div", "prf-chunk-group");
+    const folder = make("div", "prf-chunk-folder");
+    const folderLabel = make("span", "prf-chunk-folder-label");
+    folderLabel.append(...labelNodes(group.label));
+    folder.append(filledIcon(DIRECTORY_FILL_ICON, 16, "prf-chunk-icon"), folderLabel);
+    if (group.testSet) folder.append(make("span", "prf-chunk-source-set", `src/${group.testSet}`));
+    folder.title = group.dirs.join("\n");
+    element.append(folder, ...rows.map((entry) => fileButton(entry, chunk, handlers)));
+    return element;
+  }
+
+  // The accent-tinted chip that says how many files the Tests control's `mode` keeps out of view: "N tests hidden", with
+  // "integration" or "unit" before "tests" in the modes that hide only that kind, or "N files hidden" in "only", where it
+  // is the files other than tests that are hidden. Shown above the layer's files and at the end of the "Files" panel.
+  function hiddenNote(mode, count) {
+    const only = mode === "only";
+    const kind = { unit: "integration ", integration: "unit " }[mode] ?? "";
+    const noun = only ? ["file", "files"] : [`${kind}test`, `${kind}tests`];
+    const note = make("div", "prf-chunk-hidden-note");
+    note.append(filledIcon(only ? FILE_ICON : BEAKER_ICON, 14, "prf-chunk-note-icon"), make("span", undefined, `${count} ${noun[count === 1 ? 0 : 1]} hidden`));
+    return note;
+  }
+
+  // The layer's files by module, each module with two or more package lines under a header (a box icon and its name) and
+  // a rail down its left side, see `folderGroups`. The Tests control's mode leaves out the files it keeps out of view, and
+  // with them every package line and module header left with nothing; a tinted chip at the top says how many it left out.
   function chunkFiles(chunk, state, handlers) {
     const list = make("div", "prf-chunk-files");
     const reviewPaths = state.chunks.flatMap((other) => other.hunks.map((hunk) => hunk.path));
-    for (const { dir, label, files } of folderGroups(chunk, reviewPaths)) {
-      const group = make("div", "prf-chunk-group");
-      const folder = make("div", "prf-chunk-folder");
-      const folderLabel = make("span", "prf-chunk-folder-label");
-      folderLabel.append(...labelNodes(label));
-      folder.append(filledIcon(DIRECTORY_FILL_ICON, 16, "prf-chunk-icon"), folderLabel);
-      folder.title = dir;
-      const excluded = files.map(({ path }) => isExcludedByTests(state, path));
-      const buttons = files.map(({ path }, index) => {
-        const file = button("prf-chunk-file", undefined, () => handlers.onSelectFileInChunk(chunk.i, path));
-        file.classList.toggle("prf-dimmed", excluded[index]);
-        file.title = path;
-        file.append(filledIcon(FILE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-file-name", baseName(path)));
-        const stat = diffStat(files[index].hunks);
-        if (stat) file.append(stat);
-        return file;
-      });
-      folder.classList.toggle("prf-dimmed", excluded.every(Boolean));
-      group.append(folder, ...buttons);
-      list.append(group);
+    let hiddenCount = 0;
+    const elements = [];
+    for (const { module, header, packages } of folderGroups(chunk, reviewPaths, state.tests ?? [])) {
+      const groups = [];
+      for (const group of packages) {
+        const shown = packageRows(group, state.testsMode);
+        hiddenCount += shown.hiddenCount;
+        if (shown.rows.length > 0) groups.push(packageGroup(group, shown.rows, chunk, handlers));
+      }
+      if (groups.length === 0) continue;
+      const element = make("div", "prf-chunk-module");
+      if (header) {
+        const head = make("div", "prf-chunk-module-head");
+        head.append(filledIcon(PACKAGE_ICON, 16, "prf-chunk-icon"), make("span", "prf-chunk-module-name", module));
+        const rail = make("div", "prf-chunk-rail");
+        rail.append(...groups);
+        element.append(head, rail);
+      } else {
+        element.append(...groups);
+      }
+      elements.push(element);
     }
+    list.append(...(hiddenCount > 0 ? [hiddenNote(state.testsMode, hiddenCount)] : []), ...elements);
     return list;
   }
 
-  // One row per layer: its number and title, then at the end its risk and a tick once it is judged, with the layer's
-  // added and removed line counts right-aligned on the line under them. The current layer is marked and, as the only one,
-  // lists the files it touches under its title.
+  // One row per layer: its number and title, then at the end its risk and a tick once it is judged. The current layer is
+  // marked and, as the only one, lists the files it touches under its title.
   function chunkRow(chunk, state, handlers) {
     const current = chunk.i === state.selectedChunk;
     const main = button("prf-head-main", undefined, () => handlers.onSelectChunk(chunk.i));
@@ -450,11 +570,7 @@
       tick.append(filledIcon(CHECK_ICON, 16, "prf-judged-icon"));
       badges.append(tick);
     }
-    const meta = make("span", "prf-chunk-meta");
-    meta.append(badges);
-    const stat = diffStat(chunk.hunks);
-    if (stat) meta.append(stat);
-    main.append(make("span", "prf-num", String(chunk.i)), make("span", "prf-name", chunk.title), meta);
+    main.append(make("span", "prf-num", String(chunk.i)), make("span", "prf-name", chunk.title), badges);
     const header = make("div", "prf-head");
     header.append(main);
     const element = make("section", "prf-group prf-chunk");
@@ -568,9 +684,11 @@
   }
 
   // state: { mode: "review" | "chunks" | "files", stops, selectedStop, chunks, selectedChunk, judged, pageSha, note, chips,
-  // fileSet, tests, testsMode }, `judged` being a Set of layer numbers, `tests` the PR's test files' paths and `testsMode`
-  // "all" | "hide" | "only", which of the PR's files the Tests control shows in "Files" and "Layers". In "files" the panel
-  // holds only the bar and the filter line, over the host's own tree, which stays showing under it.
+  // fileSet, tests, testsMode, hiddenFiles }, `judged` being a Set of layer numbers, `tests` the PR's test files' paths,
+  // `testsMode` "all" | "hide" | "unit" | "integration" | "only", which of the PR's files the Tests control shows in "Files"
+  // and "Layers", and `hiddenFiles` how many files the mode keeps out of "Files". In "files" the panel holds only the bar,
+  // the filter line and, when `hiddenFiles` is not 0, the note saying so, over the host's own tree, which stays showing
+  // under it.
   // handlers: onMode(mode), onSelectStop(i), onSelectChunk(i), onSelectFileInChunk(i, path), onFileSet(id), onTestsMode(mode),
   // onPaneOwner(owner)
   function render(review, state, handlers) {
@@ -591,6 +709,7 @@
       root.append(reviewMode ? stopList(state, handlers) : chunkList(state, handlers));
       root.querySelector(".prf-groups").scrollTop = scrolled;
     }
+    if (state.mode === "files" && state.hiddenFiles > 0) root.append(hiddenNote(state.testsMode, state.hiddenFiles));
   }
 
   // The slim bar that stands in for the panel while the pane is the host's: what the brief holds and a button that shows it
@@ -694,7 +813,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, bar, filters, stopList, chunkList, remove, owns, staleMessage };
+  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, isTestPath, testKind, hidesTestKind, bar, filters, stopList, chunkList, hiddenNote, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;

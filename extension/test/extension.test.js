@@ -1400,7 +1400,7 @@ test("a chunk row shows the number, title, risk and a tick when judged, and mark
     assert.deepEqual(rows.map((row) => byClass(row, "prf-judged-tick").length), [1, 0, 0]);
     const tick = byClass(rows[0], "prf-judged-tick")[0];
     assert.deepEqual([tick.title, tick.textContent, tick.children.map((child) => [child.tag, child.className, child.attributes.width])], ["Judged", "", [["svg", "prf-judged-icon", "16"]]]);
-    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-name", "prf-chunk-meta"]);
+    assert.deepEqual(byClass(rows[0], "prf-head-main")[0].children.map((child) => child.className), ["prf-num", "prf-name", "prf-chunk-badges"]);
     assert.deepEqual(byClass(rows[1], "prf-chunk-badges")[0].children.map((child) => child.className), ["prf-risk prf-risk-high"]);
     assert.deepEqual(rows.map((row) => row.className.split(" ").includes("prf-selected")), [false, true, false]);
     assert.deepEqual(rows.map((row) => byClass(row, "prf-head-main")[0].attributes["aria-current"] ?? null), [null, "step", null]);
@@ -1432,55 +1432,17 @@ const COUNTED = [
   { i: 2, title: "Two", summary: "", risk: "high", risk_reason: "", depends_on: [], hunks: [{ id: "h4", path: "src/c.js", change: "added", old: [0, 0], new: [1, 9], added: 9, removed: 0 }] },
 ];
 
-test("a layer row shows its added and removed totals under its risk, and a file line its own sums over the layer's hunks", () => {
+test("a layer row and its file lines show no line counts", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const rows = byClass(chunkList({ chunks: COUNTED, selectedChunk: 1, judged: new Set([1]) }, {}), "prf-chunk");
-    const stats = (element) => byClass(element, "prf-diffstat").map((stat) => stat.children.map((part) => [part.className, part.textContent]));
     const main = byClass(rows[0], "prf-head-main")[0];
-    assert.deepEqual(main.children.map((child) => child.className.split(" ")[0]), ["prf-num", "prf-name", "prf-chunk-meta"]);
-    const meta = byClass(main, "prf-chunk-meta")[0];
-    assert.deepEqual(meta.children.map((child) => child.className.split(" ")[0]), ["prf-chunk-badges", "prf-diffstat"]);
-    assert.deepEqual(byClass(meta, "prf-chunk-badges")[0].children.map((child) => child.className.split(" ")[0]), ["prf-risk", "prf-judged-tick"]);
-    assert.deepEqual(stats(meta), [[["prf-stat-added", "+8"], ["prf-stat-removed", "\u221210"]]]);
-    assert.deepEqual(stats(byClass(rows[1], "prf-chunk-meta")[0]), [[["prf-stat-added", "+9"], ["prf-stat-removed", "\u22120"]]]);
+    assert.deepEqual(main.children.map((child) => child.className.split(" ")[0]), ["prf-num", "prf-name", "prf-chunk-badges"]);
+    assert.deepEqual(byClass(main, "prf-chunk-badges")[0].children.map((child) => child.className.split(" ")[0]), ["prf-risk", "prf-judged-tick"]);
     const files = byClass(rows[0], "prf-chunk-file");
-    assert.deepEqual(files.map((file) => byClass(file, "prf-chunk-file-name")[0].textContent), ["a.js", "b.js"]);
-    assert.deepEqual(files.map((file) => file.children.at(-1).className), ["prf-diffstat", "prf-diffstat"]);
-    assert.deepEqual(files.map((file) => stats(file)[0].map(([, text]) => text)), [["+8", "\u22123"], ["+0", "\u22127"]]);
-    assert.deepEqual(byClass(rows[1], "prf-chunk-file"), []);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a layer or file with a hunk that lacks its counts shows no counts", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const [counted] = COUNTED;
-    const withoutCounts = { id: "h9", path: "src/b.js", change: "modified", old: [9, 1], new: [9, 1] };
-    const half = { ...withoutCounts, id: "h8", path: "src/d.js", added: 4 };
-    const chunk = { ...counted, hunks: [...counted.hunks, withoutCounts, half] };
-    const row = byClass(chunkList({ chunks: [chunk, { ...counted, i: 2, hunks: [withoutCounts] }], selectedChunk: 1, judged: new Set() }, {}), "prf-chunk")[0];
-    assert.deepEqual(byClass(byClass(row, "prf-chunk-meta")[0], "prf-diffstat"), []);
-    const files = byClass(row, "prf-chunk-file");
-    assert.deepEqual(files.map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, byClass(file, "prf-diffstat").length]), [["a.js", 1], ["b.js", 0], ["d.js", 0]]);
-    const old = byClass(chunkList({ chunks: CHUNKS, selectedChunk: 2, judged: new Set() }, {}), "prf-chunk");
-    assert.deepEqual(old.map((element) => byClass(element, "prf-diffstat").length), [0, 0, 0]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a file line the Tests control keeps out of view is dimmed with its counts", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const chunks = [{ ...COUNTED[0], hunks: [COUNTED[0].hunks[0], { ...COUNTED[0].hunks[1], path: "src/b.test.js" }] }];
-    const files = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/b.test.js"], testsMode: "hide" }, {}), "prf-chunk-file");
-    assert.deepEqual(files.map((file) => [file.className.split(" ").includes("prf-dimmed"), byClass(file, "prf-diffstat").length]), [[false, 1], [true, 1]]);
+    assert.deepEqual(files.map((file) => file.children.map((child) => child.className)), [["prf-chunk-icon", "prf-chunk-file-name"], ["prf-chunk-icon", "prf-chunk-file-name"]]);
+    assert.deepEqual(rows.map((row) => row.textContent.match(/[+\u2212]\d/)), [null, null]);
   } finally {
     delete globalThis.document;
   }
@@ -1847,26 +1809,28 @@ test("the Tests control is drawn only when the review has test files, in Files a
   assert.deepEqual(testsControlOf({ mode: "review", tests: ["a.test.js"] }), []);
 });
 
-test("the Tests control reads Tests: All, Hidden or Only and selects the option matching the mode, All when there is none", () => {
+test("the Tests control reads Tests: All, Unit, Integration, Hidden or Only and selects the option matching the mode, All when there is none", () => {
   const view = (testsMode) => {
     const [control] = testsControlOf({ mode: "files", tests: ["a.test.js"], testsMode });
     const [select] = byClass(control, "prf-tests-select");
     return { label: byClass(control, "prf-tests-label")[0].textContent, value: byClass(control, "prf-tests-value")[0].textContent, selected: select.value };
   };
   assert.deepEqual(view("all"), { label: "Tests:", value: "All", selected: "all" });
+  assert.deepEqual(view("unit"), { label: "Tests:", value: "Unit", selected: "unit" });
+  assert.deepEqual(view("integration"), { label: "Tests:", value: "Integration", selected: "integration" });
   assert.deepEqual(view("hide"), { label: "Tests:", value: "Hidden", selected: "hide" });
   assert.deepEqual(view("only"), { label: "Tests:", value: "Only", selected: "only" });
   assert.deepEqual(view("bogus"), { label: "Tests:", value: "All", selected: "all" });
   assert.deepEqual(view(undefined), { label: "Tests:", value: "All", selected: "all" });
 });
 
-test("the Tests select is labelled Tests and offers All, Hidden and Only with the values all, hide and only", () => {
+test("the Tests select is labelled Tests and offers All, Unit, Integration, Hidden and Only in that order with the values all, unit, integration, hide and only", () => {
   const [control] = testsControlOf({ mode: "files", tests: ["a.test.js"] });
   const [select] = byClass(control, "prf-tests-select");
   assert.equal(select.tag, "select");
   assert.equal(select.attributes["aria-label"], "Tests");
   const options = select.children;
-  assert.deepEqual(options.map((option) => [option.tag, option.textContent, option.value]), [["option", "All", "all"], ["option", "Hidden", "hide"], ["option", "Only", "only"]]);
+  assert.deepEqual(options.map((option) => [option.tag, option.textContent, option.value]), [["option", "All", "all"], ["option", "Unit", "unit"], ["option", "Integration", "integration"], ["option", "Hidden", "hide"], ["option", "Only", "only"]]);
 });
 
 test("changing the Tests select sends its value as the mode", () => {
@@ -1897,44 +1861,36 @@ test("a stop row is not dimmed by the Tests mode", () => {
   }
 });
 
-test("a chunk's file button is struck through when the Tests mode keeps that file out of view", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const hunk = (id, path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
-    const chunks = [{ i: 1, title: "t", summary: "", risk: "low", depends_on: [], hunks: [hunk("h1", "src/a.js"), hunk("h2", "src/a.test.js")] }];
-    const struck = (testsMode) => byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/a.test.js"], testsMode }, {}), "prf-chunk-file").map((file) => file.className.split(" ").includes("prf-dimmed"));
-    assert.deepEqual(struck("all"), [false, false]);
-    assert.deepEqual(struck("hide"), [false, true]);
-    assert.deepEqual(struck("only"), [true, false]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-const hunkAt = (path, id = path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1] });
+const hunkAt = (path, id = path) => ({ id, path, change: "modified", old: [1, 1], new: [1, 1], added: 3, removed: 1 });
 const layerOf = (...paths) => ({ i: 1, title: "t", summary: "", risk: "low", depends_on: [], hunks: paths.map((path) => hunkAt(path)) });
-const labelsOf = (layer, review = [layer]) => require("../tree.js").folderGroups(layer, review.flatMap((other) => other.hunks.map((hunk) => hunk.path))).map((group) => group.label);
+const groupsOf = (layer, review = [layer], tests = []) => require("../tree.js").folderGroups(layer, review.flatMap((other) => other.hunks.map((hunk) => hunk.path)), tests);
+const labelsOf = (layer, review = [layer], tests = []) => groupsOf(layer, review, tests).flatMap((group) => group.packages.map((entry) => entry.label));
+const shapeOf = (layer, review, tests) => groupsOf(layer, review, tests).map((group) => [group.module, group.header, group.packages.map((entry) => [entry.label, entry.files.map((file) => [baseName(file.path), file.test])])]);
+const baseName = (path) => path.slice(path.lastIndexOf("/") + 1);
+const JAVA = "acme-api/src/main/java/com/acme/creators/lumber";
+const JAVA_TEST = "acme-api/src/test/java/com/acme/creators/lumber";
 
-test("folderGroups labels a JVM folder by module and package, adding the source set when it is not main", () => {
+test("folderGroups labels a JVM folder by module and package, leaving out a test source set but keeping any other", () => {
   const layers = [
-    layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java"),
-    layerOf("acme-api/src/test/java/com/acme/creators/lumber/ATest.java"),
+    layerOf(`${JAVA}/A.java`),
+    layerOf(`${JAVA_TEST}/ATest.java`),
     layerOf("acme-api/src/integrationTest/java/com/acme/backends/lumber/BIT.java"),
     layerOf("acme-api/src/main/resources/com/acme/db/C.sql"),
     layerOf("tools/acme-cli/src/main/kotlin/com/acme/cli/D.kt"),
+    layerOf("acme-api/src/generated/java/com/acme/gen/E.java"),
   ];
   assert.deepEqual(layers.map((layer) => labelsOf(layer, layers)), [
     ["acme-api \u203a creators/lumber"],
-    ["acme-api test \u203a creators/lumber"],
-    ["acme-api integrationTest \u203a backends/lumber"],
+    ["acme-api \u203a creators/lumber"],
+    ["acme-api \u203a backends/lumber"],
     ["acme-api \u203a db"],
     ["tools/acme-cli \u203a cli"],
+    ["acme-api generated \u203a gen"],
   ]);
 });
 
 test("folderGroups drops the package prefix every JVM folder in the review shares, not only the layer's", () => {
-  const layer = layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java");
+  const layer = layerOf(`${JAVA}/A.java`);
   const other = layerOf("acme-api/src/main/java/com/acme/models/B.java");
   assert.deepEqual(labelsOf(layer, [layer]), ["acme-api \u203a lumber"]);
   assert.deepEqual(labelsOf(layer, [layer, other]), ["acme-api \u203a creators/lumber"]);
@@ -1946,81 +1902,160 @@ test("folderGroups keeps at least one package segment in every JVM folder", () =
   const shallow = layerOf("acme-api/src/main/java/com/acme/A.java");
   const same = layerOf("acme-api/src/test/java/com/acme/ATest.java");
   assert.deepEqual(labelsOf(shallow, [shallow, same]), ["acme-api \u203a acme"]);
-  assert.deepEqual(labelsOf(same, [shallow, same]), ["acme-api test \u203a acme"]);
+  assert.deepEqual(labelsOf(same, [shallow, same]), ["acme-api \u203a acme"]);
   assert.deepEqual(labelsOf(shallow, [shallow]), ["acme-api \u203a acme"]);
 });
 
-test("folderGroups handles a source root at the repo root, which has no module", () => {
+test("folderGroups puts a source root at the repo root in the module /, its packages under a header when there are two", () => {
   const layer = layerOf("src/main/java/com/acme/a/A.java", "src/test/java/com/acme/b/BTest.java");
   const other = layerOf("src/main/java/com/acme/c/C.java");
-  assert.deepEqual(labelsOf(layer, [layer, other]), ["a", "test \u203a b"]);
+  assert.deepEqual(shapeOf(layer, [layer, other]).map(([module, header, packages]) => [module, header, packages.map(([label]) => label)]), [["/", true, ["a", "b"]]]);
   const single = layerOf("src/test/java/com/acme/b/BTest.java");
-  assert.deepEqual(labelsOf(single, [layer, other]), ["test \u203a b"]);
-  const main = layerOf("src/main/java/com/acme/a/A.java");
-  assert.deepEqual(labelsOf(main, [layer, other]), ["a"]);
+  assert.deepEqual(shapeOf(single, [layer, other]).map(([module, header, packages]) => [module, header, packages.map(([label]) => label)]), [["/", false, ["b"]]]);
 });
 
-test("folderGroups keeps the module in every JVM label, whatever else the layer holds", () => {
+test("folderGroups gives a module with two or more package lines a header and the packages alone as labels, and a module with one its inline label", () => {
   const layer = layerOf(
-    "acme-api/src/main/java/com/acme/creators/lumber/A.java",
+    `${JAVA}/A.java`,
     "acme-api/src/main/java/com/acme/models/B.java",
-    "acme-api/src/test/java/com/acme/creators/lumber/ATest.java",
+    "acme-core/src/main/java/com/acme/y/C.java",
   );
-  assert.deepEqual(labelsOf(layer), ["acme-api \u203a creators/lumber", "acme-api \u203a models", "acme-api test \u203a creators/lumber"]);
-  const two = layerOf("acme-api/src/main/java/com/acme/x/A.java", "acme-core/src/main/java/com/acme/y/B.java");
-  assert.deepEqual(labelsOf(two), ["acme-api \u203a x", "acme-core \u203a y"]);
+  assert.deepEqual(
+    groupsOf(layer).map((group) => [group.module, group.header, group.packages.map((entry) => entry.label)]),
+    [["acme-api", true, ["creators/lumber", "models"]], ["acme-core", false, ["acme-core \u203a y"]]],
+  );
 });
 
-test("folderGroups labels non-JVM folders by their full directory", () => {
+test("folderGroups lists modules and their packages in the order of their first hunk", () => {
+  const layer = layerOf("b/x.js", "a/y.js", "b/sub/w.js", "a/z.js", "b/q.js");
+  assert.deepEqual(
+    groupsOf(layer).map((group) => [group.module, group.packages.map((entry) => [entry.label, entry.files.map((file) => file.path)])]),
+    [["b", [["/", ["b/x.js", "b/q.js"]], ["sub", ["b/sub/w.js"]]]], ["a", [["a", ["a/y.js", "a/z.js"]]]]],
+  );
+});
+
+test("folderGroups gives each source set of a JVM package its own line, the main lines first and then the test lines, each in the order of its first hunk", () => {
+  const layer = layerOf(
+    `${JAVA_TEST}/OtherTest.java`,
+    `${JAVA}/Foo.java`,
+    "acme-api/src/integrationTest/java/com/acme/creators/lumber/ThirdIT.java",
+    "acme-api/src/main/java/com/acme/models/B.java",
+    "acme-api/src/testFixtures/java/com/acme/models/Support.java",
+    `${JAVA_TEST}/FooTest.java`,
+  );
+  const groups = groupsOf(layer);
+  assert.deepEqual(groups.map((group) => [group.module, group.header, group.packages.length]), [["acme-api", true, 5]]);
+  assert.deepEqual(
+    groups[0].packages.map((entry) => [entry.label, entry.testSet, entry.dirs, entry.files.map((file) => [baseName(file.path), file.test])]),
+    [
+      ["creators/lumber", "", [JAVA], [["Foo.java", false]]],
+      ["models", "", ["acme-api/src/main/java/com/acme/models"], [["B.java", false]]],
+      ["creators/lumber", "test", [JAVA_TEST], [["OtherTest.java", true], ["FooTest.java", true]]],
+      ["creators/lumber", "integrationTest", ["acme-api/src/integrationTest/java/com/acme/creators/lumber"], [["ThirdIT.java", true]]],
+      ["models", "testFixtures", ["acme-api/src/testFixtures/java/com/acme/models"], [["Support.java", true]]],
+    ],
+  );
+});
+
+test("folderGroups counts a module's test lines for its header, and labels a lone test line inline like a main one", () => {
+  const layer = layerOf(`${JAVA}/Foo.java`, `${JAVA_TEST}/FooTest.java`);
+  assert.deepEqual(groupsOf(layer).map((group) => [group.header, group.packages.map((entry) => [entry.label, entry.testSet])]), [[true, [["lumber", ""], ["lumber", "test"]]]]);
+  const lone = layerOf(`${JAVA_TEST}/FooTest.java`);
+  assert.deepEqual(groupsOf(lone).map((group) => [group.header, group.packages.map((entry) => [entry.label, entry.testSet])]), [[false, [["acme-api \u203a lumber", "test"]]]]);
+});
+
+test("folderGroups leaves a test as a file of its package line, beside its source in a TS or JS directory", () => {
+  const layer = layerOf("web/app/foo.ts", "web/app/foo.test.ts", "web/app/bar.tsx", "web/app/bar.spec.tsx", "web/other/qux.ts", "web/app/__tests__/qux.ts");
+  const tests = ["web/app/foo.test.ts", "web/app/bar.spec.tsx", "web/app/__tests__/qux.ts"];
+  assert.deepEqual(shapeOf(layer, undefined, tests), [
+    [
+      "web",
+      true,
+      [
+        ["app", [["foo.ts", false], ["foo.test.ts", true], ["bar.tsx", false], ["bar.spec.tsx", true]]],
+        ["other", [["qux.ts", false]]],
+        ["app/__tests__", [["qux.ts", true]]],
+      ],
+    ],
+  ]);
+  assert.deepEqual(groupsOf(layer, undefined, tests)[0].packages.map((entry) => entry.testSet), ["", "", ""]);
+});
+
+test("folderGroups takes the review's test files as tests, wherever they are", () => {
+  const layer = layerOf(`${JAVA}/Foo.java`, `${JAVA}/FooTest.java`, "web/helpers.ts");
+  assert.deepEqual(shapeOf(layer, [layer], [`${JAVA}/FooTest.java`, "web/helpers.ts"]).map(([, , packages]) => packages[0][1]), [[["Foo.java", false], ["FooTest.java", true]], [["helpers.ts", true]]]);
+});
+
+test("folderGroups groups a non-JVM path by its first directory, the rest of the directory being its package", () => {
   const layer = layerOf("web/app/routes/a/x.tsx", "web/app/routes/b/y.tsx", "web/app/routes/b/z.tsx");
-  assert.deepEqual(labelsOf(layer), ["web/app/routes/a", "web/app/routes/b"]);
-  const nested = layerOf("web/app/routes/x.tsx", "web/app/routes/b/y.tsx");
-  assert.deepEqual(labelsOf(nested), ["web/app/routes", "web/app/routes/b"]);
+  assert.deepEqual(shapeOf(layer).map(([module, header, packages]) => [module, header, packages.map(([label, files]) => [label, files.length])]), [["web", true, [["app/routes/a", 1], ["app/routes/b", 2]]]]);
+  assert.deepEqual(labelsOf(layerOf("web/app/routes/x.tsx", "web/app/routes/b/y.tsx")), ["app/routes", "app/routes/b"]);
   assert.deepEqual(labelsOf(layerOf("web/app/routes/x.tsx")), ["web/app/routes"]);
   assert.deepEqual(labelsOf(layerOf("web/sdk/x.ts", "docs/y.md")), ["web/sdk", "docs"]);
+  assert.deepEqual(labelsOf(layerOf("web/x.ts", "web/sdk/y.ts")), ["/", "sdk"]);
 });
 
-test("folderGroups keeps JVM labels and full non-JVM directories in a mixed layer", () => {
-  const layer = layerOf(
-    "acme-api/src/main/java/com/acme/enums/A.java",
-    "acme-web/sdk/x.ts",
-    "acme-web/app/routes/y.tsx",
-    "acme-api/src/test/java/com/acme/services/ATest.java",
-  );
+test("folderGroups keeps JVM and non-JVM paths of one module under its header", () => {
+  const layer = layerOf(`${JAVA}/A.java`, "acme-web/sdk/x.ts", "acme-web/app/routes/y.tsx", "acme-api/src/test/java/com/acme/services/ATest.java", "acme-api/build.gradle");
   const other = layerOf("acme-api/src/main/java/com/acme/models/B.java");
-  assert.deepEqual(labelsOf(layer, [layer, other]), ["acme-api \u203a enums", "acme-web/sdk", "acme-web/app/routes", "acme-api test \u203a services"]);
+  assert.deepEqual(
+    groupsOf(layer, [layer, other]).map((group) => [group.module, group.header, group.packages.map((entry) => entry.label)]),
+    [["acme-api", true, ["creators/lumber", "/", "services"]], ["acme-web", true, ["sdk", "app/routes"]]],
+  );
 });
 
-test("folderGroups puts a file at the repo root in the folder /", () => {
+test("folderGroups puts a file at the repo root in the module /", () => {
   assert.deepEqual(labelsOf(layerOf("README.md")), ["/"]);
   assert.deepEqual(labelsOf(layerOf("README.md", "docs/a.md")), ["/", "docs"]);
   assert.deepEqual(labelsOf(layerOf("docs/a.md", "README.md")), ["docs", "/"]);
 });
 
-test("folderGroups lists folders by first hunk and keeps each folder's files in hunk order", () => {
+test("folderGroups keeps each file's hunks in the layer's order", () => {
   const layer = layerOf("b/x.js", "a/y.js", "b/w.js", "a/y.js", "b/x.js");
-  const groups = require("../tree.js").folderGroups(layer, layer.hunks.map((hunk) => hunk.path));
-  assert.deepEqual(groups.map((group) => [group.dir, group.files.map((file) => file.path)]), [["b", ["b/x.js", "b/w.js"]], ["a", ["a/y.js"]]]);
-  assert.deepEqual(groups[0].files[0].hunks, [layer.hunks[0], layer.hunks[4]]);
-  assert.deepEqual(require("../tree.js").folderGroups(layerOf(), []), []);
+  const groups = groupsOf(layer);
+  assert.deepEqual(groups[0].packages[0].files[0].hunks, [layer.hunks[0], layer.hunks[4]]);
+  assert.deepEqual(groupsOf(layerOf(), []), []);
 });
 
-test("the selected chunk lists a folder line with an icon over each folder's files, with the directory as its tooltip", () => {
+const iconDOf = (file) => byClass(file, "prf-chunk-icon")[0].children[0].attributes.d;
+let iconKinds = null;
+const kindOfIcon = (d) => {
+  if (!iconKinds) {
+    const previous = globalThis.document;
+    globalThis.document = fakeDom();
+    try {
+      const [source, test] = byClass(require("../tree.js").chunkList({ chunks: [layerOf("web/foo.ts", "web/foo.test.ts")], selectedChunk: 1, judged: new Set(), tests: ["web/foo.test.ts"] }, {}), "prf-chunk-file");
+      iconKinds = new Map([[iconDOf(source), "file"], [iconDOf(test), "beaker"]]);
+    } finally {
+      globalThis.document = previous;
+    }
+  }
+  return iconKinds.get(d);
+};
+const rowsOf = (root) => byClass(root, "prf-chunk-file").map((file) => [byClass(file, "prf-chunk-file-name")[0].textContent, kindOfIcon(iconDOf(file))]);
+
+test("the selected chunk lists a module header and a rail when it has two packages, and a package line over each package's files", () => {
   const { chunkList } = require("../tree.js");
   globalThis.document = fakeDom();
   try {
     const picked = [];
     const chunks = [
-      layerOf("acme-api/src/main/java/com/acme/creators/lumber/A.java", "acme-api/src/main/java/com/acme/models/B.java", "acme-api/src/main/java/com/acme/creators/lumber/C.java"),
+      layerOf(`${JAVA}/A.java`, "acme-api/src/main/java/com/acme/models/B.java", `${JAVA}/C.java`, "acme-core/src/main/java/com/acme/z/D.java"),
       { ...layerOf("acme-api/src/test/java/com/acme/x/XTest.java"), i: 2 },
     ];
     const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk")[0];
+    const modules = byClass(row, "prf-chunk-module");
+    assert.deepEqual(modules.map((module) => [byClass(module, "prf-chunk-module-head").length, byClass(module, "prf-chunk-rail").length]), [[1, 1], [0, 0]]);
+    const head = byClass(modules[0], "prf-chunk-module-head")[0];
+    assert.deepEqual([head.textContent, head.children.map((child) => [child.tag, child.className])], ["acme-api", [["svg", "prf-chunk-icon"], ["span", "prf-chunk-module-name"]]]);
+    assert.equal(byClass(modules[0], "prf-chunk-rail")[0].children.every((child) => child.className === "prf-chunk-group"), true);
     const groups = byClass(row, "prf-chunk-group");
     assert.deepEqual(
       groups.map((group) => [byClass(group, "prf-chunk-folder")[0].textContent, byClass(group, "prf-chunk-folder")[0].title, byClass(group, "prf-chunk-file").map((file) => byClass(file, "prf-chunk-file-name")[0].textContent)]),
       [
-        ["acme-api \u203a creators/lumber", "acme-api/src/main/java/com/acme/creators/lumber", ["A.java", "C.java"]],
-        ["acme-api \u203a models", "acme-api/src/main/java/com/acme/models", ["B.java"]],
+        ["creators/lumber", JAVA, ["A.java", "C.java"]],
+        ["models", "acme-api/src/main/java/com/acme/models", ["B.java"]],
+        ["acme-core \u203a z", "acme-core/src/main/java/com/acme/z", ["D.java"]],
       ],
     );
     for (const group of groups) {
@@ -2029,9 +2064,30 @@ test("the selected chunk lists a folder line with an icon over each folder's fil
         assert.deepEqual(file.children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-file-name"]]);
       }
     }
-    assert.deepEqual(byClass(row, "prf-chunk-folder").map((folder) => folder.tag), ["div", "div"]);
     for (const file of byClass(row, "prf-chunk-file")) file.listeners.click();
-    assert.deepEqual(picked.map(([, path]) => path.split("/").pop()), ["A.java", "C.java", "B.java"]);
+    assert.deepEqual(picked.map(([, path]) => path.split("/").pop()), ["A.java", "C.java", "B.java", "D.java"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("every test is a clickable file button with a beaker and its full name, at file level in its own package line", () => {
+  const { chunkList } = require("../tree.js");
+  globalThis.document = fakeDom();
+  try {
+    const picked = [];
+    const chunks = [layerOf(`${JAVA}/Foo.java`, `${JAVA_TEST}/FooTest.java`, `${JAVA_TEST}/OtherTest.java`)];
+    const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set() }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) }), "prf-chunk")[0];
+    assert.deepEqual(rowsOf(row), [["Foo.java", "file"], ["FooTest.java", "beaker"], ["OtherTest.java", "beaker"]]);
+    const [source, first, second] = byClass(row, "prf-chunk-file");
+    assert.deepEqual(first.children.map((child) => [child.tag, child.className]), [["svg", "prf-chunk-icon"], ["span", "prf-chunk-file-name"]]);
+    assert.deepEqual([first.className, second.className, first.title], ["prf-chunk-file", "prf-chunk-file", `${JAVA_TEST}/FooTest.java`]);
+    first.listeners.click();
+    assert.deepEqual(picked, [[1, `${JAVA_TEST}/FooTest.java`]]);
+    assert.equal(iconDOf(first), iconDOf(second));
+    assert.notEqual(iconDOf(first), iconDOf(source));
+    const groups = byClass(row, "prf-chunk-group");
+    assert.deepEqual(groups.map((group) => byClass(group, "prf-chunk-file").length), [1, 2]);
   } finally {
     delete globalThis.document;
   }
@@ -2046,23 +2102,6 @@ test("a folder label breaks after each / that has text after it, from text nodes
     assert.deepEqual(deep.children.map((child) => (typeof child === "string" ? child : child.tag)), ["web/", "wbr", "app/", "wbr", "routes"]);
     assert.equal(deep.textContent, "web/app/routes");
     assert.deepEqual(root.children, ["/"]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a folder line is struck through only when every file under it is", () => {
-  const { chunkList } = require("../tree.js");
-  globalThis.document = fakeDom();
-  try {
-    const chunks = [layerOf("src/a.js", "src/a.test.js", "spec/b.test.js", "spec/c.test.js", "lib/d.js")];
-    const struck = (testsMode) => {
-      const row = byClass(chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests: ["src/a.test.js", "spec/b.test.js", "spec/c.test.js"], testsMode }, {}), "prf-chunk")[0];
-      return [byClass(row, "prf-chunk-folder"), byClass(row, "prf-chunk-file")].map((elements) => elements.map((element) => element.className.split(" ").includes("prf-dimmed")));
-    };
-    assert.deepEqual(struck("all"), [[false, false, false], [false, false, false, false, false]]);
-    assert.deepEqual(struck("hide"), [[false, true, false], [false, true, true, true, false]]);
-    assert.deepEqual(struck("only"), [[false, false, true], [true, false, false, false, true]]);
   } finally {
     delete globalThis.document;
   }
@@ -2324,12 +2363,12 @@ test("filter with no arguments shows every file and row again", async () => {
   assert.deepEqual([blocks[0].rows[1].hidden, blocks[1].fileHidden], [false, false]);
 });
 
-test("blockCount counts the diff blocks, and changedFileCount is the files of the blocks joined by the brief's paths", withBlocks(["diff-a", "diff-b", "diff-c"], async () => {
+test("blockCount counts the diff blocks, and changedFilePaths is the files of the blocks joined by the brief's paths", withBlocks(["diff-a", "diff-b", "diff-c"], async () => {
   const page = filePage({ blockSelector: "block", pathOfBlock: (block) => block.id.replace("diff-", "") });
   assert.equal(page.blockCount(), 3);
-  assert.equal(page.changedFileCount(), 3);
-  assert.equal(page.changedFileCount(["a", "d"]), 4);
-  assert.equal(page.changedFileCount(["d", "e", "f"]), 6);
+  assert.deepEqual(page.changedFilePaths(), ["a", "b", "c"]);
+  assert.deepEqual(page.changedFilePaths(["a", "d"]), ["a", "b", "c", "d"]);
+  assert.deepEqual(page.changedFilePaths(["d", "e", "f"]), ["a", "b", "c", "d", "e", "f"]);
 }));
 
 test("focus scans the page's blocks only for a path whose entry is not found by its id, and once per call", async () => {
@@ -2460,9 +2499,209 @@ test("the Files mode panel holds the bar and the filter line and no list", () =>
   }
 });
 
+test("the Files mode panel ends with the hidden note, with the text of each mode and singular for one, and has none at zero", () => {
+  const { render } = require("../tree.js");
+  const roots = [];
+  globalThis.document = fakeDom();
+  globalThis.prFocus.page = { name: "GitHub", mount: (root) => roots.push(root) };
+  try {
+    const state = (testsMode, hiddenFiles, mode = "files") => ({ mode, stops: [], selectedStop: null, chunks: FILE_REVIEW.chunks, selectedChunk: null, judged: new Set(), chips: [], fileSet: null, tests: ["a.test.js"], testsMode, hiddenFiles });
+    const noteOf = (...args) => {
+      render(FILE_REVIEW, state(...args), { onMode() {} });
+      const root = roots.at(-1);
+      const last = root.children.at(-1);
+      return last.className === "prf-chunk-hidden-note" ? last.textContent : null;
+    };
+    assert.deepEqual(
+      [noteOf("hide", 3), noteOf("hide", 1), noteOf("unit", 2), noteOf("integration", 1), noteOf("only", 4), noteOf("only", 1)],
+      ["3 tests hidden", "1 test hidden", "2 integration tests hidden", "1 unit test hidden", "4 files hidden", "1 file hidden"],
+    );
+    assert.deepEqual([noteOf("all", 0), noteOf("hide", 0), noteOf("hide", 3, "review")], [null, null, null]);
+  } finally {
+    delete globalThis.document;
+    delete globalThis.prFocus.page;
+  }
+});
+
 test("GitHub's entry for a diff block is the block's parent, and the block itself without one", () => {
   const parent = {};
   assert.equal(githubPage.entryOf({ parentElement: parent }), parent);
   const orphan = { parentElement: null };
   assert.equal(githubPage.entryOf(orphan), orphan);
+});
+
+const shown = (chunks, testsMode, tests, selected = 1) => {
+  const row = byClass(require("../tree.js").chunkList({ chunks, selectedChunk: selected, judged: new Set(), tests, testsMode }, {}), "prf-chunk")[selected - 1];
+  return {
+    modules: byClass(row, "prf-chunk-module-head").map((head) => head.textContent),
+    folders: byClass(row, "prf-chunk-folder").map((folder) => byClass(folder, "prf-chunk-folder-label")[0].textContent),
+    sets: byClass(row, "prf-chunk-folder").map((folder) => byClass(folder, "prf-chunk-source-set").map((label) => label.textContent).join("")),
+    files: byClass(row, "prf-chunk-file"),
+    note: byClass(row, "prf-chunk-hidden-note")[0] ?? null,
+    row,
+  };
+};
+const names = (files) => files.map((file) => byClass(file, "prf-chunk-file-name")[0].textContent);
+
+test("with tests hidden the test files are dropped and counted in the note", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/foo.spec.ts", "web/bar.ts")];
+    const tests = ["web/foo.test.ts", "web/foo.spec.ts"];
+    const result = shown(chunks, "hide", tests);
+    assert.deepEqual(names(result.files), ["foo.ts", "bar.ts"]);
+    assert.equal(result.note.textContent, "2 tests hidden");
+    assert.equal(shown(chunks, "hide", ["web/foo.test.ts"]).note.textContent, "1 test hidden");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with tests hidden a test is dropped, and a package line or module header left with nothing goes with it", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/app/a.ts", "web/lib/none.test.ts", "web/lib/other.test.ts", "docs/x.md")];
+    const tests = ["web/lib/none.test.ts", "web/lib/other.test.ts"];
+    const all = shown(chunks, "all", tests);
+    assert.deepEqual([all.modules, all.folders, names(all.files), all.note], [["web"], ["app", "lib", "docs"], ["a.ts", "none.test.ts", "other.test.ts", "x.md"], null]);
+    const hidden = shown(chunks, "hide", tests);
+    assert.deepEqual([hidden.modules, hidden.folders, names(hidden.files), hidden.note.textContent], [["web"], ["app", "docs"], ["a.ts", "x.md"], "2 tests hidden"]);
+    const onlyTests = shown([layerOf("web/app/a.test.ts", "web/lib/b.ts")], "hide", ["web/app/a.test.ts"]);
+    assert.deepEqual([onlyTests.modules, onlyTests.folders, names(onlyTests.files)], [["web"], ["lib"], ["b.ts"]]);
+    const nothing = shown([layerOf("web/app/a.test.ts", "web/lib/b.test.ts")], "hide", ["web/app/a.test.ts", "web/lib/b.test.ts"]);
+    assert.deepEqual([nothing.modules, nothing.folders, nothing.files, nothing.note.textContent], [[], [], [], "2 tests hidden"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("the hidden note is a muted line with a beaker or file icon and no control, first in the block, and is left out when nothing is hidden", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts")];
+    const tests = ["web/foo.test.ts"];
+    assert.equal(shown(chunks, "all", tests).note, null);
+    assert.equal(shown([layerOf("web/foo.ts")], "hide", []).note, null);
+    const note = shown(chunks, "hide", tests).note;
+    assert.deepEqual([note.tag, note.children.map((child) => [child.tag, child.className]), note.listeners], ["div", [["svg", "prf-chunk-note-icon"], ["span", ""]], {}]);
+    assert.notEqual(note.children[0].children[0].attributes.d, shown(chunks, "only", tests).note.children[0].children[0].attributes.d);
+    const block = byClass(shown(chunks, "hide", tests).row, "prf-chunk-files")[0];
+    assert.deepEqual(block.children.map((child) => child.className), ["prf-chunk-hidden-note", "prf-chunk-module"]);
+    assert.equal(shown(chunks, "only", tests).note.textContent, "1 file hidden");
+    assert.equal(shown([layerOf("web/a.ts", "web/b.ts", "web/b.test.ts")], "only", ["web/b.test.ts"]).note.textContent, "2 files hidden");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with only tests shown every other file is dropped", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/lone.test.ts", "web/bar.ts", "docs/x.md")];
+    const tests = ["web/foo.test.ts", "web/lone.test.ts"];
+    const result = shown(chunks, "only", tests);
+    assert.deepEqual(names(result.files), ["foo.test.ts", "lone.test.ts"]);
+    assert.deepEqual([result.modules, result.folders, result.note.textContent], [[], ["web"], "3 files hidden"]);
+    const [promoted] = result.files;
+    assert.deepEqual(promoted.children.map((child) => child.className), ["prf-chunk-icon", "prf-chunk-file-name"]);
+    const picked = [];
+    const list = require("../tree.js").chunkList({ chunks, selectedChunk: 1, judged: new Set(), tests, testsMode: "only" }, { onSelectFileInChunk: (i, path) => picked.push([i, path]) });
+    byClass(list, "prf-chunk-file")[0].listeners.click();
+    assert.deepEqual(picked, [[1, "web/foo.test.ts"]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with every file shown the test files stay in their package line beside the others, with no end line", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/lone.test.ts")];
+    const result = shown(chunks, "all", ["web/foo.test.ts", "web/lone.test.ts"]);
+    assert.deepEqual(rowsOf(result.row), [["foo.ts", "file"], ["foo.test.ts", "beaker"], ["lone.test.ts", "beaker"]]);
+    assert.equal(result.note, null);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("testKind tells a fixture, an integration test and a unit test by path and name alone", () => {
+  const { testKind } = require("../tree.js");
+  const kinds = (...paths) => paths.map(testKind);
+  assert.deepEqual(kinds("acme-api/src/test/java/com/acme/FooTest.java", "acme-api/src/test/java/com/acme/FooTests.java", "web/foo.test.ts", "web/foo.spec.tsx", "README.md"), ["unit", "unit", "unit", "unit", "unit"]);
+  assert.deepEqual(kinds("acme-api/src/integrationTest/java/com/acme/FooTest.java", "acme-api/src/IntegrationTest/kotlin/com/acme/Foo.kt"), ["integration", "integration"]);
+  assert.deepEqual(kinds("acme-api/src/test/java/com/acme/FooIT.java", "acme-api/src/test/java/com/acme/FooIntegrationTest.java", "acme-api/src/test/java/com/acme/FooIT.kt"), ["integration", "integration", "integration"]);
+  assert.deepEqual(kinds("web/foo.integration.test.ts", "web/foo.integration.spec.tsx", "web/foo.integration.test.js", "web/foo.integration.spec.jsx", "web/foo.integration.ts"), ["integration", "integration", "integration", "integration", "integration"]);
+  assert.deepEqual(kinds("web/integration/foo.test.ts", "web/foo.integrations.test.ts", "acme-api/src/test/java/com/acme/EXITTest.java"), ["unit", "unit", "unit"]);
+  assert.deepEqual(kinds("acme-api/src/testFixtures/java/com/acme/FooIT.java", "acme-api/src/integrationTestFixtures/java/com/acme/Foo.java", "acme-api/src/testFixtures/java/com/acme/Support.java"), ["fixture", "fixture", "fixture"]);
+});
+
+test("hidesTestKind: hide hides every kind, unit the integration tests, integration the unit tests, and neither hides fixtures", () => {
+  const { hidesTestKind } = require("../tree.js");
+  const hides = (mode) => ["unit", "integration", "fixture"].map((kind) => hidesTestKind(mode, kind));
+  assert.deepEqual(["all", "only", "unit", "integration", "hide"].map(hides), [[false, false, false], [false, false, false], [false, true, false], [true, false, false], [true, true, true]]);
+});
+
+const MIXED = layerOf(
+  "acme-api/src/main/java/com/acme/a/Foo.java",
+  "acme-api/src/test/java/com/acme/a/FooTest.java",
+  "acme-api/src/integrationTest/java/com/acme/a/FooIT.java",
+  "acme-api/src/testFixtures/java/com/acme/a/FooFixture.java",
+  "acme-api/src/test/java/com/acme/a/LoneTest.java",
+  "acme-api/src/test/java/com/acme/b/OtherIT.java",
+  "acme-api/src/main/java/com/acme/c/Bar.java",
+);
+
+test("a JVM package line of a test source set names it as src/<set> at its right end, the main lines come first, and no other line has a label", () => {
+  globalThis.document = fakeDom();
+  try {
+    const result = shown([MIXED], "all", []);
+    assert.deepEqual([result.folders, result.sets], [["a", "c", "a", "a", "a", "b"], ["", "", "src/test", "src/integrationTest", "src/testFixtures", "src/test"]]);
+    assert.deepEqual(names(result.files), ["Foo.java", "Bar.java", "FooTest.java", "LoneTest.java", "FooIT.java", "FooFixture.java", "OtherIT.java"]);
+    const [, , test] = byClass(result.row, "prf-chunk-folder");
+    assert.deepEqual([test.children.map((child) => child.className), test.title], [["prf-chunk-icon", "prf-chunk-folder-label", "prf-chunk-source-set"], "acme-api/src/test/java/com/acme/a"]);
+    const ts = shown([layerOf("web/foo.ts", "web/foo.test.ts", "web/__tests__/bar.ts")], "all", ["web/foo.test.ts", "web/__tests__/bar.ts"]);
+    assert.deepEqual([ts.folders, ts.sets], [["/", "__tests__"], ["", ""]]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with Unit chosen the integration tests are dropped, with a package line left with nothing, and the unit tests and fixtures stay", () => {
+  globalThis.document = fakeDom();
+  try {
+    const result = shown([MIXED], "unit", []);
+    assert.deepEqual(rowsOf(result.row), [["Foo.java", "file"], ["Bar.java", "file"], ["FooTest.java", "beaker"], ["LoneTest.java", "beaker"], ["FooFixture.java", "beaker"]]);
+    assert.deepEqual([result.folders, result.sets, result.note.textContent], [["a", "c", "a", "a"], ["", "", "src/test", "src/testFixtures"], "2 integration tests hidden"]);
+    assert.equal(shown([layerOf("m/src/main/java/p/A.java", "m/src/integrationTest/java/p/AIT.java")], "unit", []).note.textContent, "1 integration test hidden");
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with Integration chosen the unit tests are dropped, with a package line left with nothing, and the integration tests and fixtures stay", () => {
+  globalThis.document = fakeDom();
+  try {
+    const result = shown([MIXED], "integration", []);
+    assert.deepEqual(rowsOf(result.row), [["Foo.java", "file"], ["Bar.java", "file"], ["FooIT.java", "beaker"], ["FooFixture.java", "beaker"], ["OtherIT.java", "beaker"]]);
+    assert.deepEqual([result.folders, result.sets, result.note.textContent], [["a", "c", "a", "a", "b"], ["", "", "src/integrationTest", "src/testFixtures", "src/test"], "2 unit tests hidden"]);
+    const nothing = shown([layerOf("m/src/test/java/p/ATest.java")], "integration", []);
+    assert.deepEqual([nothing.modules, nothing.folders, nothing.files, nothing.note.textContent], [[], [], [], "1 unit test hidden"]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("with Unit or Integration chosen a test of the review's file_sets.tests is classified like any other", () => {
+  globalThis.document = fakeDom();
+  try {
+    const chunks = [layerOf("web/foo.ts", "web/foo.test.ts", "web/foo.integration.test.ts", "web/bar.ts")];
+    const tests = ["web/foo.test.ts", "web/foo.integration.test.ts"];
+    const unit = shown(chunks, "unit", tests);
+    assert.deepEqual([rowsOf(unit.row), unit.note.textContent], [[["foo.ts", "file"], ["foo.test.ts", "beaker"], ["bar.ts", "file"]], "1 integration test hidden"]);
+    const integration = shown(chunks, "integration", tests);
+    assert.deepEqual([rowsOf(integration.row), integration.note.textContent], [[["foo.ts", "file"], ["foo.integration.test.ts", "beaker"], ["bar.ts", "file"]], "1 unit test hidden"]);
+  } finally {
+    delete globalThis.document;
+  }
 });

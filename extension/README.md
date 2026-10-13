@@ -66,19 +66,29 @@ has no Tests control and no test behaviour: it shows the files its file set choo
 | Option | Value | Shows |
 | --- | --- | --- |
 | All | `all` | every file |
+| Unit | `unit` | every file but the integration tests |
+| Integration | `integration` | every file but the unit tests |
 | Hidden | `hide` | every file but the tests |
 | Only | `only` | the test files only |
 
-- **Diff and tree.** In "Files", in "hide" the page hides the test files' diffs and the host's tree rows for them, and a directory left
+A path is a test when it is in `file_sets.tests` or sits in a JVM source set other than `main` with "test" in its name; the pane's
+lists and the page's filter use that one definition. A test is classified by its path and name alone: a fixture when its JVM source set
+has "fixture" in its name (`src/testFixtures/`); an integration test when its source set has "integration" in its name
+(`src/integrationTest/`), its name ends in `IT` or `IntegrationTest` before the extension, or it is named like `foo.integration.test.ts`
+or `foo.integration.spec.js` (any js or ts extension); a unit test otherwise. "Unit" and "Integration" hide the other kind only, never a
+fixture; "Hidden" hides every test, fixtures included.
+
+- **Diff and tree.** In "Files", in "hide", "unit" and "integration" the page hides the diffs of the tests the mode hides and the host's tree rows for them, and a directory left
   with none, whatever the chip or the layer keeps (the `exclude` of `page.filter`, a third filter that only subtracts). In "only" the
   page is narrowed to the test files by the file filter (within the chosen chip, if any), so no list of the PR's other files is
   needed. Either way the host's own tree rows follow, as with a chip.
-- **Dimming.** In the selected layer's file list, a file the mode keeps out of view (a test file in "hide", any other file in "only") has
-  its name muted and struck through.
+- **Layer file list.** In the selected layer's file list, the files the mode keeps out of view (the tests the mode hides, any other file in
+  "only") are not drawn, and neither is a package line or module header left with nothing (a test source set's package line goes when all of its
+  files are hidden). A blue-tinted chip above the list, "N tests hidden" (in "unit" "N integration tests hidden", in "integration" "N unit tests hidden") or "N files hidden", counts what the mode left out. In "Files" the same chip, counting the distinct files the page filter excludes among the page's diff blocks and the brief's paths, ends the panel, directly above the host's tree; it is left out in "all" and when nothing is excluded.
 - **Layers.** The selected layer's ranges lose the excluded files' ranges, so its test hunks drop out in "hide" and its other
   hunks in "only". The layer's callout and its jump use the files of the hunks still in view, not all of the layer's hunks. A layer
   whose hunks are all kept out by the mode (a layer of tests only, with tests hidden) is shown whole instead, so that opening
-  it still shows its lines and its callout. A click on a struck-through file in the layer's list has no row to land on.
+  it still shows its lines and its callout.
 - **Preference.** The mode is kept in this browser's `localStorage` under `prf-tests-mode` as the string `all`, `hide` or `only`
   (absent means `all`), across PRs, read and written in a try/catch. A review with no test files ignores it.
 
@@ -175,24 +185,32 @@ numbers of the layers this one builds on, and each hunk `{id, path, change, old:
 being the lines the hunk adds and removes (a review made before they were written has none).
 A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" entry in the toggle.
 
-- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer: its number and title, and at the end a risk pill
-  (green, amber or red for low, medium and high) and, once it is judged, a green check icon (tooltip "Judged"), with the layer's line counts over all its hunks
-  right-aligned on the line under them in GitHub's diffstat form (`+12` in the success green, `−34` in the danger red, 12px, tabular figures; both shown even when one is 0). The selected row is marked as a
+- The filter line has a muted line at its left, `6 layers · 1 judged`; the list has one row per layer: its number and title, and, at the right end of the title row, level with the title's first line, a quiet risk
+  chip (the risk word at 12px in green, amber or red for low, medium and high, with a 1px border in the same colour at 40%, no fill) and, once it is judged, a green check icon (tooltip "Judged"). The panel shows no line counts. The selected row is marked as a
   stop's is, and scrolled into view when a layer is opened from its callout.
-- The selected row, and only it, lists the files its layer touches, grouped by folder. Each folder is one line, not a button, with a
-  muted folder icon (GitHub's `file-directory-fill`) and its label in muted 12px text; a long label wraps rather than being cut off,
+- The selected row, and only it, lists the files its layer touches, grouped by module and package. Each package is one line, not a button, with a
+  muted folder icon (GitHub's `file-directory-fill`) and its label in the default text colour; a long label wraps rather than being cut off,
   preferring to break after a `/`, and hangs under its own first character, not under the icon. The folder's full directory is the tooltip.
-  Its files sit under it, indented so each file's icon is under the label's first character: one button per file with a muted file icon (`file`) and the
-  file's name in the default text colour, and its full path as the tooltip, and at its right end that file's line counts over this layer's hunks only (the name keeps wrapping and shrinking, the counts stay on one line). A layer or file with a hunk that has no counts shows none. Folders come in the order of their first
-  hunk in the layer, and files within a folder in the order of each file's first hunk. A click
+  Its files sit under it, each file's icon 20px right of the package icon (a module header, a package and a file each step 20px, the rail under the centre of the header's icon; a module with no header starts its first level where it would be without one): one button per file with a muted file icon (`file`) and the
+  file's name in the default text colour, and its full path as the tooltip. Files within a package come in the order of each file's first hunk. A click
   jumps to that file's first hunk of the layer, at the line the layer's own jump would use, and stays in the tab: the
   selection and the page filter do not change. A click on a file of a layer that is not selected opens that layer first. A file the
-  Tests control keeps out of view is struck through, and so is a folder line whose files all are; their icons and line counts dim with them.
-- Folder labels shorten a JVM source folder, one shaped `<module>/src/<set>/<lang>/<package>` with `<lang>` java, kotlin,
-  scala, groovy or resources (the module is empty when `src` is at the repo root): `<module> › <package>` for the `main` set and
-  `<module> <set> › <package>` for another, e.g. `acme-api test › creators/lumber`. The package segments every JVM folder in
-  the review shares at the front (not just this layer's) are dropped, always leaving each folder one segment. The module is
-  never left out, however many folders the layer has. Any other folder is labelled by its full directory, and a file at the repo root is in the folder `/`.
+  Tests control keeps out of view is not drawn (see "Tests control").
+- The files are grouped by module, then by package line. A JVM source folder, one shaped `<module>/src/<set>/<lang>/<package>`
+  with `<lang>` java, kotlin, scala, groovy or resources, is in its module (`/` when `src` is at the repo root); any other path is
+  in the module of its first directory (`/` for a file at the repo root), its package the rest of the directory. A module with two
+  or more package lines in the layer gets a header (a box icon and its name) with a thin rail down its left side, and its package
+  lines are labelled by the package alone; a module with one has no header, and its line reads `<module> › <package>` (a non-JVM
+  directory in full). The package segments every JVM folder in the review shares at the front (not just this layer's) are dropped,
+  always leaving each folder one segment. Each source set of a package has its own line; a source set other than main
+  or a test set is kept in the label, e.g. `acme-api generated › gen`. A module's lines come in the order of their first hunk, the main (and other
+  non-test) lines first and then the test source sets' lines (test, integrationTest, testFixtures), also in the order of their first hunk, and the header
+  rule counts the test lines. A test source set's line has `src/<set>` (`src/test`, `src/integrationTest`) at its right end in 12px muted text, which never wraps (the
+  label wraps first); main lines have none. Modules come in the order of their first hunk.
+- A test is a file in `file_sets.tests`, or a file of a JVM source set other than `main` with "test" in its name. A test is not paired with a
+  source file: it is a file button like any other, at file level in its package line, with a beaker icon and its full file name. A JVM test is in its
+  source set's own line; a test of another language sits in its directory's line (`foo.test.ts` beside `foo.ts`, `__tests__` as a directory of its
+  own), with no label.
 - Selecting a layer narrows the page to it: the diffs of the layer's files only, and in each only the rows that show a
   line inside one of the layer's hunks. A hunk's new range filters the right side and its old range the left, so removed
   lines stay; a hunk header or an expand-context row left standing before a hidden hunk is hidden with it. The host's own

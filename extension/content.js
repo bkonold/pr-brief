@@ -156,9 +156,10 @@
     page.showCallouts(calloutsShown(session));
     sizeCallouts(session);
     const fileSet = tree.fileSetOf(session.review, session.fileSet);
+    const knownPaths = page.changedFilePaths(session.briefPaths);
     const mode = testsMode(session);
     const exempt = exemptPaths(session);
-    const hidden = mode === "hide" ? session.tests.filter((path) => !exempt.has(path)) : null;
+    const hidden = mode === "all" || mode === "only" ? null : testPaths(session).filter((path) => isExcluded(session, path) && !exempt.has(path));
     if (session.mode === "review") {
       page.filter({ files: fileSet?.paths ?? null });
     } else if (session.mode === "chunks") {
@@ -181,10 +182,11 @@
         selectedChunk: session.selectedChunk,
         judged: session.judged,
         pageSha: page.headSha(),
-        chips: tree.fileChips(session.review, page.changedFileCount(session.briefPaths)),
+        chips: tree.fileChips(session.review, knownPaths.length),
         fileSet,
         tests: session.tests,
         testsMode: mode,
+        hiddenFiles: knownPaths.filter((path) => isExcluded(session, path)).length,
         note: noBlocks && waited >= LOAD_GRACE_MS ? NO_BLOCKS_NOTE : null,
       },
       handlersFor(session),
@@ -422,7 +424,7 @@
   }
 
   const TESTS_MODE_KEY = "prf-tests-mode";
-  const TESTS_MODES = ["all", "hide", "only"];
+  const TESTS_MODES = ["all", "unit", "integration", "hide", "only"];
 
   // The Tests switch's mode is the reader's preference across PRs, kept in this browser.
   function loadTestsMode() {
@@ -447,11 +449,23 @@
     return session.tests.length > 0 ? session.testsMode : "all";
   }
 
-  // Whether the Tests mode keeps a file out of view: a test file when tests are hidden, any other file when only tests show.
+  // Whether `path` is a test, by the one definition the pane's lists use too.
+  function isTest(session, path) {
+    return tree.isTestPath(path, session.testSet);
+  }
+
+  // The tests among the paths the review names and its test files.
+  function testPaths(session) {
+    return [...new Set([...session.tests, ...session.briefPaths])].filter((path) => isTest(session, path));
+  }
+
+  // Whether the Tests mode keeps a file out of view: the tests it hides ("hide" every test, "unit" the integration tests,
+  // "integration" the unit tests), or, when only tests show, any other file.
   function isExcluded(session, path) {
     const mode = testsMode(session);
     if (mode === "all") return false;
-    return session.tests.includes(path) === (mode === "hide");
+    if (mode === "only") return !isTest(session, path);
+    return isTest(session, path) && tree.hidesTestKind(mode, tree.testKind(path));
   }
 
   // The files the mode must keep in view although it would not: in the layers tab, the files of a selected layer that
@@ -466,7 +480,7 @@
 
   // The files shown in "only" mode: the PR's test files, and the exempt ones, within the file set when one is chosen.
   function onlyTestPaths(session, fileSet, exempt) {
-    const wanted = new Set([...session.tests, ...exempt]);
+    const wanted = new Set([...testPaths(session), ...exempt]);
     return (fileSet?.paths ?? [...wanted]).filter((path) => wanted.has(path));
   }
 
@@ -791,6 +805,7 @@
       judged: new Set(),
       fileSet: "all",
       tests: tree.testsOf(review),
+      testSet: new Set(tree.testsOf(review)),
       testsMode: loadTestsMode(),
       selection: 0,
       callouts: [],
