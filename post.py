@@ -4,17 +4,16 @@
 usage: post.py <run dir> [--repo owner/name] [--pr N] [--dry-run]
        post.py --find-only --repo owner/name --pr N
 
-<run dir> is a run folder (it has review.json and body.md), or the PR's `runs/<n>` folder, whose newest run is used.
+<run dir> is a run folder (it has review.json), or the PR's `runs/<n>` folder, whose newest run is used.
 --repo and --pr default to the run's own. --dry-run prints the comment and posts nothing; without it the program calls
 `gh api`, which reads GH_TOKEN from the environment.
 
 The comment is one collapsed "PR Brief · AI-generated" details element, whose summary line names the variant and the head commit. It holds the
-brief's markdown with the diagram as a ```mermaid fence, which GitHub draws itself, a walkthrough whose stops link to their
-lines in the diff, any notes and a collapsed "Brief data" block; a hidden `<!-- pr-brief:v1 -->` marker follows it. The block is a code fence holding the base64 of the gzip of review.json plus the run's `diagram.svg` and
-`body.html` (as the keys `diagram_svg` and `body_html`, null when the run has no such file); the browser extension reads
-the brief from it, so a reader needs no server. The comment that gets updated is the earliest one by the token's user that
-holds the marker. A comment over GitHub's size limit loses the data block first, then walkthrough stops, then the tail of
-the brief; it is always posted.
+diagram as a ```mermaid fence (the run's diagram.md), which GitHub draws itself, any notes and a collapsed "Brief data" block; a hidden
+`<!-- pr-brief:v1 -->` marker follows it. The block is a code fence holding the base64 of the gzip of review.json plus the run's
+`diagram.svg` (as the key `diagram_svg`, null when the run has none); the browser extension reads the brief from it, which is
+where the walkthrough and the layers are. The comment that gets updated is the earliest one by the token's user that holds the
+marker. A comment over GitHub's size limit loses the data block first, then the diagram; it is always posted.
 
 --find-only posts nothing and needs no run: it looks for that comment and exits 0 when there is one (printing its id),
 3 when there is none. Any other failure, such as a refused token, exits with the error.
@@ -22,7 +21,6 @@ the brief; it is always posted.
 import argparse
 import base64
 import gzip
-import hashlib
 import json
 import re
 import subprocess
@@ -37,10 +35,10 @@ ACTIONS_LOGIN = "github-actions[bot]"
 NOT_FOUND_EXIT = 3
 DATA_SUMMARY = "Brief data"
 DIAGRAM_FILE = "diagram.svg"
-BODY_FILE = "body.html"
+DIAGRAM_MD = "diagram.md"
 DATA_BLOCK = re.compile(rf"<details><summary>{DATA_SUMMARY}</summary>\s*```\n(?P<data>[A-Za-z0-9+/=\s]*?)\n```\s*</details>")
 PAYLOAD_DROPPED = "<sub>The data the browser extension reads was left out: the comment was over GitHub's size limit.</sub>"
-TRIMMED = "<sub>The brief is cut short: it was over GitHub's size limit.</sub>"
+DIAGRAM_DROPPED = "<sub>The diagram was left out: the comment was over GitHub's size limit.</sub>"
 
 # Runs `gh` with these arguments and this stdin text, and returns what it printed. Raises CalledProcessError on failure.
 Gh = Callable[[list[str], str | None], str]
@@ -61,35 +59,16 @@ def find_run(path: Path) -> Path:
     return runs[-1]
 
 
-def diff_anchor(repo: str, pr: int | str, path: str, side: str | None = None, line: int | None = None) -> str:
-    """The link to a file in the PR's diff, and to a line of it (`R12` for line 12 of the new side, `L12` of the old)."""
-    digest: str = hashlib.sha256(path.encode("utf-8")).hexdigest()
-    place: str = f"{side}{line}" if side and line else ""
-    return f"https://github.com/{repo}/pull/{pr}/files#diff-{digest}{place}"
-
-
-def stop_markdown(stop: dict[str, Any], repo: str, pr: int | str) -> str:
-    link: str = diff_anchor(repo, pr, stop["path"], stop.get("side"), stop.get("line"))
-    where: str = f"{stop['path']}:{stop['line']}" if stop.get("line") else stop["path"]
-    return f"{stop['i']}. [{stop['title']}]({link}) — {stop['why']}  \n   <sub>`{where}`</sub>"
-
-
-def walkthrough_markdown(stops: list[dict[str, Any]], repo: str, pr: int | str, shown: int | None = None) -> str:
-    """The walkthrough as a numbered list, its first `shown` stops (all by default); empty for no stop."""
-    chosen: list[dict[str, Any]] = stops if shown is None else stops[:shown]
-    return "### Walkthrough\n\n" + "\n".join(stop_markdown(s, repo, pr) for s in chosen) + "\n" if chosen else ""
-
-
-def payload(review: dict[str, Any], diagram_svg: str | None = None, body_html: str | None = None) -> str:
-    """review.json plus the run's diagram and body page as the base64 of their gzip, with no timestamp so that the same
-    inputs always give the same text."""
-    data: dict[str, Any] = {**review, "diagram_svg": diagram_svg, "body_html": body_html}
+def payload(review: dict[str, Any], diagram_svg: str | None = None) -> str:
+    """review.json plus the run's diagram as the base64 of their gzip, with no timestamp so that the same inputs always
+    give the same text."""
+    data: dict[str, Any] = {**review, "diagram_svg": diagram_svg}
     text: bytes = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return base64.b64encode(gzip.compress(text, mtime=0)).decode("ascii")
 
 
 def data_block(encoded: str) -> str:
-    """The collapsed block that holds a payload: GitHub and Forgejo render it as a closed details element."""
+    """The collapsed block that holds a payload: GitHub renders it as a closed details element."""
     return f"<details><summary>{DATA_SUMMARY}</summary>\n\n```\n{encoded}\n```\n\n</details>"
 
 
@@ -99,48 +78,23 @@ def run_text(run_dir: Path, name: str) -> str | None:
     return file.read_text(encoding="utf-8") if file.is_file() else None
 
 
-def brief_markdown(body: str) -> str:
-    """The run's body.md without its title (the PR has one) and without the rule that closes it."""
-    lines: list[str] = body.strip().split("\n")
-    if lines and lines[0].startswith("# "):
-        lines = lines[1:]
-    kept: str = "\n".join(lines).strip()
-    return kept.removesuffix("___").strip()
-
-
-def close_fences(text: str) -> str:
-    """`text` with a code fence it leaves open closed."""
-    return text + "\n```" if text.count("```") % 2 else text
-
-
-def build_comment(run_dir: Path, repo: str | None = None, pr: int | str | None = None, limit: int = COMMENT_LIMIT) -> str:
+def build_comment(run_dir: Path, limit: int = COMMENT_LIMIT) -> str:
     """The comment for a run, within `limit` characters."""
     review: dict[str, Any] = json.loads((run_dir / "review.json").read_text())
-    repo = repo or review["repo"]
-    pr = pr or review["pr"]
-    brief: str = brief_markdown((run_dir / "body.md").read_text())
-    stops: list[dict[str, Any]] = review["walkthrough"]
+    diagram: str = (run_text(run_dir, DIAGRAM_MD) or "").strip()
     summary: str = f"<details>\n<summary><b>PR Brief · AI-generated</b> · {review['variant']} · {review['head_sha'][:7]}</summary>"
 
-    def assemble(shown: int, notes: list[str], data: str, brief_text: str = brief) -> str:
-        parts: list[str] = [summary, brief_text, walkthrough_markdown(stops, repo, pr, shown).strip(), *notes, data, "</details>", f"{MARKER} -->"]
+    def assemble(shown: str, notes: list[str], data: str) -> str:
+        parts: list[str] = [summary, shown, *notes, data, "</details>", f"{MARKER} -->"]
         return "\n\n".join(part for part in parts if part) + "\n"
 
-    encoded: str = payload(review, run_text(run_dir, DIAGRAM_FILE), run_text(run_dir, BODY_FILE))
-    full: str = assemble(len(stops), [], data_block(encoded))
+    full: str = assemble(diagram, [], data_block(payload(review, run_text(run_dir, DIAGRAM_FILE))))
     if len(full) <= limit:
         return full
-    for shown in range(len(stops), -1, -1):
-        notes: list[str] = [PAYLOAD_DROPPED]
-        if shown < len(stops):
-            notes.append(f"<sub>The walkthrough shows the first {shown} of {len(stops)} stops: the comment was over GitHub's size limit.</sub>")
-        candidate: str = assemble(shown, notes, "")
-        if len(candidate) <= limit:
-            return candidate
-    notes = [PAYLOAD_DROPPED, TRIMMED]
-    overhead: int = len(assemble(0, notes, "", "")) + 10
-    cut: str = brief[: max(limit - overhead, 0)].rsplit("\n", 1)[0] if limit > overhead else ""
-    return assemble(0, notes, "", close_fences(cut).strip())[:limit]
+    candidate: str = assemble(diagram, [PAYLOAD_DROPPED], "")
+    if len(candidate) <= limit:
+        return candidate
+    return assemble("", [PAYLOAD_DROPPED, DIAGRAM_DROPPED], "")[:limit]
 
 
 def token_login(gh: Gh) -> str:
@@ -193,7 +147,7 @@ def main(argv: list[str] | None = None, gh: Gh = run_gh) -> int:
     review: dict[str, Any] = json.loads((run_dir / "review.json").read_text())
     repo: str = a.repo or review["repo"]
     pr: str = a.pr or str(review["pr"])
-    body: str = build_comment(run_dir, repo, pr)
+    body: str = build_comment(run_dir)
     if a.dry_run:
         print(body)
         print(f"{len(body)} characters of {COMMENT_LIMIT}", file=sys.stderr)

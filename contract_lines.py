@@ -6,8 +6,6 @@ with the side it reaches (request or response) and its impact level from `contra
 collapses repeated changes: the same change to the same property across several schemas, a removed and an added
 operation that are one move, new operations under one base path, the same parameter change across several operations,
 and added enum values. `contract_lines` runs both and returns the lines, worst impact first.
-
-The lines are drawn by layout.py.
 """
 import re
 from dataclasses import dataclass, field, replace

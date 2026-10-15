@@ -1,5 +1,5 @@
-"""Tests for the chunks of a brief: how the answer's chunks resolve against the diff's hunks, that the body leaves them out and
-how review.json lists them. All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's folder."""
+"""Tests for the chunks of a brief: how the answer's chunks resolve against the diff's hunks and how review.json lists
+them. All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's folder."""
 import sys
 import unittest
 from pathlib import Path
@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import render  # noqa: E402
 from hunks import Hunk, hunk_json, parse_hunks  # noqa: E402
-from render import AnswerError, Brief, build_body, resolve_chunks, review_json  # noqa: E402
+from render import AnswerError, Brief, build_brief, resolve_chunks, review_json  # noqa: E402
 
 DIFF = """diff --git a/api/Item.java b/api/Item.java
 --- a/api/Item.java
@@ -180,24 +180,21 @@ class ResolveChunks(unittest.TestCase):
         self.assertEqual(resolve([], [])[1], ["0 layers, expected 1 to 7"])
 
 
-RUN = {"repo": "acme/shop", "pr": 7, "with_body": False, "variant": "brief", "pr_head_sha": "abc"}
+RUN = {"repo": "acme/shop", "pr": 7, "variant": "brief", "pr_head_sha": "abc"}
 PATHS = ["api/Item.java", "api/ItemTest.java", "api/Gone.java", "api/After.java"]
 PR = {"title": "T", "body": "", "files": [{"path": p, "additions": 2, "deletions": 1, "changeType": "MODIFIED"} for p in PATHS]}
 STOPS = [{"file": path, "title": "t", "why": "w"} for path in PATHS[:3]]
-ANSWER = {"description": "does things", "walkthrough": STOPS,
+ANSWER = {"walkthrough": STOPS,
           "chunks": [chunk("The model", ["h01", "h02"], risk="medium", risk_reason="Key."), chunk("Tests", ["h03", "h04"], depends_on=[1])]}
 
 
-class ChunksInTheBody(unittest.TestCase):
+class ChunksInTheBrief(unittest.TestCase):
     def build(self, data: dict, diff: str = DIFF) -> tuple[Brief, list[str]]:
         notes: list[str] = []
-        return build_body(RUN, PR, data, render.diff_lines_by_path(diff), notes, None, diff), notes
+        return build_brief(PR, data, render.diff_lines_by_path(diff), notes, None, diff), notes
 
-    def test_the_body_has_no_layers_section_while_the_brief_keeps_the_layers(self) -> None:
+    def test_review_json_lists_the_layers_with_their_hunks(self) -> None:
         brief, _ = self.build(ANSWER)
-        for gone in ("### Layers", "layers, in review order", "Also in this PR, with no hunks to assign:", "(h01)"):
-            self.assertNotIn(gone, brief.body)
-        self.assertTrue(brief.body.endswith("\n\n___\n\n"))
         listed = review_json(RUN, brief, False)["chunks"]
         self.assertEqual([chunk["title"] for chunk in brief.chunks or []], ["The model", "Tests"])
         self.assertEqual([(item["i"], item["title"], [h["id"] for h in item["hunks"]]) for item in listed],
@@ -207,8 +204,7 @@ class ChunksInTheBody(unittest.TestCase):
     def test_a_missing_diagram_is_noted_as_it_is_without_chunks(self) -> None:
         brief, notes = self.build(ANSWER)
         self.assertEqual(notes, ["no changes_diagram"])
-        self.assertEqual(([stop["path"] for stop in brief.stops], brief.nodes), (PATHS[:3], {}))
-        self.assertNotIn("Diagram Walkthrough", brief.body)
+        self.assertEqual(([stop["path"] for stop in brief.stops], brief.nodes, brief.diagram), (PATHS[:3], {}, ""))
 
     def test_a_walkthrough_that_is_present_but_broken_is_still_noted(self) -> None:
         with self.assertRaises(AnswerError) as caught:
@@ -221,23 +217,22 @@ class ChunksInTheBody(unittest.TestCase):
                                  "unassigned hunks gathered into the last layer: h02, h03, h04"])
 
     def test_an_answer_with_no_chunks_key_has_no_chunks(self) -> None:
-        data = {"description": "d", "walkthrough": [{"file": "api/Item.java", "title": "t", "why": "w"}]}
+        data = {"walkthrough": [{"file": "api/Item.java", "title": "t", "why": "w"}]}
         brief, notes = self.build(data)
-        self.assertNotIn("### Layers", brief.body)
         self.assertIsNone(brief.chunks)
         self.assertEqual(notes, ["no changes_diagram", "1 stops, expected 3 to 10"])
 
     def test_an_answer_with_no_stops_is_an_error_whatever_its_chunks(self) -> None:
-        for data in ({"description": "d"}, {"description": "d", "chunks": "text"}, {"description": "d", "chunks": ANSWER["chunks"]}):
+        for data in ({}, {"chunks": "text"}, {"chunks": ANSWER["chunks"]}):
             with self.assertRaises(AnswerError) as caught:
                 self.build(data)
             self.assertIn("The walkthrough has no stop left", str(caught.exception))
         with self.assertRaises(AnswerError) as caught:
-            self.build({"description": "d", "chunks": "text"})
+            self.build({"chunks": "text"})
         self.assertIn("- no layers", str(caught.exception))
 
     def test_stops_are_enough_without_chunks(self) -> None:
-        self.assertEqual(self.build({"description": "d", "walkthrough": STOPS, "chunks": "text"})[0].chunks, [])
+        self.assertEqual(self.build({"walkthrough": STOPS, "chunks": "text"})[0].chunks, [])
 
 
 class ReviewJsonChunks(unittest.TestCase):

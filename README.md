@@ -1,9 +1,10 @@
 # pr-brief
 
-A short brief for a reviewer who did not write the change: what kind of change it is, the contract and data it
-touches, a diagram, and a walkthrough of where to read, in order. It sends a modified PR-Agent `/describe` prompt
-through `claude -p` or the GitHub Copilot CLI and renders the answer into `body.md`, `body.html`, `diagram.svg` and a
-`review.json` that a browser extension reads. The brief is a guide, never a verdict.
+A reading guide for a reviewer who did not write the change, shown on the pull request's Files changed page by a
+browser extension: a diagram of the change, a walkthrough of where to read in order, the diff's hunks grouped into
+layers, and chips that narrow the files to the API, data and test changes. It sends its prompt (`prompt.toml`) through
+`claude -p` or the GitHub Copilot CLI and renders the answer into `review.json`, `diagram.md` and `diagram.svg`. The
+brief is a guide, never a verdict: it writes no description of the PR.
 
 ## Use as a GitHub Action
 
@@ -16,9 +17,9 @@ A brief runs three ways:
   pull request with no brief does nothing.
 
 A comment run uses the workflow on the default branch, so the workflow must be merged there before `/brief` works. The Action skips a pull request from a fork whatever the trigger, ending the job successfully before it installs anything.
-The workflow queues runs for one pull request instead of cancelling them, so a push during a `/brief` run waits for the brief to post and then refreshes it; a cancelled start would leave the pull request with no brief for that push to refresh. The brief is the Copilot CLI's: the diagram as a `mermaid` block, and a walkthrough linking
-to the diff lines. The comment is one collapsed "PR Brief" block (its summary names the variant and the head commit) that ends with a collapsed "Brief data" block, the run's `review.json`, diagram and
-body page gzipped and base64-encoded, which the browser extension reads so that a reviewer needs no server; a comment over
+The workflow queues runs for one pull request instead of cancelling them, so a push during a `/brief` run waits for the brief to post and then refreshes it; a cancelled start would leave the pull request with no brief for that push to refresh. The brief is the Copilot CLI's. The comment is one collapsed "PR Brief" block (its summary names the variant and the head
+commit) that holds the diagram as a `mermaid` block and ends with a collapsed "Brief data" block, the run's `review.json` and
+diagram gzipped and base64-encoded, which the browser extension reads so that a reviewer needs no server; a comment over
 GitHub's size limit loses that block first. Pin
 `bkonold/pr-brief` to a full commit SHA, and store a fine-grained personal access token with the "Copilot Requests"
 permission as the secret `COPILOT_PAT`.
@@ -114,10 +115,8 @@ that needs a missing key is skipped, with the reason in `run.json`. Set `PR_BRIE
 .venv/bin/python run.py 42 --repo owner/name       # write a brief into runs/42/<variant>/, then render it
 #   --runner copilot  use the Copilot CLI instead of `claude -p`; --model ID picks the model
 #   --config FILE     read FILE in place of local.toml; --variant NAME; --with-body; --prompt-only
-#   --host forgejo    read the PR from the Forgejo named in local.toml (forgejo_url, forgejo_token_file); --repo is its owner/name
 .venv/bin/python render.py runs/42/<variant>       # re-render a run from its saved answer
 .venv/bin/python post.py runs/42 --dry-run         # print the PR comment; without --dry-run, post it with GH_TOKEN
-python3 serve.py                                   # serve runs/ on 127.0.0.1:8765 for the extension
 ```
 
 A brief's layers group the diff's hunks into an ordered stack (review.json and the code call them `chunks`). They live in review.json for the browser extension, not in the comment, and `scripts/eval_chunks.py` scores a
@@ -126,11 +125,9 @@ brief run against a hand-written grouping (see [eval/](eval/README.md) and [docs
 ## Browser extension
 
 A teammate installs the extension and does nothing else: it reads the brief from the pull request's own comment (the
-"Brief data" block the Action posts), with no server and no token. On a PR's conversation page it draws the brief above
-the description, and on the Files changed page (GitHub or Forgejo) it steps through the walkthrough. The author can also
-load `extension/` unpacked at `chrome://extensions`, start `serve.py` and set its URL and the token it keeps in
-`~/.config/pr-brief/token` in the extension's options, which adds generating a brief from the page and showing runs that
-were never posted. See [extension/README.md](extension/README.md); its tests run with
+"Brief data" block the Action posts), with no server and no token. On a GitHub PR's Files changed page it shows the
+diagram, steps through the walkthrough, narrows the diff to one layer at a time, and filters the files by the API, Data
+and Tests chips. See [extension/README.md](extension/README.md); its tests run with
 `node --test extension/test/*.test.js`.
 
 ### Install from a release
@@ -143,8 +140,7 @@ were never posted. See [extension/README.md](extension/README.md); its tests run
   `about:addons`, under the extension's Permissions tab. If the brief does not appear on GitHub, check that
   `github.com` is allowed there. A release has an `.xpi` only when the maintainer's Mozilla signing keys were set.
 
-Either way that is all a reviewer needs. To generate briefs from your own machine, also start `serve.py` and set its
-URL and token in the extension's options, as above.
+Either way that is all a reviewer needs.
 
 ### Cutting a release
 
@@ -162,9 +158,9 @@ and secret from the [API keys page](https://addons.mozilla.org/developers/addon/
 
 ## Vendored code
 
-`vendor/` holds PR-Agent's `/describe` prompt and its diagram helpers, MIT licensed; `vendor/README.md` says
-which upstream commits they come from.
+`vendor/` holds PR-Agent's diagram helpers, MIT licensed, and `prompt.toml` is adapted from its `/describe` prompt;
+`vendor/README.md` says which upstream commits they come from.
 
 ## License
 
-MIT, see `LICENSE`. `vendor/` keeps the MIT notice of PR-Agent, whose prompts and helpers it contains (`vendor/LICENSE`).
+MIT, see `LICENSE`. `vendor/` keeps the MIT notice of PR-Agent, whose helpers it contains and whose prompt `prompt.toml` adapts (`vendor/LICENSE`).

@@ -1,4 +1,4 @@
-"""ensure_commits: where a commit missing from the mirror is fetched from, per host. Uses throwaway git
+"""ensure_commits: where a commit missing from the mirror is fetched from. Uses throwaway git
 repositories with invented content. context_pack reads its settings when imported, so each check runs in a
 subprocess with its own PR_BRIEF_HOME. Run with `python3 -m unittest discover -s tests`."""
 import os
@@ -13,7 +13,7 @@ CHECK = """
 import sys
 sys.path.insert(0, {tool!r})
 import context_pack as c
-c.ensure_commits([{sha!r}], {host!r})
+c.ensure_commits([{sha!r}])
 print(c.has_commit({sha!r}))
 """
 
@@ -38,7 +38,7 @@ class EnsureCommitsTest(unittest.TestCase):
         (self.home / "local.toml").write_text(
             f'source_checkout = "{self.checkout}"\n'
             'github_url = "http://127.0.0.1:9/never-reached.git"\n')
-        self.check("0" * 40, "forgejo")  # clones the mirror while it still lacks the next commit
+        self.check("0" * 40)  # clones the mirror while it still lacks the next commit
         (self.checkout / "a.txt").write_text("two\n")
         git(self.checkout, "commit", "-q", "-am", "second")
         self.sha = git(self.checkout, "rev-parse", "HEAD")
@@ -46,30 +46,27 @@ class EnsureCommitsTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def check(self, sha: str, host: str, **environ: str) -> bool:
-        code = CHECK.format(tool=str(TOOL), sha=sha, host=host)
+    def check(self, sha: str, **environ: str) -> bool:
+        code = CHECK.format(tool=str(TOOL), sha=sha)
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                              env={**os.environ, "PR_BRIEF_HOME": str(self.home), **environ})
         self.assertEqual(out.returncode, 0, out.stderr)
         return out.stdout.strip() == "True"
 
-    def test_forgejo_fetches_a_missing_commit_from_the_checkout(self) -> None:
-        self.assertTrue(self.check(self.sha, "forgejo"))
+    def test_it_asks_only_github_so_the_checkout_is_not_used(self) -> None:
+        self.assertFalse(self.check(self.sha))
 
-    def test_github_asks_only_github_so_the_checkout_is_not_used(self) -> None:
-        self.assertFalse(self.check(self.sha, "github"))
-
-    def test_github_fetches_from_the_repository_an_actions_job_runs_in_when_the_config_names_no_url(self) -> None:
+    def test_it_fetches_from_the_repository_an_actions_job_runs_in_when_the_config_names_no_url(self) -> None:
         server = Path(self.tmp.name) / "server"
         (server / "octo").mkdir(parents=True)
         subprocess.run(["git", "clone", "-q", "--bare", str(self.checkout), str(server / "octo" / "widgets.git")], check=True)
         (self.home / "local.toml").write_text(f'source_checkout = "{self.checkout}"\n')
         actions = {"GITHUB_SERVER_URL": server.as_uri(), "GITHUB_REPOSITORY": "octo/widgets"}
-        self.assertFalse(self.check(self.sha, "github"))
-        self.assertTrue(self.check(self.sha, "github", **actions))
+        self.assertFalse(self.check(self.sha))
+        self.assertTrue(self.check(self.sha, **actions))
 
     def test_an_unknown_commit_stays_missing(self) -> None:
-        self.assertFalse(self.check("1" * 40, "forgejo"))
+        self.assertFalse(self.check("1" * 40))
 
 
 if __name__ == "__main__":

@@ -157,14 +157,14 @@ class HunkIdsInThePrompt(unittest.TestCase):
         argv = ["run.py", "7", "--variant", "brief", "--prompt-only", "--repo", "acme/shop"]
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(sys, "argv", argv))
-            stack.enter_context(mock.patch.object(run, "get_host", return_value=self.Host()))
+            stack.enter_context(mock.patch.object(run, "GitHub", self.Host))
             stack.enter_context(mock.patch.object(run, "ensure_commits"))
             stack.enter_context(mock.patch.object(run, "build", return_value=pack))
             stack.enter_context(mock.patch.object(run, "head_reader", return_value=lambda path: files.get(path)))
             stack.enter_context(mock.patch.object(render, "MIGRATION_GLOBS", ["db/*.sql"]))
             stack.enter_context(contextlib.redirect_stdout(out))
             stack.enter_context(contextlib.redirect_stderr(err))
-            self.assertEqual(run.execute(run.Progress()), 0)
+            self.assertEqual(run.main(), 0)
         return out.getvalue()
 
     def test_the_brief_variant_shows_tagged_headers_and_the_pins_after_the_pack(self) -> None:

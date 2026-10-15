@@ -1,9 +1,8 @@
-"""Tests for post.py: the comment built from a run folder, the anchors in it, the size fallbacks and the upsert through a
+"""Tests for post.py: the comment built from a run folder, the size fallbacks and the upsert through a
 fake `gh`. Nothing is posted. All data here is invented. Run with `python3 -m unittest discover -s tests` from the tool's
 folder."""
 import base64
 import gzip
-import hashlib
 import json
 import subprocess
 import sys
@@ -17,10 +16,7 @@ import post  # noqa: E402
 
 REPO = "octo/widgets"
 HEAD = "d" * 40
-BODY = (
-    "# Add a widget cache\n\n"
-    "### Description\n- Cache widgets\n\n\n___\n\n### API\nNo API changes\n\n\n### Data\nNo database changes\n\n\n"
-    "### Diagram Walkthrough\n\n\n```mermaid\nflowchart TD\n  a[\"Cache\"] --> b[\"Store\"]\n```\n\nDashed boxes are unchanged context\n\n\n___\n\n")
+DIAGRAM = "```mermaid\nflowchart TD\n  a[\"1 · Cache\"] --> b[\"Store\"]\n```\n"
 
 
 def unpack(comment: str) -> dict | None:
@@ -42,41 +38,37 @@ class RunFolderTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
 
-    def run_dir(self, stops: list[dict], body: str = BODY, name: str = "run", svg: str | None = None, html: str | None = None) -> Path:
+    def run_dir(self, stops: list[dict], diagram: str | None = DIAGRAM, name: str = "run", svg: str | None = None) -> Path:
         folder = self.dir / name
         folder.mkdir()
-        (folder / "body.md").write_text(body)
         (folder / "review.json").write_text(json.dumps(review(stops)))
+        if diagram is not None:
+            (folder / "diagram.md").write_text(diagram)
         if svg is not None:
             (folder / "diagram.svg").write_text(svg)
-        if html is not None:
-            (folder / "body.html").write_text(html)
         return folder
 
 
-class AnchorTest(unittest.TestCase):
-    def test_a_line_anchor_is_the_sha256_of_the_path_then_the_side_and_the_line(self) -> None:
-        digest = hashlib.sha256(b"src/Cache.java").hexdigest()
-        self.assertEqual(post.diff_anchor(REPO, 7, "src/Cache.java", "R", 42), f"https://github.com/{REPO}/pull/7/files#diff-{digest}R42")
-        self.assertEqual(post.diff_anchor(REPO, 7, "src/Cache.java", "L", 3), f"https://github.com/{REPO}/pull/7/files#diff-{digest}L3")
-
-    def test_a_file_anchor_has_no_line_part(self) -> None:
-        digest = hashlib.sha256("docs/ünï.md".encode()).hexdigest()
-        self.assertEqual(post.diff_anchor(REPO, "7", "docs/ünï.md"), f"https://github.com/{REPO}/pull/7/files#diff-{digest}")
-
-    def test_the_hash_matches_the_one_render_py_puts_in_the_brief(self) -> None:
-        import render
-        self.assertEqual(post.diff_anchor(REPO, 7, "a/b.java"), render.diff_link(REPO, "7", "a/b.java"))
-
-
 class BodyTest(RunFolderTest):
-    def test_the_comment_has_the_summary_the_brief_the_diagram_fence_the_walkthrough_the_data_block_and_the_marker_in_that_order(self) -> None:
+    def test_the_comment_has_the_summary_the_diagram_fence_the_data_block_and_the_marker_in_that_order(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1), stop(2, "src/Store.java", None)]))
-        order = ["<details>\n<summary><b>PR Brief · AI-generated</b> · v · ddddddd</summary>", "### Description", "### API", "### Data", "```mermaid",
-                 "### Walkthrough", "1. [Stop 1](", "2. [Stop 2](", "<details><summary>Brief data</summary>", "</details>\n\n</details>", f"{post.MARKER} -->"]
+        order = ["<details>\n<summary><b>PR Brief · AI-generated</b> · v · ddddddd</summary>", "```mermaid",
+                 "<details><summary>Brief data</summary>", "</details>\n\n</details>", f"{post.MARKER} -->"]
         positions = [comment.index(part) for part in order]
         self.assertEqual(positions, sorted(positions))
         self.assertTrue(comment.rstrip().endswith(f"</details>\n\n{post.MARKER} -->"))
+
+    def test_the_diagram_is_the_run_s_diagram_md_as_it_is(self) -> None:
+        self.assertIn(DIAGRAM.strip(), post.build_comment(self.run_dir([stop(1)])))
+
+    def test_the_walkthrough_is_not_written_out_in_the_comment(self) -> None:
+        comment = post.build_comment(self.run_dir([stop(1)]))
+        self.assertNotIn("Stop 1", comment.split("<details><summary>Brief data</summary>")[0])
+
+    def test_a_run_without_a_diagram_has_only_the_data_block(self) -> None:
+        comment = post.build_comment(self.run_dir([stop(1)], diagram=None))
+        self.assertNotIn("```mermaid", comment)
+        self.assertIsNotNone(post.DATA_BLOCK.search(comment))
 
     def test_the_data_block_sits_inside_the_one_outer_fold(self) -> None:
         comment = post.build_comment(self.run_dir([stop(1)]))
@@ -92,39 +84,18 @@ class BodyTest(RunFolderTest):
         self.assertRegex(match["data"], r"^[A-Za-z0-9+/=]+$")
         self.assertNotIn("<details open", comment)
 
-    def test_the_title_of_body_md_is_left_out(self) -> None:
-        comment = post.build_comment(self.run_dir([stop(1)]))
-        self.assertNotIn("# Add a widget cache", comment)
-
-    def test_each_stop_links_its_line_and_a_stop_without_a_line_links_its_file(self) -> None:
-        comment = post.build_comment(self.run_dir([stop(1, line=10), stop(2, "src/Store.java", None)]))
-        line_link = post.diff_anchor(REPO, 7, "src/Cache.java", "R", 10)
-        file_link = post.diff_anchor(REPO, 7, "src/Store.java")
-        self.assertIn(f"1. [Stop 1]({line_link}) — Start here.  \n   <sub>`src/Cache.java:10`</sub>", comment)
-        self.assertIn(f"2. [Stop 2]({file_link}) — Start here.  \n   <sub>`src/Store.java`</sub>", comment)
-
-    def test_the_repo_and_pr_arguments_win_over_the_run_s_own(self) -> None:
-        comment = post.build_comment(self.run_dir([stop(1)]), "me/other", 9)
-        self.assertIn("https://github.com/me/other/pull/9/files#diff-", comment)
-
-    def test_the_data_block_holds_review_json_the_diagram_and_the_body_page(self) -> None:
+    def test_the_data_block_holds_review_json_and_the_diagram(self) -> None:
         stops = [stop(1), stop(2, why="Ünïcode — ok")]
-        comment = post.build_comment(self.run_dir(stops, svg="<svg><text>Ünï</text></svg>", html="<html>a ``` fence</html>"))
-        self.assertEqual(unpack(comment), {**review(stops), "diagram_svg": "<svg><text>Ünï</text></svg>", "body_html": "<html>a ``` fence</html>"})
+        comment = post.build_comment(self.run_dir(stops, svg="<svg><text>Ünï</text></svg>"))
+        self.assertEqual(unpack(comment), {**review(stops), "diagram_svg": "<svg><text>Ünï</text></svg>"})
 
-    def test_a_run_without_a_diagram_or_body_page_has_null_for_each(self) -> None:
+    def test_a_run_without_a_diagram_svg_has_null_for_it(self) -> None:
         payload = unpack(post.build_comment(self.run_dir([stop(1)])))
         assert payload is not None
-        self.assertEqual((payload["diagram_svg"], payload["body_html"]), (None, None))
+        self.assertIsNone(payload["diagram_svg"])
 
     def test_the_payload_is_the_same_text_every_time(self) -> None:
-        self.assertEqual(post.payload(review([stop(1)]), "<svg/>", "<p/>"), post.payload(review([stop(1)]), "<svg/>", "<p/>"))
-
-    def test_a_contract_table_in_the_brief_is_kept(self) -> None:
-        table = "<details><summary>API</summary>\n\n| Impact | Change |\n|---|---|\n| p0 | removed `GET /w` |\n\n</details>\n"
-        body = BODY.replace("### API\nNo API changes\n", table)
-        comment = post.build_comment(self.run_dir([stop(1)], body))
-        self.assertIn(table, comment)
+        self.assertEqual(post.payload(review([stop(1)]), "<svg/>"), post.payload(review([stop(1)]), "<svg/>"))
 
 
 class SizeTest(RunFolderTest):
@@ -134,49 +105,24 @@ class SizeTest(RunFolderTest):
         self.assertNotIn("size limit", comment)
         self.assertIsNotNone(post.DATA_BLOCK.search(comment))
 
-    def test_over_the_limit_the_data_block_goes_first_with_a_note_and_the_walkthrough_stays_whole(self) -> None:
-        stops = [stop(i, why="x" * 200) for i in range(1, 6)]
-        run_dir = self.run_dir(stops)
-        whole = post.build_comment(run_dir)
-        limit = len(whole) - 1
+    def test_over_the_limit_the_data_block_goes_first_with_a_note_and_the_diagram_stays(self) -> None:
+        run_dir = self.run_dir([stop(i, why="x" * 200) for i in range(1, 6)])
+        limit = len(post.build_comment(run_dir)) - 1
         comment = post.build_comment(run_dir, limit=limit)
         self.assertLessEqual(len(comment), limit)
         self.assertIn(post.PAYLOAD_DROPPED, comment)
         self.assertIsNone(post.DATA_BLOCK.search(comment))
-        self.assertNotIn("Brief data", comment)
-        self.assertIn(f"{post.MARKER} -->", comment)
-        for i in range(1, 6):
-            self.assertIn(f"{i}. [Stop {i}](", comment)
-
-    def test_still_over_the_walkthrough_loses_its_last_stops_with_a_note(self) -> None:
-        stops = [stop(i, why="x" * 300) for i in range(1, 11)]
-        run_dir = self.run_dir(stops)
-        limit = len(post.build_comment(run_dir, limit=10**9)) - 2000
-        comment = post.build_comment(run_dir, limit=limit)
-        self.assertLessEqual(len(comment), limit)
-        self.assertIn(post.PAYLOAD_DROPPED, comment)
-        shown = comment.count("](https://github.com/")
-        self.assertTrue(0 < shown < 10)
-        self.assertIn(f"The walkthrough shows the first {shown} of 10 stops", comment)
-        self.assertIn(f"{shown}. [Stop {shown}](", comment)
-        self.assertNotIn(f"{shown + 1}. [Stop", comment)
+        self.assertIn(DIAGRAM.strip(), comment)
         self.assertIn(f"{post.MARKER} -->", comment)
 
-    def test_a_brief_too_large_even_without_a_walkthrough_is_cut_at_a_line_with_its_fences_closed_and_still_posted(self) -> None:
-        huge = BODY.replace("- Cache widgets", "- Cache widgets\n" + "\n".join(f"- line {n}" for n in range(3000)))
-        run_dir = self.run_dir([stop(1)], huge)
-        comment = post.build_comment(run_dir, limit=3000)
+    def test_still_over_the_diagram_goes_too_with_a_note_and_the_comment_is_still_posted(self) -> None:
+        huge = "```mermaid\nflowchart TD\n" + "\n".join(f'  n{n}["Box {n}"]' for n in range(3000)) + "\n```\n"
+        comment = post.build_comment(self.run_dir([stop(1)], huge), limit=3000)
         self.assertLessEqual(len(comment), 3000)
-        self.assertEqual(comment.count("```") % 2, 0)
-        self.assertIn(post.TRIMMED, comment)
+        self.assertIn(post.DIAGRAM_DROPPED, comment)
+        self.assertNotIn("```mermaid", comment)
         self.assertIn(f"{post.MARKER} -->", comment)
         self.assertTrue(comment.startswith("<details>\n<summary><b>PR Brief · AI-generated</b>"))
-
-    def test_a_real_limit_is_never_exceeded_by_a_run_of_a_thousand_stops(self) -> None:
-        stops = [stop(i, why="because " * 40) for i in range(1, 1001)]
-        comment = post.build_comment(self.run_dir(stops))
-        self.assertLessEqual(len(comment), post.COMMENT_LIMIT)
-        self.assertIn(post.MARKER, comment)
 
 
 class FakeGh:
