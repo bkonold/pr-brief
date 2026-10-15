@@ -1,14 +1,13 @@
 // Reads a brief out of the pull request's own comment: the Action posts it with a collapsed "Brief data" block whose
-// code fence holds the base64 of the gzip of review.json plus the run's `diagram_svg` and `body_html`. Nothing here
-// needs a server or a token; the page's own session reads the comment. The DOM-touching parts are thin (a selector
-// and a fetch), so the selection and the decoding are tested without a browser.
+// code fence holds the base64 of the gzip of review.json plus the run's `diagram_svg`. Older comments also carry a
+// `body_html`, which nothing reads. Nothing here needs a token; the page's own session reads the comment. The
+// DOM-touching parts are thin (a selector and a fetch), so the selection and the decoding are tested without a browser.
 (() => {
   const ns = (globalThis.prFocus ??= {});
 
   const SUMMARY = "Brief data";
-  // GitHub renders a comment's markdown in `.markdown-body`, Forgejo in `.render-content.markup`. Other <details>
-  // elements on the page (Forgejo's "View command line instructions") are outside both.
-  const DETAILS = ".markdown-body details, .render-content.markup details";
+  // GitHub renders a comment's markdown in `.markdown-body`.
+  const DETAILS = ".markdown-body details";
   // A brief's JSON is a few hundred KB at most; a payload that inflates past this is not one.
   const MAX_INFLATED_BYTES = 16 * 1024 * 1024;
 
@@ -48,18 +47,14 @@
     }
   }
 
-  // { review, bodyHtml, diagramSvg } for the brief in `doc`, or null when it has none or it cannot be read. `review`
-  // is the posted review.json as it was, without the two keys the Action added.
+  // { review, diagramSvg } for the brief in `doc`, or null when it has none or it cannot be read. `review` is the posted
+  // review.json as it was, without the keys the Action added.
   async function readBrief(doc) {
     const encoded = extractPayload(doc);
     const data = encoded ? await inflate(encoded) : null;
     if (!data) return null;
-    const { diagram_svg: diagramSvg, body_html: bodyHtml, ...review } = data;
-    return {
-      review,
-      bodyHtml: typeof bodyHtml === "string" ? bodyHtml : null,
-      diagramSvg: typeof diagramSvg === "string" ? diagramSvg : null,
-    };
+    const { diagram_svg: diagramSvg, body_html: _bodyHtml, ...review } = data;
+    return { review, diagramSvg: typeof diagramSvg === "string" ? diagramSvg : null };
   }
 
   // The page at `url` as a Document, read with the user's own session, or null when the request fails or is refused.

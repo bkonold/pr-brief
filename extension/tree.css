@@ -25,39 +25,6 @@
   border-bottom: 1px solid var(--borderColor-default, #d0d7de);
 }
 
-/* The drag handle on the right edge of Forgejo's file pane. The handle is a sticky row of no height, so it stays at the
-   top of the visible area while the pane scrolls; its ::before draws the strip, as tall as the pane (set by the script). */
-.prf-pane-handle {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  width: 6px;
-  height: 0;
-  margin-left: auto;
-  cursor: col-resize;
-  touch-action: none;
-}
-
-.prf-pane-handle::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 100%;
-  height: var(--prf-pane-handle-height, 100vh);
-  border-radius: 3px;
-}
-
-.prf-pane-handle:hover::before,
-.prf-pane-dragging .prf-pane-handle::before {
-  background: var(--borderColor-accent-emphasis, #0969da);
-  opacity: 0.6;
-}
-
-.prf-pane-dragging {
-  user-select: none;
-}
-
 .prf-tree {
   display: flex;
   flex: none;
@@ -277,31 +244,7 @@
   padding: 8px 10px;
 }
 
-.prf-offline p {
-  margin: 0 0 6px;
-}
-
-.prf-offline code {
-  padding: 0 4px;
-  background: var(--bgColor-neutral-muted, #818b981f);
-  border-radius: 4px;
-  overflow-wrap: anywhere;
-}
-
-.prf-generate {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-}
-
-.prf-generate-text {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.prf-callout-reason code,
-.prf-generate code {
+.prf-callout-reason code {
   padding: 0 4px;
   background: var(--bgColor-neutral-muted, #818b981f);
   border-radius: 4px;

@@ -4,7 +4,6 @@ const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
 
 const githubPage = require("../github_page.js");
-const forgejoPage = require("../forgejo_page.js");
 const { chooseAdapter } = require("../page.js");
 const { prFromUrl, pullFromUrl, lineAnchor, stickyOffset, startDistance, landingDelta, calloutDelta, holdPlace, correctLanding } = githubPage;
 const { staleMessage, revealTarget } = require("../tree.js");
@@ -22,6 +21,16 @@ test("prFromUrl rejects other pages", () => {
   assert.equal(prFromUrl({ pathname: "/o/r/pull/1/commits" }), null);
   assert.equal(prFromUrl({ pathname: "/o/r/pull/1/changesfoo" }), null);
   assert.equal(prFromUrl({ pathname: "/o/r/issues/1/files" }), null);
+  assert.equal(prFromUrl({ pathname: "/o/r/pulls/1/files" }), null);
+});
+
+test("a conversation page maps to the conversation view and a files page to the files view", () => {
+  const base = { owner: "example-org", repo: "example-repo", pr: 5 };
+  assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/5" }), { ...base, view: "conversation" });
+  assert.deepEqual(prFromUrl("https://github.com/example-org/example-repo/pull/5/?x=1#issuecomment-9"), { ...base, view: "conversation" });
+  assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/5/files" }), { ...base, view: "files" });
+  assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/5/changes" }), { ...base, view: "files" });
+  assert.equal(prFromUrl({ pathname: "/example-org/example-repo/pulls/5" }), null);
 });
 
 test("pullFromUrl matches any pull request page", () => {
@@ -49,16 +58,10 @@ test("lineAnchor joins the diff block id with the side and line", async () => {
 });
 
 test("loadReview returns null once the extension context is gone", async () => {
-  const runtime = { id: "abc", sendMessage: async () => ({ schema: 2 }) };
+  const runtime = { id: "abc" };
   globalThis.chrome = { runtime };
   const source = require("../source.js");
   assert.equal(source.alive(), true);
-  assert.deepEqual(await source.loadReview("o", "r", 1), { schema: 2 });
-
-  runtime.sendMessage = () => {
-    throw new Error("Extension context invalidated.");
-  };
-  assert.equal(await source.loadReview("o", "r", 1), null);
 
   runtime.id = undefined;
   assert.equal(source.alive(), false);
@@ -166,13 +169,6 @@ test("captionFor explains the dashed boxes only when the diagram has one", () =>
   const svgWith = (context) => ({ querySelector: (selector) => (selector === "g.node.context" && context ? {} : null) });
   assert.equal(captionFor(svgWith(true)), "Dashed boxes are unchanged context");
   assert.equal(captionFor(svgWith(false)), "");
-});
-
-test("classifyFetch tells a down server from a missing review", async () => {
-  const { classifyFetch } = await import("../classify.js");
-  assert.equal(classifyFetch(undefined, new TypeError("Failed to fetch")), "server");
-  assert.equal(classifyFetch({ ok: false, status: 404 }, undefined), "none");
-  assert.equal(classifyFetch({ ok: true, status: 200 }, undefined), "ok");
 });
 
 test("stickyOffset is the lowest stuck edge over the diff column", () => {
@@ -328,174 +324,50 @@ test("holdPlace can be released by the page, and releasing twice stops nothing t
 });
 
 test("chooseAdapter picks the adapter that serves the host and none for any other", () => {
-  const adapters = [githubPage, forgejoPage];
+  const adapters = [githubPage];
   assert.equal(chooseAdapter("github.com", adapters), githubPage);
-  assert.equal(chooseAdapter("localhost:3300", adapters), forgejoPage);
-  assert.equal(chooseAdapter("localhost:3000", adapters), null);
+  assert.equal(chooseAdapter("localhost:3300", adapters), null);
   assert.equal(chooseAdapter("gist.github.com", adapters), null);
   assert.equal(chooseAdapter(undefined, adapters), null);
-  assert.equal(chooseAdapter("github.com", [undefined, forgejoPage]), null);
+  assert.equal(chooseAdapter("github.com", [undefined]), null);
 });
 
-test("each adapter names itself and its pane for the interface", () => {
-  assert.deepEqual([githubPage.name, forgejoPage.name], ["GitHub", "Forgejo"]);
-  for (const page of [githubPage, forgejoPage]) {
-    for (const member of ["prFromUrl", "runKey", "headSha", "fileBlocks", "entryFor", "firstInPage", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "paneHost", "mount", "unmount", "resizePane", "descriptionHost", "filesUrl", "onChange", "onNavigate"]) {
-      assert.equal(typeof page[member], "function", `${page.name}.${member}`);
-    }
+test("the adapter names itself and its pane for the interface", () => {
+  assert.equal(githubPage.name, "GitHub");
+  for (const member of ["prFromUrl", "headSha", "fileBlocks", "entryFor", "firstInPage", "scrollToElement", "fileHeaderOf", "jumpToLine", "clearLineTarget", "restoreLineTarget", "showCallouts", "ownsLine", "cancelJump", "diagramHost", "paneHost", "mount", "unmount", "conversationUrl", "onChange", "onNavigate"]) {
+    assert.equal(typeof githubPage[member], "function", `${githubPage.name}.${member}`);
   }
 });
 
-test("a GitHub pull request's runs are keyed by its number", () => {
-  assert.equal(githubPage.runKey(prFromUrl({ pathname: "/example-org/example-repo/pull/42/changes" })), "42");
-});
-
-test("a Forgejo files page maps to the fj- run key", () => {
-  const url = { pathname: "/acme/widgets/pulls/7/files" };
-  assert.deepEqual(forgejoPage.prFromUrl(url), { owner: "acme", repo: "widgets", pr: 7, view: "files" });
-  assert.equal(forgejoPage.runKey(forgejoPage.prFromUrl(url)), "fj-7");
-  assert.equal(forgejoPage.runKey(forgejoPage.prFromUrl("http://localhost:3300/acme/widgets/pulls/120/files?style=unified#diff-abc")), "fj-120");
-});
-
-test("a Forgejo URL that is neither a files nor a conversation page maps to nothing", () => {
-  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7/commits" }), null);
-  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pulls/7/filesfoo" }), null);
-  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/pull/7/files" }), null);
-  assert.equal(forgejoPage.prFromUrl({ pathname: "/acme/widgets/issues/7/files" }), null);
-  assert.deepEqual(forgejoPage.pullFromUrl({ pathname: "/acme/widgets/pulls/7/commits" }), { owner: "acme", repo: "widgets", pr: 7 });
-  assert.equal(prFromUrl({ pathname: "/acme/widgets/pulls/7/files" }), null);
-});
-
-test("a Forgejo line anchor is the sha1 of the path plus the side and line", async () => {
-  const path = "services/billing/Invoice.kt";
-  const id = `diff-${createHash("sha1").update(path).digest("hex")}`;
-  assert.equal(await forgejoPage.lineAnchor(path, "R", 42), `${id}R42`);
-  assert.equal(await forgejoPage.lineAnchor(path, "L", 7), `${id}L7`);
-});
-
-test("loadReview sends the run key with the PR number, defaulting to the number", async () => {
-  const sent = [];
-  globalThis.chrome = { runtime: { id: "abc", sendMessage: async (message) => (sent.push(message), null) } };
-  const source = require("../source.js");
-  await source.loadReview("acme", "widgets", 7, "fj-7");
-  await source.loadReview("o", "r", 9);
-  assert.equal(sent[0].key, "fj-7");
-  assert.equal(sent[0].pr, 7);
-  assert.equal(sent[1].key, "9");
-  delete globalThis.chrome;
-});
-
-test("the run server calls go through the background script with the run's host, repository and key", async () => {
-  const sent = [];
-  globalThis.chrome = { runtime: { id: "abc", sendMessage: async (message) => (sent.push(message), { ok: true, state: "running" }) } };
-  const source = require("../source.js");
-  const run = { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" };
-  assert.deepEqual(await source.startRun(run), { ok: true, state: "running" });
-  await source.runStatus(run);
-  await source.cancelRun(run);
-  assert.deepEqual(sent.map((message) => message.type), ["startRun", "runStatus", "cancelRun"]);
-  assert.ok(sent.every((message) => message.host === "forgejo" && message.key === "fj-7" && message.pr === 7));
-  globalThis.chrome = { runtime: { id: "abc", sendMessage: async () => Promise.reject(new Error("gone")) } };
-  assert.equal((await source.startRun(run)).problem, "error");
-  delete globalThis.chrome;
-  assert.equal((await source.startRun(run)).problem, "error");
-});
-
-test("each adapter names its host for the run server", () => {
-  assert.deepEqual([githubPage.hostId, forgejoPage.hostId], ["github", "forgejo"]);
-});
-
-test("the head sha is read from the page on any view of the PR it was loaded for, and asked of the host when the page has none", async () => {
+test("the head sha is read from the page on any view of the PR it was loaded for, and is null for any other PR", () => {
   const { createPage } = require("../page_common.js");
   const saved = globalThis.location;
   const SHA = "a".repeat(40);
-  const FETCHED = "b".repeat(40);
   const spec = (shown) => ({
     origin: "https://forge.example",
     changesPage: /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/files$/,
     pullPage: /^\/([^/]+)\/([^/]+)\/pull\/(\d+)/,
     conversationPage: /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/,
-    hostId: "forgejo",
     readHeadSha: () => shown,
-    fetchHeadSha: async (pr) => (pr.pr === 3 ? FETCHED : null),
   });
   try {
     globalThis.location = { pathname: "/o/r/pull/3" };
     const shown = createPage(spec(SHA));
     assert.equal(shown.headSha(), SHA);
-    assert.equal(await shown.currentHeadSha({ owner: "o", repo: "r", pr: 3 }), SHA);
+    globalThis.location = { pathname: "/o/r/pull/3/files" };
+    assert.equal(shown.headSha(), SHA);
     globalThis.location = { pathname: "/o/r/pull/4" };
     assert.equal(shown.headSha(), null);
     globalThis.location = { pathname: "/o/r/pull/3" };
-    const silent = createPage(spec(null));
-    assert.equal(silent.headSha(), null);
-    assert.equal(await silent.currentHeadSha({ owner: "o", repo: "r", pr: 3 }), FETCHED);
-    assert.equal(await silent.currentHeadSha({ owner: "o", repo: "r", pr: 9 }), null);
+    assert.equal(createPage(spec(null)).headSha(), null);
   } finally {
     globalThis.location = saved;
     if (saved === undefined) delete globalThis.location;
   }
 });
 
-test("GitHub's head sha not shown by the page is read from the PR's conversation page, then asked of the run server", async () => {
-  const SHA = "c".repeat(40);
-  const FROM_SERVER = "d".repeat(40);
-  const asked = [];
-  const fetched = [];
-  const embedded = (text) => ({ querySelector: () => (text === null ? null : { textContent: text }) });
-  let conversation = embedded(`{"pullRequest":{"headSha":"${SHA}"}}`);
-  const saved = { source: globalThis.prFocus.source, commentSource: globalThis.prFocus.commentSource, location: globalThis.location };
-  const pr = { owner: "acme", repo: "widgets", pr: 7 };
-  try {
-    globalThis.location = { pathname: "/acme/widgets/pull/7/commits" };
-    globalThis.prFocus.commentSource = { fetchConversation: async (url) => (fetched.push(url), conversation) };
-    globalThis.prFocus.source = { headSha: async (run) => (asked.push(run), FROM_SERVER) };
-    assert.equal(githubPage.headSha(), null);
-    assert.equal(await githubPage.currentHeadSha(pr), SHA);
-    assert.deepEqual([fetched, asked], [["https://github.com/acme/widgets/pull/7"], []]);
-
-    conversation = embedded(null);
-    assert.equal(await githubPage.currentHeadSha(pr), FROM_SERVER);
-    assert.deepEqual(asked, [{ host: "github", owner: "acme", repo: "widgets", pr: 7, key: "7" }]);
-
-    conversation = null;
-    globalThis.prFocus.source = { headSha: async () => null };
-    assert.equal(await githubPage.currentHeadSha(pr), null);
-    delete globalThis.prFocus.source;
-    assert.equal(await githubPage.currentHeadSha(pr), null);
-
-    fetched.length = 0;
-    globalThis.location = { pathname: "/acme/widgets/pull/7" };
-    assert.equal(await githubPage.currentHeadSha(pr), null);
-    assert.deepEqual(fetched, []);
-  } finally {
-    globalThis.prFocus.source = saved.source;
-    globalThis.prFocus.commentSource = saved.commentSource;
-    globalThis.location = saved.location;
-    if (saved.location === undefined) delete globalThis.location;
-  }
-});
-
-test("each adapter gives the PR's conversation page and knows when the page is it", () => {
-  const saved = globalThis.location;
-  try {
-    assert.equal(githubPage.conversationUrl({ owner: "acme", repo: "widgets", pr: 7 }), "https://github.com/acme/widgets/pull/7");
-    assert.equal(forgejoPage.conversationUrl({ owner: "acme", repo: "widgets", pr: 7 }), "http://localhost:3300/acme/widgets/pulls/7");
-    globalThis.location = { pathname: "/acme/widgets/pull/7" };
-    assert.equal(githubPage.isConversationPage(), true);
-    assert.equal(githubPage.isConversationPage({ owner: "Acme", repo: "widgets", pr: 7 }), true);
-    assert.equal(githubPage.isConversationPage({ owner: "acme", repo: "widgets", pr: 8 }), false);
-    assert.equal(githubPage.isConversationPage({ owner: "acme", repo: "other", pr: 7 }), false);
-    globalThis.location = { pathname: "/acme/widgets/pull/7/files" };
-    assert.equal(githubPage.isConversationPage(), false);
-    globalThis.location = { pathname: "/acme/widgets/pulls/7" };
-    assert.equal(forgejoPage.isConversationPage({ owner: "acme", repo: "widgets", pr: 7 }), true);
-    delete globalThis.location;
-    assert.equal(forgejoPage.isConversationPage(), false);
-  } finally {
-    globalThis.location = saved;
-    if (saved === undefined) delete globalThis.location;
-  }
+test("the adapter gives the PR's conversation page, where its brief comment is", () => {
+  assert.equal(githubPage.conversationUrl({ owner: "acme", repo: "widgets", pr: 7 }), "https://github.com/acme/widgets/pull/7");
 });
 
 const { stopsOf, stopCallout } = require("../tree.js");
@@ -1703,12 +1575,12 @@ test("a kept diff behind the host's load control is loaded once, and a diff outs
   assert.equal(blocks.length, 2);
 });
 
-function adapterRows(rows, algorithm) {
-  const block = { id: `diff-${createHash(algorithm).update("x").digest("hex")}`, classList: { toggle() {} }, querySelectorAll: (selector) => (selector === "tr" ? rows : []) };
+function adapterRows(rows) {
+  const block = { id: `diff-${createHash("sha256").update("x").digest("hex")}`, classList: { toggle() {} }, querySelectorAll: (selector) => (selector === "tr" ? rows : []) };
   globalThis.document = {
-    querySelectorAll: (selector) => (selector.startsWith("#diff-container") || selector.startsWith(`div[role="region"]`) ? [block] : []),
+    querySelectorAll: (selector) => (selector.startsWith(`div[role="region"]`) ? [block] : []),
     querySelector: () => null,
-    getElementById: (id) => (id === "prf-forgejo-theme" ? {} : null),
+    getElementById: () => null,
   };
 }
 
@@ -1736,30 +1608,10 @@ test("GitHub rows give their lines by their line anchors, and a hunk cell's anch
     code(`diff-${hash}HL4`),
     adapterRow({ text: "A comment", querySelectorAll: () => [], querySelector: () => null }),
   ];
-  adapterRows(rows, "sha256");
+  adapterRows(rows);
   try {
     await githubPage.filter({ hunks: [{ path: "x", side: "R", start: 1, count: 2 }, { path: "x", side: "L", start: 2, count: 1 }] });
     assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, false, true, true, true, false, false]);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("Forgejo rows give their lines by the rel of their line-number spans, and a tag-code row stands with the next row", async () => {
-  const hash = "e".repeat(40);
-  const span = (rel) => ({ getAttribute: (name) => (name === "rel" ? rel : null) });
-  const code = (...rels) => adapterRow({ classes: ["add-code"], querySelectorAll: () => rels.map(span) });
-  const rows = [
-    adapterRow({ classes: ["tag-code"], querySelectorAll: () => [] }),
-    code("", `diff-${hash}R3`),
-    code(`diff-${hash}L4`, ""),
-    adapterRow({ classes: ["tag-code"], querySelectorAll: () => [] }),
-    code(`diff-${hash}L40`, `diff-${hash}R41`),
-  ];
-  adapterRows(rows, "sha1");
-  try {
-    await forgejoPage.filter({ hunks: [{ path: "x", side: "R", start: 3, count: 1 }, { path: "x", side: "L", start: 4, count: 1 }] });
-    assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, true, true]);
   } finally {
     delete globalThis.document;
   }
@@ -2427,15 +2279,13 @@ test("the header's button names the host and hands the pane to it", () => {
   globalThis.document = fakeDom();
   try {
     const owners = [];
-    for (const name of ["GitHub", "Forgejo"]) {
-      globalThis.prFocus.page = { name };
-      const [off] = byClass(bar({ mode: "files", chips: [] }, { onMode() {}, onPaneOwner: (owner) => owners.push(owner) }), "prf-off-button");
-      const label = `Switch to ${name}'s own view (Alt+B)`;
-      assert.deepEqual([off.title, off.attributes["aria-label"]], [label, label]);
-      assert.deepEqual(off.children.map((child) => child.textContent), ["", name]);
-      off.listeners.click();
-    }
-    assert.deepEqual(owners, ["host", "host"]);
+    globalThis.prFocus.page = { name: "GitHub" };
+    const [off] = byClass(bar({ mode: "files", chips: [] }, { onMode() {}, onPaneOwner: (owner) => owners.push(owner) }), "prf-off-button");
+    const label = "Switch to GitHub's own view (Alt+B)";
+    assert.deepEqual([off.title, off.attributes["aria-label"]], [label, label]);
+    assert.deepEqual(off.children.map((child) => child.textContent), ["", "GitHub"]);
+    off.listeners.click();
+    assert.deepEqual(owners, ["host"]);
   } finally {
     delete globalThis.document;
     delete globalThis.prFocus.page;

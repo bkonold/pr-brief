@@ -1,20 +1,15 @@
 // The page behaviour shared by every host: scrolling a diff under the sticky chrome, jumping to a line, the
 // callouts shown above the stops' lines and files, and watching for changes. createPage(spec) returns the adapter the rest of the extension
 // calls through prFocus.page (see page.js). The spec holds everything that differs per host, which is all
-// the DOM knowledge and nothing else; a host's spec lives in its own file (github_page.js, forgejo_page.js).
+// the DOM knowledge and nothing else; a host's spec lives in its own file (github_page.js).
 //
 // spec: {
 //   name, hosts                     display name, the location.host values it serves
 //   origin, changesPage, pullPage   a base for relative URLs, and the patterns of the files page and of any page of a
 //                                   PR, each capturing owner, repo and number
 //   conversationPage                the pattern of the conversation page (same captures)
-//   conversationPath(pr),           the paths of a PR's conversation page and of its files view
-//   filesPath(pr)
-//   hostId                          "github" or "forgejo": the host name the run server knows it by
-//   runKey(pr)                      the runs/<key> folder of a parsed PR
+//   conversationPath(pr)            the path of a PR's conversation page, where its brief comment is
 //   readHeadSha(doc)                the head commit sha that `doc` (default: the page's document) shows, or null
-//   fetchHeadSha(pr)                optional, async: the PR's head sha read from the host when the page does not show
-//                                   it (null on failure)
 //   blockSelector, pathOfBlock(b)   the element holding one file's diff, and the path it shows
 //   entryOf(block)                  the whole entry of one file's diff, which holds the file callout above its header
 //   diffId(path)                    the id of a file's diff block (async)
@@ -34,15 +29,9 @@
 //   paneHost()                      the element holding the host's file-tree pane, or null. The extension's panel is
 //                                   mounted as its first child and the pane's other children are hidden while the panel
 //                                   shows; with no such element the panel floats at the left edge of the window
-//   nativeResize                    optional: true when the host draws its own divider for resizing the file pane, so the
-//                                   extension adds none
-//   paneResize(options)             optional: makes the host's file pane resizable and keeps it so as the host re-renders
-//                                   it; returns how to stop. `options` is { load, save } for the stored width
 //   treeFileSelector                optional: the file rows of the host's tree, looked up inside paneHost(), each being or
 //                                   holding a link whose href ends in the file's diff id (`#diff-…`)
 //   treeDirSelector                 optional: the tree's directory rows, which hold their files' rows
-//   descriptionHost()               the element the PR brief card is inserted before (the PR's opening comment on the
-//                                   conversation page), or null
 // }
 (() => {
   const ns = (globalThis.prFocus ??= {});
@@ -211,10 +200,6 @@
       return conversation ? { ...conversation, view: "conversation" } : null;
     }
 
-    function filesUrl(pr) {
-      return new URL(spec.filesPath(pr), spec.origin).href;
-    }
-
     function pullFromUrl(location) {
       return parsePull(spec.pullPage, location);
     }
@@ -222,13 +207,6 @@
     // The URL of the PR's conversation page, where the Action's comment is.
     function conversationUrl(pr) {
       return new URL(spec.conversationPath(pr), spec.origin).href;
-    }
-
-    // Whether the page is the conversation page, of `pr` when one is given.
-    function isConversationPage(pr) {
-      const here = globalThis.location ? prFromUrl(globalThis.location) : null;
-      if (here?.view !== "conversation") return false;
-      return !pr || (here.owner.toLowerCase() === pr.owner.toLowerCase() && here.repo.toLowerCase() === pr.repo.toLowerCase() && here.pr === Number(pr.pr));
     }
 
     // The page's data belongs to the document that was loaded, so it describes only the PR that page was
@@ -243,13 +221,6 @@
       }
       if (cachedHeadSha === undefined) cachedHeadSha = spec.readHeadSha() ?? null;
       return cachedHeadSha;
-    }
-
-    // The head sha of `pr`: the page's own when it shows one, else the host's answer.
-    async function currentHeadSha(pr) {
-      const shown = headSha();
-      if (shown || !spec.fetchHeadSha) return shown;
-      return (await spec.fetchHeadSha(pr)) ?? null;
     }
 
     function fileBlocks() {
@@ -908,12 +879,6 @@
       mounted = null;
     }
 
-    // Makes the host's file pane resizable, unless the host has a divider of its own. Returns how to stop.
-    function resizePane(options) {
-      if (spec.nativeResize || !spec.paneResize) return () => {};
-      return spec.paneResize(options);
-    }
-
     // A PR tab can change page under the content script without a reload.
     function onNavigate(callback) {
       const events = [
@@ -932,14 +897,9 @@
       name: spec.name,
       hosts: spec.hosts,
       prFromUrl,
-      filesUrl,
       pullFromUrl,
       conversationUrl,
-      isConversationPage,
-      hostId: spec.hostId,
-      runKey: spec.runKey,
       headSha,
-      currentHeadSha,
       fileBlocks,
       entryOf,
       entryFor,
@@ -969,11 +929,8 @@
       cancelJump,
       diagramHost: spec.diagramHost,
       paneHost: spec.paneHost,
-      nativeResize: Boolean(spec.nativeResize),
-      resizePane,
       mount,
       unmount,
-      descriptionHost: spec.descriptionHost,
       onChange,
       onNavigate,
     };

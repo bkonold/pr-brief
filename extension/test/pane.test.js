@@ -2,7 +2,6 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const githubPage = require("../github_page.js");
-const forgejoPage = require("../forgejo_page.js");
 const { createPage } = require("../page_common.js");
 
 class Node {
@@ -96,7 +95,7 @@ test.afterEach(() => {
   delete globalThis.MutationObserver;
 });
 
-test("each host's paneHost is its file tree's pane: GitHub's by id alone, Forgejo's by its structural classes", () => {
+test("GitHub's paneHost is its file tree's pane, found by id alone", () => {
   const asked = [];
   const pane = { id: "pane" };
   globalThis.document = {
@@ -105,12 +104,8 @@ test("each host's paneHost is its file tree's pane: GitHub's by id alone, Forgej
   };
   assert.equal(githubPage.paneHost(), pane);
   assert.deepEqual(asked, [["id", "pr-file-tree"]]);
-  asked.length = 0;
-  assert.equal(forgejoPage.paneHost(), pane);
-  assert.deepEqual(asked.at(-1), ["query", "#diff-file-tree > .diff-file-tree-items"]);
   globalThis.document = { getElementById: (id) => (id === "pr-file-tree" ? null : {}), querySelector: () => null };
   assert.equal(githubPage.paneHost(), null);
-  assert.equal(forgejoPage.paneHost(), null);
 });
 
 test("mount puts the panel first in the pane host and hides the host's other children, and unmount restores them", () => {

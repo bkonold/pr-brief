@@ -8,7 +8,7 @@
   }
 
   ns.chooseAdapter = chooseAdapter;
-  ns.page = chooseAdapter(globalThis.location?.host, [ns.githubPage, ns.forgejoPage]);
+  ns.page = chooseAdapter(globalThis.location?.host, [ns.githubPage]);
 })();
 
 if (typeof module !== "undefined") module.exports = { chooseAdapter: globalThis.prFocus.chooseAdapter };

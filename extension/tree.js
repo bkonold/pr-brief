@@ -725,51 +725,12 @@
     return root;
   }
 
-  const SERVER_COMMAND = "pd serve";
-  const OLD_BRIEF_MESSAGE = "This brief predates v1; re-run it.";
-
-  // The note shown instead of the list while the page server is down. The host's own tree stays visible. handlers: onRetry()
-  function renderServerNote(baseUrl, handlers) {
-    const root = panelRoot();
-    root.className = "prf-tree";
-    ns.page.mount(root, { hideRest: false });
-    const note = make("div", "prf-banner prf-offline");
-    note.append(make("p", undefined, `pr-brief server isn't running at ${baseUrl}`));
-    const command = make("p");
-    command.append("Start it with ", make("code", undefined, SERVER_COMMAND));
-    note.append(command, button("prf-retry", "Retry", handlers.onRetry));
-    root.replaceChildren(note);
-  }
-
   // `text` as nodes, with `code` spans in backticks drawn as <code>.
   function messageNodes(text) {
     return String(text)
       .split(/`([^`]+)`/)
       .map((part, index) => (index % 2 === 1 ? make("code", undefined, part) : part))
       .filter((node) => node !== "");
-  }
-
-  // The one line shown in the list's place when the PR has no brief yet, the host's own tree staying visible.
-  // view: { kind: "none" } | { kind: "old" } | { kind: "running", stage, elapsed } | { kind: "error", message }
-  // handlers: onGenerate(), onCancel()
-  function renderGenerateLine(view, handlers) {
-    const root = panelRoot();
-    root.className = "prf-tree";
-    ns.page.mount(root, { hideRest: false });
-    const line = make("div", "prf-banner prf-offline prf-generate");
-    if (view.kind === "running") {
-      const stage = ns.runControl.STAGES.find((entry) => entry.id === view.stage)?.label ?? "";
-      line.append(make("span", "prf-generate-text", `Writing brief · ${ns.runControl.formatElapsed(view.elapsed)}${stage ? ` · ${stage}` : ""}`), button("prf-retry", "Cancel", handlers.onCancel));
-    } else if (view.kind === "error") {
-      const text = make("span", "prf-generate-text");
-      text.append(...messageNodes(view.message));
-      line.append(text, button("prf-retry", "Retry", handlers.onGenerate));
-    } else if (view.kind === "old") {
-      line.append(make("span", "prf-generate-text", OLD_BRIEF_MESSAGE), button("prf-retry", "Re-run", handlers.onGenerate));
-    } else {
-      line.append(make("span", "prf-generate-text", "No brief for this PR yet"), button("prf-retry", "Generate brief", handlers.onGenerate));
-    }
-    root.replaceChildren(line);
   }
 
   const REVEAL_MARGIN = 8;
@@ -813,7 +774,7 @@
     return Boolean(element?.closest(`#${ROOT_ID}`));
   }
 
-  ns.tree = { render, renderServerNote, renderGenerateLine, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, isTestPath, testKind, hidesTestKind, bar, filters, stopList, chunkList, hiddenNote, remove, owns, staleMessage };
+  ns.tree = { render, offBar, revealStop, revealChunk, revealTarget, stopsOf, chunksOf, filesOf, folderGroups, briefPaths, fileChips, fileSetOf, testsOf, stopCallout, chunkCallout, widestWidth, isTestPath, testKind, hidesTestKind, bar, filters, stopList, chunkList, hiddenNote, remove, owns, staleMessage };
 })();
 
 if (typeof module !== "undefined") module.exports = globalThis.prFocus.tree;
