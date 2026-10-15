@@ -116,11 +116,10 @@ def has_commit(sha: str) -> bool:
     return MIRROR.exists() and git(MIRROR, "cat-file", "-e", f"{sha}^{{commit}}", check=False).returncode == 0
 
 
-def ensure_commits(shas: list[str], host: str = "github") -> None:
+def ensure_commits(shas: list[str]) -> None:
     """Make every sha available in the mirror, cloning it first when absent. Serialized across
-    processes by a file lock. Without `source_checkout` no mirror is cloned. For a GitHub PR a missing sha
-    is fetched from `github_url`, or from the repository a GitHub Actions job runs in (nothing is fetched without either); for a Forgejo PR it is fetched from
-    `source_checkout`, where the commits of a Forgejo branch normally already are, and never from GitHub.
+    processes by a file lock. Without `source_checkout` no mirror is cloned. A missing sha is fetched from
+    `github_url`, or from the repository a GitHub Actions job runs in (nothing is fetched without either).
     A sha that cannot be fetched stays missing; `build` drops the sections that need it."""
     if not (MIRROR.exists() or SOURCE_CHECKOUT):
         return
@@ -132,12 +131,9 @@ def ensure_commits(shas: list[str], host: str = "github") -> None:
         for sha in shas:
             if has_commit(sha):
                 continue
-            if host == "github":
-                if GITHUB_URL:
-                    git(MIRROR, "-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
-                        "fetch", GITHUB_URL, sha, check=False)
-            elif SOURCE_CHECKOUT:
-                git(MIRROR, "fetch", "--no-tags", SOURCE_CHECKOUT, sha, check=False)
+            if GITHUB_URL:
+                git(MIRROR, "-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
+                    "fetch", GITHUB_URL, sha, check=False)
 
 
 TEST_DIRS: tuple[str, ...] = ("/src/test/", *LOCAL.get("test_dirs", []))

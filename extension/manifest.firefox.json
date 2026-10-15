@@ -2,17 +2,16 @@
   "manifest_version": 3,
   "name": "PR Brief",
   "version": "0.1.0",
-  "description": "Walks a GitHub or Forgejo pull request's files page through the stops of its brief, and shows the brief above the description. Reads the brief from the pull request's comment, or from an optional local pr-brief server; posts nothing.",
+  "description": "Walks a GitHub pull request's files page through the stops of its brief. Reads the brief from the pull request's comment; posts nothing.",
   "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1:8765/*", "http://localhost:3300/*"],
   "background": {
     "scripts": ["background.js"],
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://github.com/*", "http://localhost:3300/*"],
-      "js": ["page_common.js", "github_page.js", "forgejo_page.js", "page.js", "comment_source.js", "source.js", "run_control.js", "focus.js", "tree.js", "diagram.js", "brief_text.js", "brief.js", "content.js"],
+      "matches": ["https://github.com/*"],
+      "js": ["page_common.js", "github_page.js", "page.js", "comment_source.js", "source.js", "focus.js", "tree.js", "diagram.js", "content.js"],
       "css": ["focus.css", "tree.css", "diagram.css"],
       "run_at": "document_idle"
     }
@@ -22,10 +21,6 @@
       "suggested_key": { "default": "Alt+B" },
       "description": "Switch the file pane between the PR Brief and the host's own tree"
     }
-  },
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true
   },
   "browser_specific_settings": {
     "gecko": {

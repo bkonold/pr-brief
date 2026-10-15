@@ -1,24 +1,18 @@
 # PR Brief extension
 
-A Chrome extension (Manifest V3) for GitHub's Files changed page and for a Forgejo pull request's files page
-(`http://localhost:3300/{owner}/{repo}/pulls/{n}/files`). It reads the brief's `review.json` (schema 4, written by `render.py`) from the PR's own comment, or from an optional local server, and puts the walkthrough's stops and the layers in the host's file pane, with the host's own tree one tab away. A switch in the list's header, or Alt+B, hands the whole page back to the host. It only reads, and posts nothing. Both hosts behave the same; the text below says GitHub
-where it describes the page, and the Forgejo selectors are in their own table at the end.
+A Chrome extension (Manifest V3) for GitHub's Files changed page. It reads the brief's `review.json` (schema 4, written by `render.py`) from the PR's own comment and puts the walkthrough's stops and the layers in GitHub's file pane, with GitHub's own tree one tab away. A switch in the list's header, or Alt+B, hands the whole page back to GitHub. It only reads, and posts nothing.
 
 ## Where the brief comes from
 
 A reviewer needs the extension and nothing else: no server and no token.
 
-1. **The PR's comment.** The GitHub Action (`post.py`) closes its collapsed "PR Brief" comment with a nested, collapsed "Brief data" block, a code fence
-   holding the base64 of the gzip of `review.json` plus the run's `diagram.svg` and `body.html` (as `diagram_svg` and
-   `body_html`). `comment_source.js` finds the earliest such block in the page's rendered comments, inflates it
-   (`DecompressionStream`) and hands `source.js` the review, the body page and the diagram. On the PR's conversation page
-   it reads the page's own document; on the files page it fetches the conversation page with the user's own session
-   (`credentials: "include"`), once for the review and the brief together. The review must be schema 4 with `nodes` and a
-   `walkthrough` and must name this repository and PR; otherwise the comment counts as no brief.
-2. **The local run server, when one is set.** Only if the comment gives nothing does `source.js` ask `background.js`,
-   which answers from the server named in the options page. With the field empty (the default) the background script
-   answers `unset` at once and makes no request, a PR with no brief comment shows nothing, and no "Generate brief", server
-   note or Regenerate button is drawn.
+The GitHub Action (`post.py`) closes its collapsed "PR Brief" comment with a nested, collapsed "Brief data" block, a code
+fence holding the base64 of the gzip of `review.json` plus the run's `diagram.svg` (as `diagram_svg`). Older comments also
+carry the run's `body.html` as `body_html`, which is dropped unread. `comment_source.js` finds the earliest such block in
+the page's rendered comments, inflates it (`DecompressionStream`) and hands `source.js` the review and the diagram. The
+files page fetches the conversation page with the user's own session (`credentials: "include"`) to read it. The review
+must be schema 4 with `nodes` and a `walkthrough` and must name this repository and PR; otherwise the comment counts as no
+brief, and the page is left as GitHub draws it.
 
 Known gap: a comment behind GitHub's "Load more" pagination on a very long conversation is not in the page's HTML, so it is
 not found. A comment over GitHub's size limit has no "Brief data" block (`post.py` drops it first), so it is not found
@@ -27,8 +21,8 @@ earliest block in the page.
 
 What the list shows, in GitHub's left column (the file tree's pane, `#pr-file-tree`, where it is the first child; in "Walkthrough" and "Layers" the pane's own children are hidden under it, in "Files" they stay; with no pane, as when GitHub's tree is closed, the list floats at the page's left edge):
 
-- A toggle, "Walkthrough" / "Layers" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Walkthrough" for a brief that has stops, else in "Layers", else in "Files". "Files" shows the host's own file tree (GitHub's, or Forgejo's) under the toggle and the chips (see "Files tab"); "Walkthrough"
-  is the stop list and "Layers" (only for a brief that has layers, see "Layers tab") the layer list, and the toggle stays so you can switch again. At the toggle's right end a button labelled "← GitHub" (or "← Forgejo"), with the tooltip "Switch to GitHub's own view (Alt+B)", hands the page back to the host (see "Handing the page back"). No mode or stop ever hides a diff, except a layer, which narrows the page to its hunks, and the Tests control in "Files" and "Layers", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
+- A toggle, "Walkthrough" / "Layers" / "Files" (drawn without a frame around it and the chips; the toggle and each chip keep their own shape). The page opens in "Walkthrough" for a brief that has stops, else in "Layers", else in "Files". "Files" shows GitHub's own file tree under the toggle and the chips (see "Files tab"); "Walkthrough"
+  is the stop list and "Layers" (only for a brief that has layers, see "Layers tab") the layer list, and the toggle stays so you can switch again. At the toggle's right end a button labelled "← GitHub", with the tooltip "Switch to GitHub's own view (Alt+B)", hands the page back to the host (see "Handing the page back"). No mode or stop ever hides a diff, except a layer, which narrows the page to its hunks, and the Tests control in "Files" and "Layers", which hides the test files or every other file: otherwise every file's diff is always in the page, so the host's find
   and page-down work across the whole change.
 - Under the toggle, a filter line. In "Walkthrough" and "Files" its left side holds chips that pick which files the pane lists: "All N" (the PR's changed files), "API N" and
   "Data N", from `review.json`'s `file_sets`. A chip with no files is not shown, and a run with no contract or data files
@@ -99,7 +93,7 @@ node}`: the model's reading order through the change, which can return to a box 
 stop that names only a file. `node` is the id of the diagram box the stop belongs to, or null when no box holds the
 stop's file. `nodes` is an object from box id to `{title, files, stops}`, the box's title, the paths it covers and the
 numbers of the stops that land on it. A run that is not schema 4 with `nodes` and a `walkthrough` (made by an earlier
-variant) is not shown: see "Older runs".
+variant) is not shown, and the page is left as GitHub draws it.
 
 - The list has one row per stop: its number and its title. The current stop is highlighted and scrolled into view. A
   row goes to its stop: it makes the stop's file the active one, and jumps to the stop's line, or, for a stop with no line,
@@ -113,9 +107,9 @@ variant) is not shown: see "Older runs".
   nudging until it sits there; on a timeout the view stays at the file's header. A diff the host does not render by
   default (GitHub's "Load Diff" button for a large or generated file) has no rows to wait for, so the jump clicks the
   button first and waits up to 30 seconds, since the host fetches the diff. Opening the files page on a link to
-  a stop's line or file (the PR brief card's links) goes to that stop.
+  a stop's line or file goes to that stop.
 - Every stop that has loaded gets a callout above its line (above the file's header for a stop with no line), as soon as
-  the review shows and as GitHub or Forgejo load more of the diff, in both unified and split views. It is a full-width
+  the review shows and as GitHub loads more of the diff, in both unified and split views. It is a full-width
   table row holding a neutral card (the host's muted surface, a 1px purple border, rounded, from the file pane's left
   edge, in 14px text, as wide as its left column plus a 24px gap plus its nav column, and never wider than the diff
   column) in two columns. The left column has a route icon and a header in bold default text, `Stop <i> of <n> · <box
@@ -128,8 +122,7 @@ variant) is not shown: see "Older runs".
   both columns the right column wraps below the text and stays right-aligned. A button goes to that stop, as a click on
   its row does, without the flash of its line. Clicking Previous or Next quickly ends at the last stop clicked. A callout is placed
   once per stop, so a re-render or a lazy load never doubles it. The callouts show only in "Walkthrough" mode.
-- A stop with no line has its callout as the first child of that file's diff entry (the GitHub diff entry, the Forgejo
-  file box), so it sits directly above the file header and spans the entry's full width with the same card. The jump
+- A stop with no line has its callout as the first child of that file's diff entry, so it sits directly above the file header and spans the entry's full width with the same card. The jump
   places the callout like a line stop's, so the header shows under it, and marks the callout alone. It is placed once, comes back if the host drops it, and goes with the callouts.
 - Every callout of the shown mode (all stops in Walkthrough, all layers in Layers) has the same width: that of the widest
   card at its natural width, its heading and its Previous/Next column, not its summary, at least 480px and never more than
@@ -149,18 +142,18 @@ variant) is not shown: see "Older runs".
 - A banner appears when the review was generated for an older head commit than the page's.
 
 Nothing about the review's state is remembered, except which layers are judged (see "Layers tab"), the Tests control's mode (see "Tests control") and who owns the pane (see "Handing the page back"): every load and every navigation into the files page opens
-in "Walkthrough" mode (or "Layers", or "Files" for a brief with neither) with nothing selected, the diff where GitHub put it and the diagram collapsed, with the default variant. A
+in "Walkthrough" mode (or "Layers", or "Files" for a brief with neither) with nothing selected, the diff where GitHub put it and the diagram collapsed. A
 link to a stop's line selects that stop. The one thing kept is whether the diagram panel is expanded (see below).
 
 ## Files tab
 
-"Files" is the host's own file tree, under the extension's toggle and chip line. The panel holds only those two; the pane's own children (GitHub's "Filter files" box and tree, Forgejo's tree) stay showing below it.
+"Files" is the host's own file tree, under the extension's toggle and chip line. The panel holds only those two; the pane's own children (GitHub's "Filter files" box and tree) stay showing below it.
 
 - The chips and the Tests control filter the tree's rows as they filter the diff: a file row whose diff is hidden is hidden, then a
   directory row left with no visible file. A row is matched to its diff by the `#diff-…` link it is or holds, and a row with no
   such link is left showing. The rows are looked up inside the pane host only, never in the extension's own panel. Leaving "Files",
   choosing "All", or handing the page back shows every row again.
-- GitHub's rows are ARIA tree items inside `#pr-file-tree`: `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory. Forgejo's file rows are `.item-file`, and its directory rows are left showing.
+- GitHub's rows are ARIA tree items inside `#pr-file-tree`: `li[role="treeitem"]` without `aria-expanded` is a file, with it a directory.
 - The host re-renders its tree and re-opens directories as the reader browses it, so a tree row the host adds or drops schedules a refresh that applies the filters again.
 - The "All" chip counts the files of the diffs the page holds joined by every path the brief names.
 
@@ -168,14 +161,13 @@ link to a stop's line selects that stop. The one thing kept is whether the diagr
 
 The pane has one owner, the brief (the default) or the host.
 
-- The button at the right end of the list's toggle, "← GitHub" or "← Forgejo", gives the pane to the host: the list, the
+- The button at the right end of the list's toggle, "← GitHub", gives the pane to the host: the list, the
   callouts, the file filter, the focus marks and the diagram panel are removed, and the page is as the host draws it, apart from a slim bar
   at the top of its file pane, `PR Brief · 6 stops, 3 layers` with a Show button, which gives the pane back.
 - Alt+B does the same from the keyboard, in either direction (`commands.toggle-brief` in the manifests; rebind it at
   `chrome://extensions/shortcuts`). `background.js` flips the stored owner and every open PR page follows.
 - The owner is kept in `chrome.storage.local` under `paneOwner`, `brief` or `host`, the same for every PR, and a change in one tab is applied in the others.
-- A PR with no brief has no switch and no bar: the page is the host's, and the "Generate brief" line or the note about the page server works as before.
-- The conversation page's brief card is not part of the pane, and stays as it is while the host owns the pane.
+- A PR with no brief has no switch and no bar: the page is the host's.
 
 ## Layers tab
 
@@ -234,12 +226,6 @@ A brief with no `chunks` (an older run; `schema` is still 4) has no "Layers" ent
   (the filter runs again on every change of the document), so a row can show for an instant first. A diff the host holds
   back behind its load control is loaded, once, when its layer is selected.
 
-## When the page server is down
-
-This applies only when a server URL is set and the PR's comment has no brief. If fetching `review.json` fails outright (connection refused, a network error), the list's place at the top of the pane shows a
-note with the base URL, the command to start the server (`pd serve`) and a Retry button; the host's own tree stays visible under it. Retry
-fetches again and mounts the full list on success. A 404 shows the "Generate brief" line below, and an older run shows the "Older runs" line, unless the run server says it will not run that repository.
-
 ## Boxes and files
 
 Clicking a diagram box goes to the first stop on that box (the first of its `stops`). A box with files and no stop is
@@ -254,14 +240,16 @@ sticky or fixed elements that span the diff column), then flashes the header for
 
 ## The change diagram
 
-When `review.json` names a `diagram` (`diagram.svg` in the run directory), `background.js` fetches it with the review
-and `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
+When the comment carries a `diagram_svg`, `diagram.js` docks it as the leftmost pane, right before GitHub's file pane in GitHub's own flex row, so the page reads
 diagram, stop list, code, and the other two columns narrow by the panel's width (by default the width at which the walkthrough draws the diagram's widest box with its halo at 100%, at most 40% of the viewport, at least 220px) instead of being
 covered. The panel is sticky at the file tree pane's offset and as tall as the pane. It is mounted collapsed, as a 30px rail
 in that spot with "Diagram" written vertically under a `›` button that expands it; the header's `‹` button collapses it
 again. Whether this tab expanded it is remembered in `sessionStorage`, so a reload keeps it expanded.
 - The diagram, the stop list and the code are separated by single dividers: the panel's right border, then GitHub's own
   rule down the pane's right edge.
+- The diagram follows GitHub's theme: its text, outline and halo colours are the Primer names, with the system's
+  `prefers-color-scheme` as the fallback, and the purple accents stay the same. The pane's own rules re-theme a diagram
+  whose SVG was written with fixed colours.
 
 - Motion: the line jump scrolls smoothly (a target more than 1.5 windows away is first approached instantly to one window
   short of it); newly visible diffs fade in over 150ms; diagram emphasis cross-fades over
@@ -311,98 +299,14 @@ again. Whether this tab expanded it is remembered in `sessionStorage`, so a relo
   `data-id="L_<from>_<to>_<n>"` (its label group has the same `data-id`). Node ids can contain underscores, so edge
   ends are matched against the known node ids.
 
-## Generating a brief on demand
-
-`serve.py` (see the [top-level README](../README.md#commands)) can start a run for the PR on the page, for the author who has set a server URL in the options. With none set nothing here is offered. The extension never talks to it from a
-page script: `background.js` makes the calls (`startRun`, `runStatus`, `cancelRun` to `/api/run`, `/api/status`,
-`/api/cancel`) and adds the server token, which the options page keeps in `chrome.storage.local` ("Server token":
-paste the contents of `~/.config/pr-brief/token`). The server also requires an `Origin` of `chrome-extension://`,
-which only the background script sends.
-
-`run_control.js` owns one run's progress for a PR page: it starts the run, asks `/api/status` every 3 seconds, ticks
-a one-second clock between polls and reports to the page. The card and the files view's line both draw from it.
-
-- **Conversation page, no run:** the card is a bar with "PR Brief · AI-generated", "local, not posted" and a "Generate brief" button
-  (nothing at all when no server URL is set).
-- **Running:** "Writing brief · m:ss", a pill per stage (Fetch PR, Gather context, Write, Render; done ones green, the
-  current one in the accent colour) and a Cancel link. Leaving the page does not stop the run; the next visit asks
-  the server and resumes from where it is. When the run is done the brief is loaded and drawn, closed.
-- **Stale:** when the run's `head_sha` differs from the PR's current head (`page.currentHeadSha`: the page's own value
-  when it shows one, which on GitHub is only the files view's embedded page data, else the host's answer: Forgejo's
-  read-only API, or for GitHub the server's `GET /api/head`, asked through `background.js`), the badge reads "for
-  <short>, PR is at <short>" and a "Regenerate" button sits beside "Review in files view".
-- **Current or unknown head:** a quiet "Regenerate" link in the card header does the same. Whenever generating is
-  allowed, regeneration is offered; with it not allowed, neither the button nor the link is shown. A brief read from the
-  PR's comment has them only when a server URL is set, and once a run it started is done the card shows that run, read from
-  the server, rather than the older comment.
-- **Failure:** the error line and a Retry button. A failed call says why: "Start the server with `pd serve` to generate
-  briefs" (nothing listening), "Server token missing or wrong — set it in the extension options" (403) or "2 briefs
-  already running" (429).
-- **Files view, no run:** where the list would be, one line, "No brief for this PR yet" and a "Generate brief" button, which
-  runs the same flow and mounts the full list when the run is done.
-- Both are offered only where a server URL is set and the server may run that repository: `/api/status` is asked with the host, owner and repo
-  and says `allowed`. When it cannot be asked (server down, wrong token) they are shown anyway, so the reason can be.
-
-## Older runs
-
-A run whose `review.json` names this PR but is not schema 4 with `nodes` and a `walkthrough` was made by an earlier
-variant. `background.js` answers it with `{error: "old"}` and the files view shows one line, "This brief predates v1;
-re-run it.", with a "Re-run" button that starts a run with the server's `default_variant` like "Generate brief". Nothing
-else of the old run is shown.
-
-## The PR brief card
-
-On a PR's conversation page (GitHub `/{o}/{r}/pull/{n}`, Forgejo `/{o}/{r}/pulls/{n}`) the extension puts a "PR Brief · AI-generated"
-card above the PR's description when the PR has a brief (`prFromUrl` returns `view: "conversation"`; the files page is
-`view: "files"` and behaves as before). Its title's tooltip says the brief is written by an AI from the diff and should be checked.
-Its badge says "from the PR's comment" for a brief read from the comment and "local,
-not posted" for one the local server holds, followed by the model that wrote the run when `review.json` records it, nothing is written to the page's data, and its header links to the files
-view. Without a brief it is the "Generate brief" bar described above, and only where a server URL is set. When the page has no brief comment yet (the host is still rendering the timeline), the card is mounted as soon as
-the comment appears.
-
-- It is a `<details>` in a shadow root, built closed every time the page loads; nothing about it is stored. Its colours
-  are the site's own Primer names (Forgejo's are mapped by its adapter), with light and dark fallbacks.
-- The diagram, in the card and in the diagram pane, follows the host's theme: its text, outline and halo colours are the
-  Primer names (Forgejo's mapped by its adapter), with the system's `prefers-color-scheme` as the fallback, and the
-  purple accents stay the same. The card's and the pane's own rules re-theme a diagram whose SVG was written with fixed colours.
-- `body.html` from `render.py` is a standalone page that draws itself: the description is a markdown string in a
-  script, rendered by `marked` and `mermaid`. `brief_text.js` reads that string, renders the subset of markdown
-  `render.py` writes, and drops every script, event handler and non-web link. The mermaid source, the title and the
-  "Diagram Walkthrough" heading are left out; `diagram.svg` goes in its own closed "Diagram" `<details>` under the
-  description's bullets, with the caption about dashed boxes under it, on the site's own surface colour. The
-  card is one column, and each top-level bullet in the description has a blank line's space after it.
-- The brief's "API" and "Data" sections are each a closed block like the Diagram's, its summary the section's name
-  in bold, one chip for each impact level present and the number of rows as muted text, so they stay visible while it is
-  collapsed. Opened it is one table of every line (API: Impact, Side, Change, On, ↗; Data: Impact, Change, Table,
-  ↗), for the whole PR. The body's pipe tables are drawn by `brief_text.js`; each table scrolls sideways in its
-  own container, and a name cut in the middle shows its whole name as a tooltip. The ↗ link is rewritten to this host's
-  files view like the others. The chips come from the run's `<span class="pill p0|p1|p2">` markup: the top level is a
-  filled chip, the second a bold outlined one and the rest outlined, drawn by the card's own style. The brief has no
-  review-order table; the files view lists the stops.
-- Links into the PR's files view are rewritten to this host's files view, fragment kept. When the files page loads with a
-  fragment that is a stop's anchor, `content.js` goes to that stop; any other fragment is left to the page.
-- `source.js` answers `loadBrief` from the PR's comment (`body_html`, `diagram_svg` and the review's `head_sha`) and, when
-  the comment has none, from `background.js`, which fetches `body.html` and `diagram.svg` of the run for the server's
-  `default_variant` (`GET /api/config`), the way it fetches `review.json`. With no brief, or the page server down, the card is
-  the "Generate brief" bar, except where no server is set or the server says it will not run the PR's repository: then
-  nothing is mounted.
-- The conversation page is watched while the card is mounted, so a host that re-renders its timeline gets the card
-  back above the description; `onNavigate` mounts it again after client-side navigation, and one card exists at a time.
-
 ## Load it
 
 1. Open `chrome://extensions`, turn on Developer mode, choose Load unpacked and pick this `extension/` folder.
-2. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`, or a Forgejo PR's
-   `http://localhost:3300/<owner>/<repo>/pulls/<n>/files`. A PR whose brief comment the Action has posted shows its brief.
-3. Optional, to generate briefs from your own machine: serve the runs and the API with `python3 serve.py` (an overlay's
-   wrapper: `pd serve`), and in the extension's options set the server URL and token.
+2. Open a PR's Files changed page, such as `https://github.com/<owner>/<repo>/pull/<n>/changes`. A PR whose brief comment
+   the Action has posted shows its brief.
 
-The list appears only when the PR has a brief comment or, with a server set, `runs/<key>/<variant>/review.json` exists for the PR (no comment, a
-404, a server that is down or a different repo leave the page untouched). `<key>` is the PR number on GitHub and `fj-<number>` on
-Forgejo (`run.py --host forgejo`). `review.json` records its `repo`, which the extension compares with the page's `owner/repo`; two repositories on one host with the same PR number would overwrite each other's runs. The variant comes from the server (`default_variant` in `local.toml`, see Which variant is shown); the extension's options page holds the optional server URL and token. The
-manifest allows `http://127.0.0.1:8765` for the runs and `http://localhost:3300` for Forgejo, so another origin
-also needs a `host_permissions` entry (and a `matches` entry for a Forgejo elsewhere). Loading a version that adds a host
-makes Chrome ask for the new permission when the extension is reloaded.
+The list appears only when the PR has a brief comment (no comment, or one for a different repo or PR, leaves the page
+untouched). `review.json` records its `repo` and `pr`, which the extension compares with the page's.
 After editing a file, reload the extension on `chrome://extensions` and refresh the GitHub tab.
 
 Run the pure tests with `node --test test/*.test.js`.
@@ -411,31 +315,25 @@ Run the pure tests with `node --test test/*.test.js`.
 
 | File | Role |
 | --- | --- |
-| `background.js` | Flips the stored pane owner on the Alt+B command. When a server URL is set: fetches `review.json` and the run's brief for the content script, and calls the run server's API with the token; the page server sends no CORS headers. With none set it answers `unset` and requests nothing |
-| `serve_api.js` | Sorts a run-server response into success or a problem (server down, token, busy, error); an ES module used by `background.js` |
-| `run_control.js` | Starts a run and follows it: polling, the elapsed clock, stage pills, failure messages |
-| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, the file, hunk and exclude filters, mounting the panel in the host's file pane, change watching, and `resizeHandle`, the drag handle the diagram panel and Forgejo's pane share. `createPage(spec)` builds an adapter from a host's spec |
+| `background.js` | Flips the stored pane owner on the Alt+B command |
+| `page_common.js` | What every host's page shares: sticky-offset scrolling, the line jump, the stop callouts, the file, hunk and exclude filters, mounting the panel in the host's file pane, change watching, and `resizeHandle`, the diagram panel's drag handle. `createPage(spec)` builds an adapter from a host's spec |
 | `github_page.js` | The only module with GitHub selectors; builds the GitHub adapter |
-| `forgejo_page.js` | The only module with Forgejo selectors; builds the Forgejo adapter |
 | `page.js` | Picks the adapter whose `hosts` lists `location.host` and exposes it as `prFocus.page`, which `content.js`, `focus.js`, `tree.js` and `diagram.js` call |
 | `focus.js` | Marks the active file's header, and scrolls to a diff. It hides nothing |
 | `tree.js`, `tree.css`, `focus.css` | The stop list and the layer list, the off bar, the stop and layer callout cards with their previous and next, and the classes `focus.js` and the line jump toggle |
 | `content.js` | Wiring: URL changes, debounced re-apply, expansion and selection state, the layer selection and the judged marks |
-| `classify.js` | Tells a failed request (server down) from a non-OK response (no run) |
 | `diagram.js`, `diagram.css` | The diagram panel, its overlay and box emphasis |
 | `comment_source.js` | Reads the brief from the PR's "Brief data" comment block (inflate, split, fetch the conversation page). Loaded before `source.js` |
-| `source.js` | Content-script side of loading: the PR's comment first, then the background script; and the stored pane owner and Forgejo pane width |
-| `brief_text.js` | Turns a run's `body.html` into the card's safe HTML (pure string work, tested without a DOM) |
-| `brief.js` | Builds the PR brief card in a shadow root and draws its views: no run, running, failed, brief, stale |
+| `source.js` | Content-script side of loading: the review from the PR's comment, and the stored pane owner |
 
 The content scripts are classic scripts sharing `globalThis.prFocus`, loaded in the order listed in `manifest.json`.
 
 ### The page adapter
 
 Everything the rest of the extension asks of the page goes through one object, `prFocus.page`: `name`,
-`prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `filesUrl(pr)`, `conversationUrl(pr)`, `isConversationPage(pr?)`, `runKey(pr)` (the `runs/` folder), `headSha`, `fileBlocks`, `entryOf`,
+`prFromUrl` (`{owner, repo, pr, view}`, `view` being `"files"` or `"conversation"`) / `pullFromUrl` (`{owner, repo, pr}`), `conversationUrl(pr)`, `headSha`, `fileBlocks`, `entryOf`,
 `entryFor`, `lineAnchor`, `scrollToElement`, `fileHeaderOf`, `jumpToLine`, `clearLineTarget`,
-`restoreLineTarget`, `ownsLine`, `cancelJump`, `filter({ files, hunks, exclude })` (each `null` for none: `files` and `exclude` are paths, `hunks` is `[{path, side, start, count}]`; one call sets all three and applies them in one pass), `blockCount()`, `changedFileCount(reviewPaths?)` (the files of the diff blocks in the page joined by the paths the brief names), `diagramHost`, `paneHost()` (the element of the host's file pane, or null; the host's tree rows are looked up inside it), `resizePane(options?)` (makes the host's file pane resizable and returns how to stop; a no-op for a host whose spec says `nativeResize: true`), `mount(panel, { hideRest })` (puts the panel first in the pane, hides the pane's other children unless `hideRest` is false, floats it at the page's left edge when there is no pane, and puts it back when the host re-renders the pane), `unmount()` (removes the panel and shows what it hid), `descriptionHost`, `onChange`, `quietly(fn)` (runs `fn` so that the `onChange` watchers do not see its own changes to the page, after handing them the changes made before it), `isStructural(node)` (whether a node a mutation added or removed is, or holds, a table row, diff block or tree row) and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
+`restoreLineTarget`, `ownsLine`, `cancelJump`, `filter({ files, hunks, exclude })` (each `null` for none: `files` and `exclude` are paths, `hunks` is `[{path, side, start, count}]`; one call sets all three and applies them in one pass), `blockCount()`, `changedFileCount(reviewPaths?)` (the files of the diff blocks in the page joined by the paths the brief names), `diagramHost`, `paneHost()` (the element of the host's file pane, or null; the host's tree rows are looked up inside it), `mount(panel, { hideRest })` (puts the panel first in the pane, hides the pane's other children unless `hideRest` is false, floats it at the page's left edge when there is no pane, and puts it back when the host re-renders the pane), `unmount()` (removes the panel and shows what it hid), `onChange`, `quietly(fn)` (runs `fn` so that the `onChange` watchers do not see its own changes to the page, after handing them the changes made before it), `isStructural(node)` (whether a node a mutation added or removed is, or holds, a table row, diff block or tree row) and `onNavigate`, and `loadDiff(id)` when the host has one. A new host is a
 spec for `createPage` (see the comment at the top of `page_common.js`) plus an entry in `manifest.json` and `page.js`.
 
 ## GitHub selectors (observed 2026-10-04 on GitHub's React-based Files changed page)
@@ -454,36 +352,10 @@ All in `github_page.js`. Class names carry hashed suffixes, so the stable hooks 
 | Line row | `[data-line-anchor="diff-<sha256 of path>R<line>"]` (`L` for a removed line); its closest `tr` is flashed, and its callout row is scrolled to the stop place. |
 | Row lines, hunk rows | `rowLines(tr)` reads the row's `[data-line-anchor]` cell as `diff-<hash>(L\|R)<n>`, one per row: R for an added or a context line, L for a removed one. `hunkRow(tr)` is a row holding `td.diff-hunk-cell`: the `@@` header and the expand-context row. That cell carries an anchor too, for the line just before or after the hunk (`R0` above a new file's first hunk, `R133` above a hunk starting at 134), so it is skipped as a line. Observed 2026-10-09 on a files page in the React view
 | Load Diff control | A diff GitHub does not render by default (observed 2026-10-09 on the `/changes` page: "Large diffs are not rendered by default.", "Some generated files are not rendered by default.") is the same diff block with no `tr` and no `[data-line-anchor]`, holding a `button[data-component="Button"]` whose trimmed text is "Load Diff" (inner `span[data-component="text"]`) beside a `span.fgColor-muted` with the sentence. `loadDiff(id)` clicks that button, found by its text and not by the sentence. A second later (1 to 9 s) the block is replaced by a new node with the same id (the old one is detached), so the jump looks the block up by id again after the wait; the entry wrapper stays |
-| Description host (conversation page) | `.js-discussion .js-comment-container`: the first one is the PR's opening comment, and the card is inserted before it. Observed 2026-10-05 on the server-rendered conversation page |
-| Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, on the files page and (observed 2026-10-09) on the conversation page; trusted only for the PR the page was first opened on. For any other page the PR's conversation page is fetched and read the same way (`readHeadSha(doc)`), and only then a set run server is asked |
+| Head SHA | `/"head(?:Oid\|Sha)"\s*:\s*"([0-9a-f]{40})"/` over `script[type="application/json"][data-target="react-app.embeddedData"]`, on the files page and (observed 2026-10-09) on the conversation page; trusted only for the PR the page was first opened on. With no head SHA no stale-head banner is drawn |
 | Brief data (conversation page) | `.markdown-body details` (a comment's body is `div.comment-body.markdown-body.js-comment-body`; the block renders as `details > summary` + `pre.notranslate > code`, observed 2026-10-09 through GitHub's markdown API) whose `summary` text is exactly `Brief data`, and the text of the `pre` inside it; the earliest in document order wins. The files page fetches `/{owner}/{repo}/pull/{n}` and reads the parsed document the same way |
 
 If the list is missing, or the list says it couldn't find the diff blocks, GitHub changed these;
 update `github_page.js` only.
 
 When GitHub's file tree pane is closed there is no pane host, so the panel floats at the page's left edge until the pane is reopened, when it moves into it.
-
-## Forgejo selectors (observed 2026-10-05 on a local Forgejo's pull request files page)
-
-All in `forgejo_page.js`. The class names are semantic and stable, not hashed.
-
-| What | Selector or rule |
-| --- | --- |
-| Page URL and run key | `/{owner}/{repo}/pulls/{n}/files`; the run folder is `fj-<n>` |
-| Diff block and entry | `#diff-container .diff-file-box[id^="diff-"]`; the box is both, and hiding it collapses the spacing. Its id is `diff-` + sha1 hex of the file path |
-| Block path | `data-new-filename`, else `data-old-filename` |
-| File header | `.diff-file-header`, sticky at 44px inside the box, under the sticky summary bar `.diff-detail-box` (top 0, 44px) that the scroll offset is measured against |
-| Line row | `.lines-num [rel="diff-<sha1 of path>R<line>"]` (`L` for a removed line); its closest `tr`. The cell is `td.lines-num-new` / `td.lines-num-old` with `data-line-num` |
-| Row lines, hunk rows | `rowLines(tr)` reads every `.lines-num [rel]` span as `diff-<sha1>(L\|R)<n>`; an added row's old-number span and a removed row's new-number span have an empty `rel` and give no line. `hunkRow(tr)` is `tr.tag-code` (`data-line-type="tag"`): the `@@` header row (`td.lines-code.blob-hunk` holding `@ -a,b +c,d @@`). The expand-context row is assumed to share the class: the `@@` rows were observed 2026-10-09 in the files pages of local PRs, which had no expand rows |
-| Pane host | `#diff-file-tree > .diff-file-tree-items`: the Vue-rendered tree inside the sticky 380px column `#diff-file-tree`. The panel goes first in it; in "Walkthrough" and "Layers" its other children are hidden with a class |
-| Pane resize | Forgejo's CSS gives `#diff-file-tree` `flex: 0 0 20%; max-width: 380px` and no divider, so the adapter adds one (GitHub's spec sets `nativeResize: true` and gets none). A 6px handle, the pane's first child, is a sticky row of no height whose `::before` strip is as tall as the pane's visible area, so the pane's `overflow-block: auto` neither clips it nor scrolls it away. Dragging it sets `flex: 0 0 <w>px; max-width: none` on the pane, between 240px and half the window; a double-click removes both. The handle is there whoever owns the pane, and on a files page only. The width is kept in `chrome.storage.local` under `forgejoPaneWidth` and applied on every load. A `MutationObserver` on the pane and its parent (on the page while there is no pane) adds the handle again, and the width, when Forgejo replaces the pane or drops the handle |
-| Tree rows | `.item-file` is a file row, matched to its diff by the `a[href*="#diff-"]` it is or holds. Directory rows are left showing |
-| Diagram host | pane `#diff-file-tree`, content `#diff-content-container`, both children of the flex row `#diff-container`; the panel goes right after the pane |
-| Description host (conversation page) | `.ui.timeline > .timeline-item.comment.first`: the PR's opening comment, which the card is inserted before |
-| Head SHA | `/src/commit/<sha>/` in the `href` of the first `#diff-container .diff-file-box a[href*="/src/commit/"]` ("View file"), trusted only for the PR the page was first opened on. The conversation page (observed 2026-10-09) links only the commits of force-push events, so it is no source: `GET /api/v1/repos/{owner}/{repo}/pulls/{n}` from the page's own origin and session gives `head.sha`, with no run server involved |
-| Brief data (conversation page) | `.render-content.markup details` (a comment's body is `div.render-content.markup`, observed 2026-10-09) whose `summary` text is exactly `Brief data`, and the text of the `pre` inside it; the earliest in document order wins. Forgejo's own `details.collapsible` ("View command line instructions") is outside `.markup` and ignored |
-| Colours | the Primer custom properties the CSS uses are pointed at Forgejo's `--color-*` variables by a `<style id="prf-forgejo-theme">` added to the page |
-| Load diff control | A file Forgejo holds back on a very large change renders its box with no table: `.diff-file-body.binary` with a "Load diff" link `a.diff-load-button` (its `data-href` is `?file-only=true&files=…`). Read from Forgejo's `templates/repo/diff/box.tmpl` and `web_src/js/features/repo-diff.js` on 2026-10-09; not seen in the PRs observed on the local instance. `loadDiff(id)` clicks it. The handler replaces the link's container with the fetched rows inside the same box, so the box stays |
-
-Not covered: a file collapsed with "Viewed" or folded by Forgejo (`data-folded`), whose rows are in the page but
-hidden, so a jump into it lands on rows the reader cannot see.

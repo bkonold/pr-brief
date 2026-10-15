@@ -4,216 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const githubPage = require("../github_page.js");
-const forgejoPage = require("../forgejo_page.js");
-const briefText = require("../brief_text.js");
-const tree = require("../tree.js");
-const runControl = require("../run_control.js");
-const { buildBrief, buildCard, cardHtml, isStale } = require("../brief.js");
-
-const FILES_URL = "http://forge.example/acme/widgets/pulls/7/files";
-
-const MARKDOWN = [
-  "# Example title",
-  "",
-  "Enhancement",
-  "",
-  "___",
-  "",
-  "### Description",
-  "- Adds `thing` to the pipeline",
-  "  - nested **point**",
-  "",
-  "- Second point",
-  "",
-  "___",
-  "",
-  "### Diagram Walkthrough",
-  "",
-  "```mermaid",
-  "flowchart TD",
-  '  a["1 · Step"]',
-  "```",
-  "",
-  "Dashed boxes are unchanged context",
-  "",
-  "___",
-  "",
-].join("\n");
-
-function bodyHtml(markdown = MARKDOWN) {
-  return `<!doctype html><html><head><title>t</title><style>body{}</style></head><body><article id="out"></article>
-<script src="https://cdn.example/marked.min.js"></script>
-<script>
- const md = ${JSON.stringify(markdown).replace(/<\//g, "<\\/")};
- document.getElementById('out').innerHTML = marked.parse(md);
-</script></body></html>`;
-}
-
-test("a GitHub conversation page maps to the conversation view and a files page to the files view", () => {
-  const { prFromUrl } = githubPage;
-  const base = { owner: "example-org", repo: "example-repo", pr: 5 };
-  assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/5" }), { ...base, view: "conversation" });
-  assert.deepEqual(prFromUrl("https://github.com/example-org/example-repo/pull/5/?x=1#issuecomment-9"), { ...base, view: "conversation" });
-  assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/5/files" }), { ...base, view: "files" });
-  assert.deepEqual(prFromUrl({ pathname: "/example-org/example-repo/pull/5/changes" }), { ...base, view: "files" });
-  assert.equal(prFromUrl({ pathname: "/example-org/example-repo/pull/5/commits" }), null);
-  assert.equal(prFromUrl({ pathname: "/example-org/example-repo/pulls/5" }), null);
-  assert.equal(prFromUrl({ pathname: "/example-org/example-repo/issues/5" }), null);
-});
-
-test("a Forgejo conversation page maps to the conversation view and a files page to the files view", () => {
-  const { prFromUrl } = forgejoPage;
-  const base = { owner: "acme", repo: "widgets", pr: 7 };
-  assert.deepEqual(prFromUrl({ pathname: "/acme/widgets/pulls/7" }), { ...base, view: "conversation" });
-  assert.deepEqual(prFromUrl("http://localhost:3300/acme/widgets/pulls/7#issuecomment-3"), { ...base, view: "conversation" });
-  assert.deepEqual(prFromUrl({ pathname: "/acme/widgets/pulls/7/files" }), { ...base, view: "files" });
-  assert.equal(prFromUrl({ pathname: "/acme/widgets/pulls/7/commits" }), null);
-  assert.equal(prFromUrl({ pathname: "/acme/widgets/pull/7" }), null);
-});
-
-test("each adapter builds the files view URL of a PR", () => {
-  assert.equal(githubPage.filesUrl({ owner: "o", repo: "r", pr: 5 }), "https://github.com/o/r/pull/5/files");
-  assert.equal(forgejoPage.filesUrl({ owner: "acme", repo: "widgets", pr: 7 }), "http://localhost:3300/acme/widgets/pulls/7/files");
-});
-
-test("renderBody drops every script, whether in body.html or in the markdown it renders", () => {
-  const hostile = MARKDOWN.replace(
-    "Enhancement",
-    'Enhancement <script>alert(1)</script><img src=x onerror="alert(2)"><a href="javascript:alert(3)">x</a><a href="jav&#x61;script:alert(4)">y</a><a href="java\tscript:alert(5)">z</a><SCRIPT SRC=//evil.example/x.js></SCRIPT><iframe src="//evil.example"></iframe><p onclick="alert(6)">p</p>',
-  );
-  const { html, caption } = briefText.renderBody(bodyHtml(hostile), FILES_URL);
-  for (const text of [html, caption]) {
-    assert.doesNotMatch(text, /<script|<\/script|<iframe|onerror|onclick|javascript:|alert\(/i);
-  }
-  assert.match(html, /<p>Enhancement/);
-  assert.match(html, /<p>p<\/p>/);
-});
-
-test("renderBody strips scripts from a body.html that has no markdown string", () => {
-  const page = '<html><body><h1>Title</h1><script>alert(1)</script><p onmouseover="x()">kept</p><script src="//cdn.example/a.js"></script></body></html>';
-  const { html } = briefText.renderBody(page, FILES_URL);
-  assert.equal(html, "<h1>Title</h1><p>kept</p>");
-});
-
-test("sanitize in svg mode keeps a diagram's style and drops what can run script", () => {
-  const svg = '<svg viewBox="0 0 10 10" onload="x()"><style>#d .n{fill:red}</style><script>alert(1)</script><g class="n"><foreignObject><div>label</div></foreignObject><a xlink:href="javascript:x()"/></g></svg>';
-  const clean = briefText.sanitize(svg, "svg");
-  assert.match(clean, /<style>#d \.n\{fill:red\}<\/style>/);
-  assert.match(clean, /<foreignObject><div>label<\/div><\/foreignObject>/);
-  assert.doesNotMatch(clean, /script|onload|javascript:/i);
-});
-
-test("renderBody renders the description and leaves the title, the mermaid source and its heading out", () => {
-  const { html, caption } = briefText.renderBody(bodyHtml(), FILES_URL);
-  assert.doesNotMatch(html, /Example title|mermaid|flowchart|Diagram Walkthrough|Dashed boxes/);
-  assert.match(html, /<h3>Description<\/h3>/);
-  assert.match(html, /<li>Adds <code>thing<\/code> to the pipeline\n<ul>\n<li>nested <strong>point<\/strong>/);
-  assert.equal(caption, "Dashed boxes are unchanged context");
-});
-
-test("links into the files view point at this host's files view and keep their fragment", () => {
-  const markdown = '<a href="https://github.com/acme/widgets/pull/7/files#diff-alpha">a</a> <a href="https://github.com/acme/widgets/pull/7/changes#diff-alphaR12">b</a>';
-  const { html } = briefText.renderBody(bodyHtml(markdown), FILES_URL);
-  assert.match(html, /href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-alpha"/);
-  assert.match(html, /href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-alphaR12"/);
-  assert.doesNotMatch(html, /github\.com/);
-  assert.equal(briefText.rewriteLinks('<a href="https://elsewhere.example/x#y">x</a>', FILES_URL), '<a href="https://elsewhere.example/x#y">x</a>');
-});
-
-function fakeDocument() {
-  const created = [];
-  return {
-    created,
-    createElement(tag) {
-      const element = {
-        tag,
-        attributes: {},
-        setAttribute(name, value) {
-          this.attributes[name] = value;
-        },
-        attachShadow() {
-          this.shadow = { innerHTML: "" };
-          return this.shadow;
-        },
-      };
-      created.push(element);
-      return element;
-    },
-  };
-}
-
-const SVG = '<svg viewBox="0 0 10 10"><style>#d{fill:red}</style><g class="node"/></svg>';
-
-test("the card is a closed details that reads and writes no storage", () => {
-  const touched = [];
-  const trap = (name) => ({ get: () => (touched.push(name), assert.fail(`${name} was used`)) });
-  const saved = { document: globalThis.document, chrome: globalThis.chrome };
-  Object.defineProperty(globalThis, "localStorage", { configurable: true, ...trap("localStorage") });
-  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, ...trap("sessionStorage") });
-  globalThis.chrome = { storage: { get sync() { return trap("chrome.storage").get(); } } };
-  const document = fakeDocument();
-  globalThis.document = document;
-  try {
-    const host = buildBrief({ key: "fj-7", variant: "v1", bodyHtml: bodyHtml(), diagramSvg: SVG, filesUrl: FILES_URL });
-    const shadow = host.shadow.innerHTML;
-    assert.equal(host.attributes["data-run"], "fj-7");
-    assert.equal(host.attributes["data-variant"], "v1");
-    const outer = /<details class="brief"[^>]*>/.exec(shadow)[0];
-    assert.equal(outer, '<details class="brief">');
-    assert.doesNotMatch(shadow, /<details[^>]*\bopen\b/);
-    assert.match(shadow, /<span class="title"[^>]*>PR Brief · AI-generated<\/span>/);
-    assert.match(shadow, /<span class="badge"[^>]*>local, not posted<\/span>/);
-    assert.match(shadow, /<a class="files-link" href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files">Review in files view<\/a>/);
-    const diagramBox = /<details class="diagram-box"><summary><h3>Diagram<\/h3><\/summary>(.*?)<\/details>/s.exec(shadow);
-    assert.ok(diagramBox, "the diagram is in its own details headed Diagram");
-    assert.match(diagramBox[1], /^<figure class="diagram">.*<svg viewBox="0 0 10 10">.*<p class="caption">Dashed boxes are unchanged context<\/p><\/figure>$/s);
-    const at = (needle) => shadow.indexOf(needle);
-    assert.ok(at("Second point") < at('<details class="diagram-box">'), "the diagram follows the description's bullets");
-    assert.equal(shadow.match(/<details class="diagram-box">/g).length, 1);
-    assert.doesNotMatch(shadow, /grid-template-columns/);
-    assert.match(shadow, /\.text > ul > li, \.text > ol > li \{ margin-bottom: 1\.5em; \}/);
-    assert.doesNotMatch(shadow, /<script/i);
-    assert.deepEqual(touched, []);
-  } finally {
-    delete globalThis.localStorage;
-    delete globalThis.sessionStorage;
-    globalThis.document = saved.document;
-    globalThis.chrome = saved.chrome;
-    if (saved.document === undefined) delete globalThis.document;
-    if (saved.chrome === undefined) delete globalThis.chrome;
-  }
-});
-
-test("the card leaves the diagram out when the run has none, or when it is not an svg", () => {
-  globalThis.document = fakeDocument();
-  try {
-    for (const diagramSvg of [null, "", "<html>nope</html>"]) {
-      const shadow = buildBrief({ key: "7", variant: "v1", bodyHtml: bodyHtml(), diagramSvg, filesUrl: FILES_URL }).shadow.innerHTML;
-      assert.doesNotMatch(shadow, /<figure|<svg|<details class="diagram-box"/);
-    }
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-// content.js runs on load, so it is loaded into a context of fakes: a conversation page whose description host
-// is a recording element, a source that answers with `run` and `status`, and a card that records what it is shown.
-function loadContent({ run, status = { ok: true, state: "idle", allowed: true }, hostPresent = true, pageSha = null, view = "conversation", review = null, hash = "", stored = {}, local = {}, startState = "running", runs = null, payloads = null, cardWidth = () => 0, pageOrder = [], owner = "brief", blocks = new Map(), pagePaths = [] }) {
-  const log = [];
-  const description = {
-    name: "description",
-    before(card) {
-      log.push("placed");
-      card.placed = (card.placed ?? 0) + 1;
-    },
-  };
+// content.js runs on load, so it is loaded into a context of fakes: a page on `view` ("files" or "conversation"), a
+// source that answers with `review`, and a tree, a diagram and a page that record what they are asked to do.
+function loadContent({ view = "files", review = null, hash = "", stored = {}, local = {}, cardWidth = () => 0, pageOrder = [], owner = "brief", blocks = new Map(), pagePaths = [] }) {
   const navigations = [];
   const changes = [];
-  const nav = { away: false };
-  const built = [];
-  const calls = [];
-  const lines = [];
+  const reviewArgs = [];
   const renders = [];
   const jumps = [];
   const fileJumps = [];
@@ -223,7 +19,6 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const centeredWith = [];
   const lineEvents = [];
   const diagramHandlers = [];
-  const briefArgs = [];
   const revealed = [];
   const boxes = [];
   const scrolled = [];
@@ -251,14 +46,8 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const prFocus = {
     page: {
       name: "Fake",
-      hostId: "forgejo",
-      prFromUrl: () => (nav.away ? null : { owner: "acme", repo: "widgets", pr: 7, view }),
-      runKey: (pr) => `fj-${pr.pr}`,
-      filesUrl: () => FILES_URL,
-      currentHeadSha: async () => pageSha,
-      descriptionHost: () => (hostPresent ? description : null),
+      prFromUrl: () => ({ owner: "acme", repo: "widgets", pr: 7, view }),
       onNavigate: (callback) => (navigations.push(callback), () => {}),
-      resizePane: () => () => {},
       onChange: (callback) => (changes.push(callback), () => {}),
       cancelJump: () => lineEvents.push("cancelJump"),
       clearLineTarget: () => lineEvents.push("clearLineTarget"),
@@ -286,26 +75,13 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       jumpToFile: async (...args) => fileJumps.push(args),
     },
     source: {
-      loadBrief: async (...args) => (briefArgs.push(args), runs ? runs.shift() : run),
-      loadReview: async () => review,
+      loadReview: async (...args) => (reviewArgs.push(args), review),
       loadPaneOwner: async () => owner,
       savePaneOwner: async (next) => ownerSaved.push(next),
       onPaneOwnerChange: (callback) => (ownerChanges.push(callback), () => {}),
-      runStatus: async (target) => (calls.push(["status", target]), status),
-      startRun: async (target) => (calls.push(["start", target]), { ok: true, key: target.key, state: startState }),
-      cancelRun: async (target) => (calls.push(["cancel", target]), { ok: true, key: target.key, state: "canceled" }),
-    },
-    runControl: { ...runControl, create: (options) => runControl.create({ ...options, timers: { setTimeout: context.setTimeout, clearTimeout, setInterval: context.setInterval, clearInterval } }) },
-    brief: {
-      buildCard: (options) => {
-        const card = { isConnected: true, nextElementSibling: null, remove() {}, placed: 0, options, shown: [], show: (shown) => card.shown.push(shown) };
-        built.push(card);
-        return card;
-      },
     },
     tree: {
       render: (shownReview, state, handlers) => renders.push({ review: shownReview, state, handlers, quiet: quiet.depth > 0 }),
-      renderGenerateLine: (shown, handlers) => lines.push({ shown, handlers }),
       offBar: (counts, onShow) => bars.push({ counts, onShow }),
       briefPaths: require("../tree.js").briefPaths,
       stopsOf: require("../tree.js").stopsOf,
@@ -333,7 +109,6 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
       owns: () => false,
     },
     alive: () => true,
-    ...(payloads ? { commentSource: { extractPayload: () => payloads.shift() } } : {}),
   };
   const output = [];
   const consoleSpy = { log: (...a) => output.push(a), warn: (...a) => output.push(a), error: (...a) => output.push(a), info: (...a) => output.push(a), debug: (...a) => output.push(a) };
@@ -347,380 +122,15 @@ function loadContent({ run, status = { ok: true, state: "idle", allowed: true },
   const context = { prFocus, sessionStorage, localStorage, location: { href: "x", host: "forge.example", hash }, console: consoleSpy, setTimeout: unref(setTimeout), clearTimeout, setInterval: unref(setInterval), clearInterval, Date, Promise, document: fakeDocument };
   context.globalThis = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../content.js"), "utf8"), context);
-  return { briefArgs, changes, nav, log, built, navigations, output, calls, lines, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters, hunkFilters, excluded, local, properties, measuring, ownerChanges, ownerSaved, bars, diagramRemoved, countArgs };
+  return { reviewArgs, changes, navigations, output, renders, jumps, fileJumps, callouts, emphasized, centered, centeredWith, lineEvents, stored, diagramHandlers, revealed, boxes, scrolled, filters, hunkFilters, excluded, local, properties, measuring, ownerChanges, ownerSaved, bars, diagramRemoved, countArgs };
 }
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const settle = () => new Promise((resolve) => setImmediate(resolve));
-const RUN = { variant: "v1", bodyHtml: "<p>x</p>", diagramSvg: null, headSha: "a".repeat(40) };
-
-test("nothing is built, placed or logged when the PR has no run and the server will not run its repository", async () => {
-  const { built, log, output } = loadContent({ run: null, status: { ok: true, state: "idle", allowed: false } });
-  await settle();
-  assert.deepEqual([built, log, output], [[], [], []]);
-});
-
-test("a PR with no run gets a card offering to generate, and the click starts a run", async () => {
-  const { built, log, calls } = loadContent({ run: null });
-  await settle();
-  assert.equal(built.length, 1);
-  assert.deepEqual(log, ["placed"]);
-  assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }]);
-  assert.deepEqual({ ...built[0].options, onAction: undefined }, { key: "fj-7", filesUrl: FILES_URL, onAction: undefined });
-  built[0].options.onAction("generate");
-  await settle();
-  assert.deepEqual(plain(calls.at(-1)), ["start", { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" }]);
-  assert.deepEqual(plain(built[0].shown[1]), { kind: "running", stage: "fetch", elapsed: 0 });
-  built[0].options.onAction("cancel");
-  await settle();
-  assert.equal(calls.at(-1)[0], "cancel");
-  assert.deepEqual(plain(built[0].shown.at(-1)), { kind: "none", canGenerate: true });
-});
-
-test("with the server down or the token wrong the card is still offered, so the click can say why", async () => {
-  for (const status of [{ problem: "server" }, { problem: "token" }]) {
-    const { built } = loadContent({ run: null, status });
-    await settle();
-    assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }]);
-    built[0].options.onAction("generate");
-  }
-});
-
-test("a run in progress on the server is followed when the page opens, and its failure is shown", async () => {
-  const { built } = loadContent({ run: null, status: { ok: true, state: "running", stage: "write", elapsed: 41, allowed: true } });
-  await settle();
-  assert.deepEqual(plain(built[0].shown), [{ kind: "none", canGenerate: true }, { kind: "running", stage: "write", elapsed: 41 }]);
-});
-
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test("the card is mounted once the brief comment appears after the first lookup", async () => {
-  const { built, briefArgs, changes } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false } });
-  await settle();
-  assert.equal(built.length, 0);
-  assert.equal(changes.length, 1);
-  changes[0]();
-  await wait(350);
-  assert.equal(built.length, 1);
-  assert.equal(briefArgs.length, 2);
-});
-
-test("the lookup is not repeated while the page still has no brief block", async () => {
-  const { built, briefArgs, changes } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false }, payloads: [null, "data"] });
-  await settle();
-  changes[0]();
-  await wait(350);
-  assert.equal(briefArgs.length, 1);
-  assert.equal(built.length, 0);
-  changes[0]();
-  await wait(350);
-  assert.equal(briefArgs.length, 2);
-  assert.equal(built.length, 1);
-});
-
-test("navigating away stops waiting for the comment", async () => {
-  const { built, briefArgs, changes, nav, navigations } = loadContent({ run: null, runs: [null, RUN], status: { ok: true, state: "idle", allowed: false } });
-  await settle();
-  changes[0]();
-  nav.away = true;
-  for (const navigate of navigations) navigate();
-  await wait(350);
-  changes[0]();
-  await wait(350);
-  assert.equal(briefArgs.length, 1);
-  assert.equal(built.length, 0);
-});
-
-test("one card is built for a run, however many times the page announces a navigation", async () => {
-  const { built, log, navigations } = loadContent({ run: RUN });
-  await settle();
-  for (const navigate of navigations) {
-    navigate();
-    navigate();
-  }
-  await settle();
-  assert.equal(built.length, 1);
-  assert.deepEqual({ ...built[0].options, onAction: undefined }, { key: "fj-7", filesUrl: FILES_URL, onAction: undefined });
-  assert.deepEqual(plain(built[0].shown), [{ kind: "brief", ...RUN, runSha: RUN.headSha, pageSha: null, canGenerate: true }]);
-  assert.deepEqual(log, ["placed"]);
-});
-
-test("the card shows the run's head and the page's, so a moved head reads as stale", async () => {
-  const { built } = loadContent({ run: RUN, pageSha: "b".repeat(40) });
-  await settle();
-  const [shown] = built[0].shown;
-  assert.deepEqual([shown.runSha, shown.pageSha], ["a".repeat(40), "b".repeat(40)]);
-  assert.ok(isStale(shown.runSha, shown.pageSha));
-});
-
-test("the card waits for the description to exist before it is placed", async () => {
-  const { built, log } = loadContent({ run: RUN, hostPresent: false });
-  await settle();
-  assert.equal(built.length, 1);
-  assert.deepEqual(log, []);
-});
-
-test("a files page with no run shows one generate line, and its click starts a run", async () => {
-  const { lines, calls } = loadContent({ run: null, view: "files" });
-  await settle();
-  assert.deepEqual(plain(lines.at(-1).shown), { kind: "none" });
-  lines.at(-1).handlers.onGenerate();
-  await settle();
-  assert.deepEqual(plain(calls.at(-1)), ["start", { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" }]);
-  assert.deepEqual(plain(lines.at(-1).shown), { kind: "running", stage: "fetch", elapsed: 0 });
-});
-
-test("a files page whose run was written by an older version shows one re-run line, and its click starts a run", async () => {
-  const { lines, renders, calls } = loadContent({ run: null, view: "files", review: { error: "old", baseUrl: "http://x" } });
-  await settle();
-  assert.deepEqual([renders, plain(lines.at(-1).shown)], [[], { kind: "old" }]);
-  lines.at(-1).handlers.onGenerate();
-  await settle();
-  assert.deepEqual(plain(calls.at(-1)), ["start", { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" }]);
-  assert.deepEqual(plain(lines.at(-1).shown), { kind: "running", stage: "fetch", elapsed: 0 });
-});
-
-test("a files page whose repository the server will not run shows no line", async () => {
-  const { lines } = loadContent({ run: null, view: "files", status: { ok: true, state: "idle", allowed: false } });
-  await settle();
-  assert.deepEqual(lines, []);
-});
-
-const UNSET = { ok: false, problem: "unset" };
-
-test("with no run server set and no brief comment, nothing is built, placed or asked of a server", async () => {
-  for (const view of ["conversation", "files"]) {
-    const { built, log, output, lines, calls } = loadContent({ run: null, view, status: UNSET });
-    await settle();
-    assert.deepEqual([built, log, output, lines], [[], [], [], []], view);
-    assert.deepEqual(plain(calls), [["status", { host: "forgejo", owner: "acme", repo: "widgets", pr: 7, key: "fj-7" }]], view);
-  }
-});
-
-test("a brief read from the comment is drawn with no run server set, and without a Generate or Regenerate affordance", async () => {
-  const { built } = loadContent({ run: { ...RUN, origin: "comment" }, status: UNSET });
-  await settle();
-  assert.deepEqual(plain(built[0].shown), [{ kind: "brief", ...RUN, origin: "comment", runSha: RUN.headSha, pageSha: null, canGenerate: false }]);
-});
-
-test("a run the local server has just written is read from the server, not from the comment", async () => {
-  const { built, briefArgs } = loadContent({ run: { ...RUN, origin: "comment" }, startState: "done" });
-  await settle();
-  assert.deepEqual(plain(briefArgs), [["acme", "widgets", 7, "fj-7"]]);
-  built[0].options.onAction("generate");
-  await settle();
-  assert.deepEqual(plain(briefArgs.at(-1)), ["acme", "widgets", 7, "fj-7", { server: true }]);
-});
-
-const RUN_SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f90abcdef01";
-const PAGE_SHA = "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432";
-const CARD = { key: "fj-7", filesUrl: FILES_URL };
-
-test("with no run the card is a bar with the badge and a Generate brief button", () => {
-  const html = cardHtml({ kind: "none", canGenerate: true }, CARD);
-  assert.match(html, /<span class="title"[^>]*>PR Brief · AI-generated<\/span><span class="badge"[^>]*>local, not posted<\/span><button class="btn" type="button" data-action="generate">Generate brief<\/button>/);
-  assert.doesNotMatch(html, /<details|<ol/);
-  assert.doesNotMatch(cardHtml({ kind: "none", canGenerate: false }, CARD), /<button/);
-});
-
-test("while a run is going the card shows the elapsed time, the stage pills and a Cancel link", () => {
-  const html = cardHtml({ kind: "running", stage: "write", elapsed: 83 }, CARD);
-  assert.match(html, /<span class="progress">Writing brief · 1:23<\/span><button class="link" type="button" data-action="cancel">Cancel<\/button>/);
-  const pills = [...html.matchAll(/<li class="pill (\w+)">([^<]+)<\/li>/g)].map((match) => [match[2], match[1]]);
-  assert.deepEqual(pills, [["Fetch PR", "done"], ["Gather context", "done"], ["Write", "current"], ["Render", "pending"]]);
-});
-
-test("a failure shows its message, escaped, with a Retry button", () => {
-  const html = cardHtml({ kind: "error", message: "bad <b>line</b> with `pd serve`" }, CARD);
-  assert.match(html, /<p class="error" role="alert">bad &lt;b&gt;line&lt;\/b&gt; with <code>pd serve<\/code><\/p>/);
-  assert.match(html, /data-action="generate">Retry<\/button>/);
-});
-
-const BRIEF = { kind: "brief", variant: "v1", bodyHtml: bodyHtml(), diagramSvg: null, runSha: RUN_SHA, pageSha: RUN_SHA.toUpperCase(), canGenerate: true };
-const GENERATE = (label, kind) => `<button class="${kind}" type="button" data-action="generate">${label}</button>`;
-const summaryOf = (html) => /<summary>[^]*?<\/summary>/.exec(html)[0];
-
-test("a run for an older head says so and offers a Regenerate button beside the badge", () => {
-  const stale = cardHtml({ ...BRIEF, pageSha: PAGE_SHA }, CARD);
-  assert.match(stale, /<span class="badge"[^>]*>for a1b2c3d, PR is at 9f8e7d6<\/span><button class="btn" type="button" data-action="generate">Regenerate<\/button><a class="files-link" href="[^"]+">Review in files view<\/a>/);
-  assert.equal(summaryOf(stale).match(/Regenerate/g).length, 1);
-  assert.match(stale, /<details class="brief">/);
-  assert.doesNotMatch(stale, /<details[^>]*\bopen\b/);
-});
-
-test("a run for the page's head, or a page whose head is unknown, offers a quiet Regenerate link in the header", () => {
-  for (const pageSha of [RUN_SHA.toUpperCase(), null, undefined]) {
-    const html = cardHtml({ ...BRIEF, pageSha }, CARD);
-    assert.match(html, /<span class="badge"[^>]*>local, not posted<\/span><button class="link quiet" type="button" data-action="generate">Regenerate<\/button><a class="files-link"/);
-    assert.ok(summaryOf(html).includes(GENERATE("Regenerate", "link quiet")));
-    assert.doesNotMatch(html, /class="btn"/);
-  }
-  assert.ok(summaryOf(cardHtml({ ...BRIEF, canGenerate: undefined }, CARD)).includes(GENERATE("Regenerate", "link quiet")));
-});
-
-test("when generating is not allowed the card shows no Regenerate, stale or not", () => {
-  for (const pageSha of [PAGE_SHA, RUN_SHA, null]) {
-    const html = cardHtml({ ...BRIEF, pageSha, canGenerate: false }, CARD);
-    assert.doesNotMatch(html, /Regenerate|data-action="generate"/);
-  }
-});
-
-test("a brief read from the PR's comment says so, and offers Regenerate only when a run server is set", () => {
-  const posted = { ...BRIEF, origin: "comment", pageSha: null };
-  const quiet = cardHtml({ ...posted, canGenerate: true }, CARD);
-  assert.match(quiet, /<span class="badge"[^>]*>from the PR's comment<\/span>/);
-  assert.ok(summaryOf(quiet).includes(GENERATE("Regenerate", "link quiet")));
-  for (const canGenerate of [false, undefined]) {
-    const html = cardHtml({ ...posted, canGenerate }, CARD);
-    assert.match(html, /<span class="badge"[^>]*>from the PR's comment<\/span><a class="files-link"/);
-    assert.doesNotMatch(html, /Regenerate|data-action="generate"/);
-  }
-  const stale = cardHtml({ ...posted, pageSha: PAGE_SHA, canGenerate: false }, CARD);
-  assert.match(stale, /<span class="badge"[^>]*>for a1b2c3d, PR is at 9f8e7d6<\/span><a class="files-link"/);
-  assert.doesNotMatch(stale, /Regenerate/);
-  assert.match(cardHtml({ ...BRIEF, origin: "server" }, CARD), /local, not posted/);
-  assert.match(cardHtml({ ...BRIEF, origin: "comment", pageSha: null, model: "claude-opus-5.5" }, CARD), /from the PR's comment · claude-opus-5\.5<\/span>/);
-});
-
-test("clicking Regenerate in the header runs the action and does not toggle the card", () => {
-  const listeners = [];
-  globalThis.document = {
-    createElement: () => ({
-      attributes: {},
-      setAttribute() {},
-      attachShadow() {
-        this.shadow = { innerHTML: "", addEventListener: (type, listener) => listeners.push([type, listener]) };
-        return this.shadow;
-      },
-    }),
-  };
-  try {
-    const actions = [];
-    const host = buildCard({ ...CARD, onAction: (action) => actions.push(action) });
-    for (const pageSha of [RUN_SHA, PAGE_SHA, null]) {
-      host.show({ ...BRIEF, pageSha });
-      assert.match(summaryOf(host.shadow.innerHTML), /data-action="generate">Regenerate<\/button>/);
-    }
-    const [[, listener]] = listeners;
-    let prevented = 0;
-    listener({ target: { closest: (selector) => (selector === "[data-action]" ? { getAttribute: () => "generate" } : null) }, preventDefault: () => (prevented += 1) });
-    assert.deepEqual(actions, ["generate"]);
-    assert.equal(prevented, 1);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-test("a head that is unknown on either side is never stale", () => {
-  assert.equal(isStale(null, PAGE_SHA), false);
-  assert.equal(isStale(RUN_SHA, null), false);
-  assert.equal(isStale(RUN_SHA, RUN_SHA), false);
-  assert.equal(isStale(RUN_SHA, PAGE_SHA), true);
-});
-
-test("clicking a button in the card reports its action, and show redraws the card for each view", () => {
-  const listeners = [];
-  const document = {
-    createElement: () => ({
-      attributes: {},
-      setAttribute(name, value) {
-        this.attributes[name] = value;
-      },
-      attachShadow() {
-        this.shadow = { innerHTML: "", addEventListener: (type, listener) => listeners.push([type, listener]) };
-        return this.shadow;
-      },
-    }),
-  };
-  globalThis.document = document;
-  try {
-    const actions = [];
-    const host = buildCard({ ...CARD, onAction: (action) => actions.push(action) });
-    host.show({ kind: "none", canGenerate: true });
-    assert.match(host.shadow.innerHTML, /Generate brief/);
-    host.show({ kind: "running", stage: "fetch", elapsed: 0 });
-    assert.match(host.shadow.innerHTML, /Writing brief · 0:00/);
-    host.show({ kind: "brief", variant: "v1", bodyHtml: bodyHtml(), diagramSvg: null });
-    assert.equal(host.attributes["data-variant"], "v1");
-    assert.equal(listeners.length, 1);
-    const [type, listener] = listeners[0];
-    assert.equal(type, "click");
-    let prevented = 0;
-    const click = (action) => listener({ target: { closest: () => (action ? { getAttribute: () => action } : null) }, preventDefault: () => (prevented += 1) });
-    click("generate");
-    click("cancel");
-    click(null);
-    assert.deepEqual(actions, ["generate", "cancel"]);
-    assert.equal(prevented, 2);
-  } finally {
-    delete globalThis.document;
-  }
-});
-
-const V22_MARKDOWN = [
-  "# T",
-  "",
-  '<details class="section">',
-  '<summary><h3>Contract</h3> <span class="pill p0"><strong>callers must change</strong></span> <span class="pill p2">additive</span> <span class="muted">3 changes</span></summary>',
-  "",
-  '<div class="table-wrap">',
-  "",
-  "| Impact | Side | Change | On | ↗ |",
-  "| --- | --- | --- | --- | --- |",
-  '| <span class="pill p0"><strong>callers must change</strong></span> | request | <code>+ kind</code> required param | <code>GET /rows</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR4) |',
-  '| <span class="pill p2">additive</span> | response | <code>+ note</code> optional | 9 schemas: <code>A</code>, <code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters</code> +6 | [↗](https://github.com/acme/widgets/pull/7/changes#diff-abcR9) |',
-  '| <span class="pill p2">additive</span> |  | <code>+ a</code> nullable &#124; x | <code>widgets</code> | [↗](https://github.com/acme/widgets/pull/7/changes#diff-defR3) |',
-  "",
-  "</div>",
-  "",
-  "</details>",
-  "",
-  "___",
-  "",
-  "### Data",
-  "No database changes",
-  "",
-  "### Diagram Walkthrough",
-  "",
-  "```mermaid",
-  "flowchart TD",
-  "```",
-  "",
-].join("\n");
-
-test("a v22 section is one closed details with its name and chips in the summary and one table", () => {
-  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: null }, CARD);
-  assert.equal((html.match(/<details class="section">/g) ?? []).length, 1);
-  assert.doesNotMatch(html, /<details class="section" open/);
-  assert.match(html, /<summary><h3>Contract<\/h3> <span class="pill p0"><strong>callers must change<\/strong><\/span> <span class="pill p2">additive<\/span> <span class="muted">3 changes<\/span><\/summary>/);
-  assert.equal((html.match(/<table>/g) ?? []).length, 1);
-  assert.match(html, /<thead><tr><th>Impact<\/th><th>Side<\/th><th>Change<\/th><th>On<\/th><th>↗<\/th><\/tr><\/thead>/);
-  assert.match(html, /<td><span class="pill p0"><strong>callers must change<\/strong><\/span><\/td><td>request<\/td><td><code>\+ kind<\/code> required param<\/td><td><code>GET \/rows<\/code><\/td>/);
-  assert.match(html, /<td><a href="http:\/\/forge\.example\/acme\/widgets\/pulls\/7\/files#diff-abcR4">↗<\/a><\/td>/);
-  assert.match(html, /<code title="LongSchemaNameThatIsCutInTheMiddleOfItsLetters">LongSchemaNameTh…ItsLetters<\/code>/);
-  assert.match(html, /<code>\+ a<\/code> nullable &#124; x/);
-  assert.match(html, /<div class="table-wrap">\s*<table>/);
-  assert.doesNotMatch(html, /\||class="sub"|group-row|chunk/);
-});
-
-test("a v22 brief keeps the diagram after the Data section", () => {
-  const svg = '<svg viewBox="0 0 1 1"><g></g></svg>';
-  const html = cardHtml({ kind: "brief", variant: "v22", bodyHtml: bodyHtml(V22_MARKDOWN), diagramSvg: svg }, CARD);
-  const contract = html.indexOf("<h3>Contract</h3>");
-  const data = html.indexOf("<h3>Data</h3>");
-  const diagram = html.indexOf('class="diagram-box"');
-  assert.ok(contract !== -1 && data > contract && diagram > data, [contract, data, diagram].join());
-  assert.equal(html.slice(contract, data).includes("diagram-box"), false);
-});
-
-test("renderMarkdown reads a pipe table with an escaped pipe and leaves a lone pipe line as text", () => {
-  const { html } = briefText.renderMarkdown(["| a | b |", "| --- | --- |", "| x \\| y | `z` |", "", "| not a table |"].join("\n"));
-  assert.match(html, /<table><thead><tr><th>a<\/th><th>b<\/th><\/tr><\/thead><tbody><tr><td>x \| y<\/td><td><code>z<\/code><\/td><\/tr><\/tbody><\/table>/);
-  assert.match(html, /<p>\| not a table \|<\/p>/);
-});
-
 test("the callouts are shown in the review and removed in the host's own tree view", async () => {
-  const { renders, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, callouts } = loadContent({ review: WALK_REVIEW });
   await settle();
   assert.equal(callouts.at(-1).length, 4);
   await renders.at(-1).handlers.onMode("files");
@@ -728,7 +138,7 @@ test("the callouts are shown in the review and removed in the host's own tree vi
 });
 
 async function loadWalkthrough(review = WALK_REVIEW) {
-  const loaded = loadContent({ run: null, view: "files", review });
+  const loaded = loadContent({ review });
   await settle();
   await loaded.renders.at(-1).handlers.onMode("review");
   return loaded;
@@ -800,7 +210,7 @@ test("clicking Previous or Next quickly ends at the last stop clicked, jumping o
 });
 
 test("opening the files page on a stop's diff anchor goes to that stop", async () => {
-  const { fileJumps, emphasized, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
+  const { fileJumps, emphasized, renders } = loadContent({ review: WALK_REVIEW, hash: "#diff-src/api.js" });
   await settle();
   assert.deepEqual([renders.at(-1).state.mode, renders.at(-1).state.selectedStop], ["review", 4]);
   assert.deepEqual(fileJumps, [["src/api.js"]]);
@@ -808,7 +218,7 @@ test("opening the files page on a stop's diff anchor goes to that stop", async (
 });
 
 test("the sidebar opens in the walkthrough with every stop listed and none current", async () => {
-  const { renders, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, emphasized } = loadContent({ review: WALK_REVIEW });
   await settle();
   const { state } = renders.at(-1);
   assert.deepEqual([state.stops.map((stop) => stop.i), state.mode, state.selectedStop], [[1, 2, 3, 4], "review", null]);
@@ -817,7 +227,7 @@ test("the sidebar opens in the walkthrough with every stop listed and none curre
 });
 
 test("a fresh load selects nothing: the walkthrough, no jump, no pan and no emphasis", async () => {
-  const { renders, emphasized, centered, revealed, jumps, fileJumps, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, emphasized, centered, revealed, jumps, fileJumps, callouts } = loadContent({ review: WALK_REVIEW });
   await settle();
   assert.deepEqual(plain([renders.at(-1).state.mode, renders.at(-1).state.selectedStop, emphasized.filter((nodes) => nodes !== null), centered, revealed, jumps, fileJumps]), ["review", null, [], [], [], [], []]);
   assert.equal(callouts.at(-1).length, 4);
@@ -825,20 +235,20 @@ test("a fresh load selects nothing: the walkthrough, no jump, no pan and no emph
 
 test("a page URL naming a diff line other than a stop's selects nothing and jumps nowhere", async () => {
   for (const hash of ["#diff-abc123R7", "#r123456", "#discussion_r98765"]) {
-    const { renders, emphasized, centered, jumps, fileJumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash });
+    const { renders, emphasized, centered, jumps, fileJumps } = loadContent({ review: WALK_REVIEW, hash });
     await settle();
     assert.deepEqual(plain([renders.at(-1).state.selectedStop, emphasized.filter((nodes) => nodes !== null), centered, jumps, fileJumps]), [null, [], [], [], []], hash);
   }
 });
 
 test("a fragment that names no diff line does not make the load jump", async () => {
-  const { jumps, fileJumps } = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#files_bucket" });
+  const { jumps, fileJumps } = loadContent({ review: WALK_REVIEW, hash: "#files_bucket" });
   await settle();
   assert.deepEqual([jumps, fileJumps], [[], []]);
 });
 
 test("choosing a stop in the list goes to it and makes it the current stop", async () => {
-  const { renders, jumps, revealed, emphasized } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, jumps, revealed, emphasized } = loadContent({ review: WALK_REVIEW });
   await settle();
   jumps.length = 0;
   revealed.length = 0;
@@ -849,20 +259,20 @@ test("choosing a stop in the list goes to it and makes it the current stop", asy
 });
 
 test("a reload lands in the walkthrough with nothing selected, whatever was selected before, and nothing is remembered", async () => {
-  const first = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const first = loadContent({ review: WALK_REVIEW });
   await settle();
   await first.renders.at(-1).handlers.onSelectStop(3);
   first.diagramHandlers.at(-1).onNode("b");
   await settle();
   await first.renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(first.stored), {});
-  const again = loadContent({ run: null, view: "files", review: WALK_REVIEW, stored: first.stored });
+  const again = loadContent({ review: WALK_REVIEW, stored: first.stored });
   await settle();
   assert.deepEqual(plain([again.renders.at(-1).state.mode, again.renders.at(-1).state.selectedStop, again.emphasized.at(-1), again.centered]), ["review", null, null, []]);
 });
 
 test("every action that focuses a box centres the diagram on it", async () => {
-  const { renders, callouts, centered, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, callouts, centered, diagramHandlers } = loadContent({ review: WALK_REVIEW });
   await settle();
   assert.deepEqual(plain(centered), []);
   diagramHandlers.at(-1).onNode("b");
@@ -878,7 +288,7 @@ test("every action that focuses a box centres the diagram on it", async () => {
 });
 
 test("every way into a stop zooms the diagram to it, and a click on a diagram box only pans", async () => {
-  const { renders, callouts, centeredWith, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, callouts, centeredWith, diagramHandlers } = loadContent({ review: WALK_REVIEW });
   await settle();
   assert.deepEqual(plain(centeredWith), []);
   await renders.at(-1).handlers.onSelectStop(3);
@@ -893,13 +303,13 @@ test("every way into a stop zooms the diagram to it, and a click on a diagram bo
 });
 
 test("opening a stop's anchor zooms to it", async () => {
-  const linked = loadContent({ run: null, view: "files", review: WALK_REVIEW, hash: "#diff-src/api.js" });
+  const linked = loadContent({ review: WALK_REVIEW, hash: "#diff-src/api.js" });
   await settle();
   assert.deepEqual(plain([linked.centered, linked.centeredWith]), [[["b"]], [{ zoom: true }]]);
 });
 
 test("the diagram's Reset clears the selection and keeps the pane's mode: nothing selected and no box marked", async () => {
-  const { renders, callouts, emphasized, lineEvents, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, callouts, emphasized, lineEvents, diagramHandlers } = loadContent({ review: WALK_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("c");
   await settle();
@@ -918,7 +328,7 @@ test("the diagram's Reset clears the selection and keeps the pane's mode: nothin
 });
 
 test("Reset leaves a mode of GitHub's own tree in place", async () => {
-  const { renders, emphasized, diagramHandlers } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, emphasized, diagramHandlers } = loadContent({ review: WALK_REVIEW });
   await settle();
   diagramHandlers.at(-1).onNode("b");
   await settle();
@@ -940,7 +350,7 @@ const NO_STOP_REVIEW = {
 };
 
 test("a diagram box click goes to the first stop on that box, jumping again on every click", async () => {
-  const { jumps, diagramHandlers, renders, revealed } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { jumps, diagramHandlers, renders, revealed } = loadContent({ review: WALK_REVIEW });
   await settle();
   for (const click of [1, 2]) {
     jumps.length = 0;
@@ -952,7 +362,7 @@ test("a diagram box click goes to the first stop on that box, jumping again on e
 });
 
 test("a box with files and no stop scrolls to its first file header and marks it", async () => {
-  const { jumps, fileJumps, diagramHandlers, renders, scrolled, boxes, emphasized } = loadContent({ run: null, view: "files", review: NO_STOP_REVIEW });
+  const { jumps, fileJumps, diagramHandlers, renders, scrolled, boxes, emphasized } = loadContent({ review: NO_STOP_REVIEW });
   await settle();
   jumps.length = 0;
   diagramHandlers.at(-1).onNode("b");
@@ -963,7 +373,7 @@ test("a box with files and no stop scrolls to its first file header and marks it
 });
 
 test("a box with a stop after a stop-less one clears the current stop only when it has none", async () => {
-  const { diagramHandlers, renders } = loadContent({ run: null, view: "files", review: NO_STOP_REVIEW });
+  const { diagramHandlers, renders } = loadContent({ review: NO_STOP_REVIEW });
   await settle();
   await renders.at(-1).handlers.onSelectStop(1);
   assert.equal(renders.at(-1).state.selectedStop, 1);
@@ -976,7 +386,7 @@ test("a box with a stop after a stop-less one clears the current stop only when 
 });
 
 test("a context box, which covers no file, and a box the review does not list do nothing", async () => {
-  const { jumps, scrolled, diagramHandlers, renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { jumps, scrolled, diagramHandlers, renders } = loadContent({ review: WALK_REVIEW });
   await settle();
   const before = renders.length;
   jumps.length = 0;
@@ -987,7 +397,7 @@ test("a context box, which covers no file, and a box the review does not list do
 });
 
 test("the sidebar's state and handlers are the stops and the mode", async () => {
-  const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders } = loadContent({ review: WALK_REVIEW });
   await settle();
   assert.deepEqual(Object.keys(renders.at(-1).handlers).sort(), ["onFileSet", "onJudged", "onMode", "onPaneOwner", "onSelectChunk", "onSelectFileInChunk", "onSelectStop", "onTestsMode"]);
 });
@@ -998,7 +408,7 @@ const SET_REVIEW = {
 };
 
 test("the chips are All with the page's changed-file count and each non-empty set, and the whole tree shows until one is chosen", async () => {
-  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW, pagePaths: ["p1", "p2", "p3", "p4", "p5"] });
+  const { renders, filters } = loadContent({ review: SET_REVIEW, pagePaths: ["p1", "p2", "p3", "p4", "p5"] });
   await settle();
   assert.deepEqual(plain(renders.at(-1).state.chips), [
     { id: "all", label: "All", count: 9 },
@@ -1009,7 +419,7 @@ test("the chips are All with the page's changed-file count and each non-empty se
 });
 
 test("choosing a chip narrows the pane and the tree to the set without moving the diagram, and All restores them", async () => {
-  const { renders, filters, centered, jumps, fileJumps } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  const { renders, filters, centered, jumps, fileJumps } = loadContent({ review: SET_REVIEW });
   await settle();
   await renders.at(-1).handlers.onSelectStop(1);
   centered.length = 0;
@@ -1024,7 +434,7 @@ test("choosing a chip narrows the pane and the tree to the set without moving th
 });
 
 test("switching the mode keeps the chip and its filter", async () => {
-  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  const { renders, filters } = loadContent({ review: SET_REVIEW });
   await settle();
   await renders.at(-1).handlers.onFileSet("contract");
   await renders.at(-1).handlers.onMode("review");
@@ -1036,7 +446,7 @@ test("switching the mode keeps the chip and its filter", async () => {
 });
 
 test("selecting a stop in a file the chip hides puts the chip back on All, and a stop in the set keeps it", async () => {
-  const { renders, filters } = loadContent({ run: null, view: "files", review: SET_REVIEW });
+  const { renders, filters } = loadContent({ review: SET_REVIEW });
   await settle();
   await renders.at(-1).handlers.onFileSet("contract");
   await renders.at(-1).handlers.onSelectStop(4);
@@ -1071,7 +481,7 @@ const CHUNK_REVIEW = {
 const JUDGED_KEY = `prf-judged:forge.example/acme/widgets#7@${CHUNK_HEAD}`;
 
 async function loadChunks(options = {}) {
-  const loaded = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, ...options });
+  const loaded = loadContent({ review: CHUNK_REVIEW, ...options });
   await settle();
   return loaded;
 }
@@ -1210,7 +620,7 @@ test("an unreadable judged list is an empty one, and only chunk numbers are read
 });
 
 test("a run with no chunks passes none and has no chunk callout", async () => {
-  const { renders, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, callouts } = loadContent({ review: WALK_REVIEW });
   await settle();
   await renders.at(-1).handlers.onMode("files");
   assert.deepEqual(plain(renders.at(-1).state.chunks), []);
@@ -1239,7 +649,7 @@ const TESTS_REVIEW = {
 };
 
 async function loadTests(options = {}) {
-  const loaded = loadContent({ run: null, view: "files", review: TESTS_REVIEW, ...options });
+  const loaded = loadContent({ review: TESTS_REVIEW, ...options });
   await settle();
   await loaded.renders.at(-1).handlers.onMode("files");
   return loaded;
@@ -1252,7 +662,7 @@ test("the Tests mode starts at all, shows every file and passes the review's tes
 });
 
 test("a review with no test files lists none and shows every file whatever the stored mode", async () => {
-  const { renders, excluded, filters } = loadContent({ run: null, view: "files", review: WALK_REVIEW, local: { [TESTS_KEY]: "only" } });
+  const { renders, excluded, filters } = loadContent({ review: WALK_REVIEW, local: { [TESTS_KEY]: "only" } });
   await settle();
   assert.deepEqual([renders.at(-1).state.tests, renders.at(-1).state.testsMode, plain(excluded.at(-1)), filters.at(-1)], [[], "all", null, null]);
   await renders.at(-1).handlers.onTestsMode("hide");
@@ -1442,7 +852,7 @@ const WIDTH = "--prf-callout-width";
 
 test("the callout width is measured from every stop when the walkthrough is shown, and is left alone in Files mode", async () => {
   const widths = { 1: 400.2, 2: 612.4, 3: 530, 4: 480 };
-  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: WALK_REVIEW, cardWidth: (card) => widths[card.stop.i] });
+  const { renders, properties, measuring } = loadContent({ review: WALK_REVIEW, cardWidth: (card) => widths[card.stop.i] });
   await settle();
   assert.deepEqual(properties, { [WIDTH]: "613px" });
   const [host] = measuring.appended;
@@ -1455,7 +865,7 @@ test("the callout width is measured from every stop when the walkthrough is show
 });
 
 test("the width is not measured again for a refresh that leaves the shown set as it was", async () => {
-  const { renders, measuring } = loadContent({ run: null, view: "files", review: WALK_REVIEW, cardWidth: () => 500 });
+  const { renders, measuring } = loadContent({ review: WALK_REVIEW, cardWidth: () => 500 });
   await settle();
   await renders.at(-1).handlers.onMode("review");
   await renders.at(-1).handlers.onSelectStop(2);
@@ -1464,7 +874,7 @@ test("the width is not measured again for a refresh that leaves the shown set as
 });
 
 test("a mode switch measures the layers, and the layers' own widths count, not the stops'", async () => {
-  const { renders, properties } = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, cardWidth: (card) => (card.stop ? 900 : 500 + card.chunk.i * 10) });
+  const { renders, properties } = loadContent({ review: CHUNK_REVIEW, cardWidth: (card) => (card.stop ? 900 : 500 + card.chunk.i * 10) });
   await settle();
   await renders.at(-1).handlers.onMode("review");
   assert.equal(properties[WIDTH], "900px");
@@ -1473,7 +883,7 @@ test("a mode switch measures the layers, and the layers' own widths count, not t
 });
 
 test("every layer is measured, not only the selected one", async () => {
-  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: CHUNK_REVIEW, cardWidth: (card) => (card.chunk ? [0, 520, 700, 610][card.chunk.i] : 0) });
+  const { renders, properties, measuring } = loadContent({ review: CHUNK_REVIEW, cardWidth: (card) => (card.chunk ? [0, 520, 700, 610][card.chunk.i] : 0) });
   await settle();
   await renders.at(-1).handlers.onMode("files");
   const before = measuring.measured;
@@ -1483,7 +893,7 @@ test("every layer is measured, not only the selected one", async () => {
 
 test("changing the Tests mode builds the layer callouts again and measures them again", async () => {
   let wide = 640;
-  const { renders, properties, measuring } = loadContent({ run: null, view: "files", review: TESTS_REVIEW, cardWidth: () => wide });
+  const { renders, properties, measuring } = loadContent({ review: TESTS_REVIEW, cardWidth: () => wide });
   await settle();
   await renders.at(-1).handlers.onSelectChunk(1);
   assert.equal(properties[WIDTH], "640px");
@@ -1494,7 +904,7 @@ test("changing the Tests mode builds the layer callouts again and measures them 
 });
 
 test("a mode with no callouts leaves the width as it was", async () => {
-  const { renders, properties } = loadContent({ run: null, view: "files", review: { ...WALK_REVIEW, walkthrough: [] }, cardWidth: () => 500 });
+  const { renders, properties } = loadContent({ review: { ...WALK_REVIEW, walkthrough: [] }, cardWidth: () => 500 });
   await settle();
   await renders.at(-1).handlers.onMode("review");
   assert.deepEqual(properties, {});
@@ -1505,13 +915,13 @@ const structural = { structural: true };
 const decoration = {};
 
 test("a refresh draws the list inside page.quietly", async () => {
-  const { renders } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders } = loadContent({ review: WALK_REVIEW });
   await settle();
   assert.equal(renders.length > 0 && renders.every((render) => render.quiet), true);
 });
 
 async function refreshesAfter(records) {
-  const { renders, changes } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, changes } = loadContent({ review: WALK_REVIEW });
   await settle();
   const before = renders.length;
   changes.at(-1)(records);
@@ -1539,7 +949,7 @@ test("structural nodes that are ours schedule no refresh", async () => {
 });
 
 test("with the pane handed to the host, nothing of the brief is drawn but the off bar, and the page's filters and callouts are cleared", async () => {
-  const { renders, bars, callouts, filters, hunkFilters, excluded, diagramHandlers, diagramRemoved, lineEvents } = loadContent({ run: null, view: "files", review: WALK_REVIEW, owner: "host" });
+  const { renders, bars, callouts, filters, hunkFilters, excluded, diagramHandlers, diagramRemoved, lineEvents } = loadContent({ review: WALK_REVIEW, owner: "host" });
   await settle();
   assert.deepEqual([renders.length, diagramHandlers.length, bars.length], [0, 0, 1]);
   assert.deepEqual(plain(bars[0].counts), { stops: 4, layers: 0 });
@@ -1549,7 +959,7 @@ test("with the pane handed to the host, nothing of the brief is drawn but the of
 });
 
 test("the off bar's Show gives the pane back to the brief and keeps that choice", async () => {
-  const { renders, bars, ownerSaved, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW, owner: "host" });
+  const { renders, bars, ownerSaved, callouts } = loadContent({ review: WALK_REVIEW, owner: "host" });
   await settle();
   bars.at(-1).onShow();
   await settle();
@@ -1558,7 +968,7 @@ test("the off bar's Show gives the pane back to the brief and keeps that choice"
 });
 
 test("the panel's switch hands the pane to the host, keeps the choice and leaves only the off bar", async () => {
-  const { renders, bars, ownerSaved, callouts, filters } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, bars, ownerSaved, callouts, filters } = loadContent({ review: WALK_REVIEW });
   await settle();
   assert.equal(bars.length, 0);
   renders.at(-1).handlers.onPaneOwner("host");
@@ -1567,7 +977,7 @@ test("the panel's switch hands the pane to the host, keeps the choice and leaves
 });
 
 test("a change of the stored owner in another tab, or by the shortcut, is applied here without being saved again", async () => {
-  const { renders, bars, ownerChanges, ownerSaved, callouts } = loadContent({ run: null, view: "files", review: WALK_REVIEW });
+  const { renders, bars, ownerChanges, ownerSaved, callouts } = loadContent({ review: WALK_REVIEW });
   await settle();
   const drawn = renders.length;
   ownerChanges.at(-1)("brief");
@@ -1581,15 +991,29 @@ test("a change of the stored owner in another tab, or by the shortcut, is applie
   assert.deepEqual([renders.length > drawn, callouts.at(-1).length], [true, 4]);
 });
 
-test("a PR with no brief keeps the generate line and gets no off bar, whoever owns the pane", async () => {
-  const { lines, bars, renders } = loadContent({ run: null, view: "files", review: null, owner: "host" });
+test("a PR with no brief draws nothing and gets no off bar, whoever owns the pane", async () => {
+  for (const owner of ["brief", "host"]) {
+    const { bars, renders, callouts, diagramHandlers, output } = loadContent({ review: null, owner });
+    await settle();
+    assert.deepEqual([bars.length, renders.length, callouts.length, diagramHandlers.length, output], [0, 0, 0, 0, []], owner);
+  }
+});
+
+test("the conversation page reads no review and draws nothing", async () => {
+  const { reviewArgs, renders, bars, output } = loadContent({ view: "conversation", review: WALK_REVIEW });
   await settle();
-  assert.deepEqual([lines.length > 0, bars.length, renders.length], [true, 0, 0]);
+  assert.deepEqual([reviewArgs, renders, bars, output], [[], [], [], []]);
+});
+
+test("a files page asks for its PR's review", async () => {
+  const { reviewArgs } = loadContent({ review: WALK_REVIEW });
+  await settle();
+  assert.deepEqual(plain(reviewArgs), [["acme", "widgets", 7]]);
 });
 
 test("the pane opens in the walkthrough for a brief with stops, else in its layers, else in the host's own files", async () => {
   const opened = async (review) => {
-    const { renders } = loadContent({ run: null, view: "files", review });
+    const { renders } = loadContent({ review });
     await settle();
     return renders.at(-1).state.mode;
   };

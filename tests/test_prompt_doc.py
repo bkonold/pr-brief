@@ -31,7 +31,7 @@ class PromptDocTest(unittest.TestCase):
         self.assertIn("    walkthrough: List[dict] = Field(", text)
         self.assertIn("    node_files: Dict[str, List[str]] = Field(", text)
         self.assertIn('+    [input.displayName, input.nickname, id],', text)
-        self.assertIn("Previous title: 'Add a nickname to the profile page'", text)
+        self.assertIn("PR title: 'Add a nickname to the profile page'", text)
 
     def test_the_system_prompt_sits_in_a_details_block_with_a_blank_line_after_the_summary(self) -> None:
         text = prompt_doc.build()

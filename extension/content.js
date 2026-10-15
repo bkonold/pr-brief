@@ -1,10 +1,9 @@
 (() => {
-  const { page, source, commentSource, runControl, focus, tree, diagram, brief, alive } = globalThis.prFocus;
+  const { page, source, focus, tree, diagram, alive } = globalThis.prFocus;
   if (!page) return;
 
   const SETTLE_MS = 150;
   const LOAD_GRACE_MS = 5000;
-  const BRIEF_WAIT_MS = 250;
   const NO_BLOCKS_NOTE = `Couldn't find ${page.name}'s diff blocks; selectors may need updating`;
 
   let current = null;
@@ -13,108 +12,10 @@
   let stopObserving = null;
   let stopNavigating = null;
   let shutDown = false;
-  let briefState = null;
-  let briefToken = 0;
   // Who owns the pane: "brief" shows the extension's panel there, "host" hands the whole page back. It is the reader's
   // choice for every PR, kept in the browser and shared by its tabs.
   let paneOwner = "brief";
   let stopPaneWatch = null;
-  let stopPaneResize = null;
-
-  // The PR brief card, on the conversation page: { key, card, stop }. `card` stays null while the run loads. There is
-  // one card per page; it is moved back above the description whenever the page drops or moves it, never built twice.
-  function placeBrief() {
-    const host = briefState?.card ? page.descriptionHost() : null;
-    if (host && (briefState.card.nextElementSibling !== host || !briefState.card.isConnected)) host.before(briefState.card);
-  }
-
-  function unmountBrief() {
-    briefToken += 1;
-    briefState?.stop?.();
-    briefState?.card?.remove();
-    briefState = null;
-  }
-
-  // What the run server is asked about a PR: which host, repository and run folder.
-  function runTarget(pr) {
-    return { host: page.hostId, owner: pr.owner, repo: pr.repo, pr: pr.pr, key: page.runKey(pr) };
-  }
-
-  // The card is drawn for the PR's run when it has one, else as a bar offering to generate it. A run in progress
-  // on the server, left by an earlier visit, is followed from where it is. A page with no brief comment yet, where
-  // generating is not possible, is waited on: the lookup is repeated once the document has changed and settled.
-  async function mountBrief(pr) {
-    const key = `${pr.owner}/${pr.repo}#${pr.pr}`;
-    if (briefState?.key === key) return;
-    unmountBrief();
-    const token = briefToken;
-    const state = { key, card: null, stop: null };
-    briefState = state;
-    const target = runTarget(pr);
-    const [run, status, pageSha] = await Promise.all([
-      source.loadBrief(pr.owner, pr.repo, pr.pr, target.key),
-      source.runStatus(target),
-      page.currentHeadSha(pr),
-    ]);
-    if (!live() || token !== briefToken) return;
-    const canGenerate = runControl.mayGenerate(status);
-    if (!run && !canGenerate) {
-      waitForBrief(state, pr);
-      return;
-    }
-
-    let current = run;
-    const baseView = () => (current ? { kind: "brief", ...current, runSha: current.headSha, pageSha, canGenerate } : { kind: "none", canGenerate });
-    const controller = runControl.create({
-      source,
-      run: target,
-      on: {
-        running: (view) => card.show({ kind: "running", ...view }),
-        error: (view) => card.show({ kind: "error", ...view }),
-        idle: () => card.show(baseView()),
-        done: async () => {
-          const fresh = await source.loadBrief(pr.owner, pr.repo, pr.pr, target.key, { server: true });
-          if (!live() || token !== briefToken) return;
-          if (fresh) current = fresh;
-          card.show(fresh ? baseView() : { kind: "error", message: "The run finished, but its brief could not be loaded" });
-        },
-      },
-    });
-    const card = brief.buildCard({
-      key: target.key,
-      filesUrl: page.filesUrl(pr),
-      onAction: (action) => (action === "cancel" ? controller.cancel() : controller.generate()),
-    });
-    card.show(baseView());
-    state.card = card;
-    const stopChange = page.onChange(placeBrief);
-    state.stop = () => {
-      controller.stop();
-      stopChange();
-    };
-    placeBrief();
-    if (status.ok && status.state === "running") controller.adopt(status);
-  }
-
-  // Waits for the brief comment to reach the page: once the document has changed and settled, the lookup runs again
-  // if a "Brief data" block is now in it. The wait ends with the next mount or unmount.
-  function waitForBrief(state, pr) {
-    let pending = null;
-    const stopChange = page.onChange(() => {
-      clearTimeout(pending);
-      pending = setTimeout(() => {
-        if (briefState !== state || !live()) return;
-        if (commentSource && !commentSource.extractPayload(document)) return;
-        state.stop();
-        briefState = null;
-        mountBrief(pr);
-      }, BRIEF_WAIT_MS);
-    });
-    state.stop = () => {
-      clearTimeout(pending);
-      stopChange();
-    };
-  }
 
   function sessionKey(pr) {
     return `${pr.owner}/${pr.repo}#${pr.pr}`;
@@ -138,14 +39,6 @@
 
   function applySession() {
     const session = current;
-    if (session?.offline && live()) {
-      tree.renderServerNote(session.offline, { onRetry: () => retry(session) });
-      return;
-    }
-    if (session?.line && live()) {
-      tree.renderGenerateLine(session.line.view, { onGenerate: () => session.line.controller.generate(), onCancel: () => session.line.controller.cancel() });
-      return;
-    }
     if (!session?.review || !live()) return;
     if (paneOwner === "host") {
       handBack(session);
@@ -639,8 +532,8 @@
     return tree.owns(node) || diagram.owns(node) || page.ownsLine(node);
   }
 
-  // A link to a stop, such as the PR brief card's, carries the anchor of that line or file in the URL fragment. Opening
-  // the files page on it goes to that stop. Any other fragment is left to the page.
+  // A link to a stop carries the anchor of that line or file in the URL fragment. Opening the files page on it goes to
+  // that stop. Any other fragment is left to the page.
   async function stopLinkedBy(session, wanted) {
     for (const stop of session.stops) {
       if ((await stopAnchor(stop)) === wanted) return stop;
@@ -656,49 +549,6 @@
     const linked = wanted.startsWith("diff-") ? await stopLinkedBy(session, wanted) : null;
     if (current !== session || !live()) return;
     if (linked) selectStop(session, linked);
-  }
-
-  // A PR with no run: the list's place holds one line that generates the brief, then follows the run. When it is done
-  // the page's review is loaded again and the full list takes the line's place.
-  // `idleKind` is "old" when the PR has a run written by an older version, which the line asks to re-run.
-  async function offerGenerate(pr, key, token, idleKind = "none") {
-    const target = runTarget(pr);
-    const status = await source.runStatus(target);
-    if (!live() || token !== loadToken) return;
-    if (!runControl.mayGenerate(status)) {
-      current = null;
-      return;
-    }
-    const session = { key, pr, startedAt: Date.now() };
-    const setView = (view) => {
-      if (current !== session || !live()) return;
-      session.line.view = view;
-      refresh();
-    };
-    session.line = {
-      view: { kind: idleKind },
-      controller: runControl.create({
-        source,
-        run: target,
-        on: {
-          running: (view) => setView({ kind: "running", ...view }),
-          error: (view) => setView({ kind: "error", ...view }),
-          idle: () => setView({ kind: idleKind }),
-          done: () => retry(session),
-        },
-      }),
-    };
-    current = session;
-    stopObserving = page.onChange(onMutations);
-    refresh();
-    if (status.ok && status.state === "running") session.line.controller.adopt(status);
-  }
-
-  // Fetches the review again and mounts the full list when the server is back; otherwise the note returns.
-  function retry(session) {
-    if (current !== session || !live()) return;
-    teardown();
-    start();
   }
 
   // Whether a mutation changes what the extension draws: the host adding or removing rows, diff blocks or tree rows, or
@@ -727,7 +577,6 @@
     focus.clearBox();
     tree.remove();
     diagram.remove();
-    current?.line?.controller.stop();
     current = null;
   }
 
@@ -735,13 +584,11 @@
   // extension, so it removes everything it added and stops listening.
   function shutdown() {
     shutDown = true;
-    unmountBrief();
     teardown();
     stopNavigating?.();
     stopNavigating = null;
     stopPaneWatch?.();
     stopPaneWatch = null;
-    syncPaneResize(null);
   }
 
   function live() {
@@ -757,27 +604,10 @@
     return chunks.length > 0 ? "chunks" : "files";
   }
 
-  // The host's file pane can be resized on a files page whoever owns the pane, and not elsewhere.
-  function syncPaneResize(pr) {
-    if (pr?.view === "files") {
-      stopPaneResize ??= page.resizePane();
-      return;
-    }
-    stopPaneResize?.();
-    stopPaneResize = null;
-  }
-
   async function start() {
     if (!live()) return;
     const pr = page.prFromUrl(location);
-    syncPaneResize(pr);
-    if (pr?.view === "conversation") {
-      if (current || stopObserving) teardown();
-      await mountBrief(pr);
-      return;
-    }
-    unmountBrief();
-    if (!pr) {
+    if (pr?.view !== "files") {
       if (current || stopObserving) teardown();
       return;
     }
@@ -787,20 +617,14 @@
     current = { key };
 
     const token = loadToken;
-    const [review, owner] = await Promise.all([source.loadReview(pr.owner, pr.repo, pr.pr, page.runKey(pr)), source.loadPaneOwner()]);
+    const [review, owner] = await Promise.all([source.loadReview(pr.owner, pr.repo, pr.pr), source.loadPaneOwner()]);
     if (!live()) return;
     paneOwner = owner;
-    if (token === loadToken && review?.error === "server") {
-      current = { key, pr, offline: review.baseUrl, startedAt: Date.now() };
-      stopObserving = page.onChange(onMutations);
-      refresh();
+    if (token !== loadToken) return;
+    if (!review) {
+      current = null;
       return;
     }
-    if (token === loadToken && (!review || review.error === "old")) {
-      await offerGenerate(pr, key, token, review ? "old" : "none");
-      return;
-    }
-    if (token !== loadToken || !review) return;
     const stops = tree.stopsOf(review);
     const chunks = tree.chunksOf(review);
     current = {

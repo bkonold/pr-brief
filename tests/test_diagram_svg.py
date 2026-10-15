@@ -51,7 +51,7 @@ PR = {"title": "T", "body": "", "headRefName": "b", "baseRefOid": "1", "headRefO
       "files": [{"path": "a.py", "additions": 1, "deletions": 1, "changeType": "MODIFIED"},
                 {"path": "b.py", "additions": 1, "deletions": 0, "changeType": "ADDED"}]}
 SVG_DOM = '<html><body><pre id="svg-out"><svg id="mermaid-123" viewBox="0 0 1 1"></svg></pre></body></html>'
-BRIEF_FILES = ("body.md", "review.json", "diagram.svg")
+BRIEF_FILES = ("review.json", "diagram.md", "diagram.svg")
 
 
 def script(folder: Path, name: str, body: str) -> Path:
@@ -145,7 +145,7 @@ class Render(unittest.TestCase):
         self.run_dir = self.dir / "run"
         self.run_dir.mkdir()
         (self.run_dir / "run.json").write_text(json.dumps(
-            {"variant": "v", "pr": 1, "host": "github", "repo": "o/r", "pr_head_sha": "2", "with_body": False, "exit_status": 0}))
+            {"variant": "v", "pr": 1, "repo": "o/r", "pr_head_sha": "2", "with_body": False, "exit_status": 0}))
         (self.run_dir / "pr.json").write_text(json.dumps(PR))
         (self.run_dir / "answer.yaml").write_text(ANSWER)
         (self.run_dir / "prompt.txt").write_text(f"=====USER=====\n\n{DIFF}")
@@ -179,6 +179,7 @@ class Render(unittest.TestCase):
         self.assertEqual((self.run_dir / "diagram.svg").read_text(), f'<svg id="{render.SVG_ID}" viewBox="0 0 1 1"></svg>\n')
         self.assertEqual(json.loads((self.run_dir / "run.json").read_text())["mermaid"], "9.8.7")
         self.assertEqual(json.loads((self.run_dir / "review.json").read_text())["diagram"], "diagram.svg")
+        self.assertRegex((self.run_dir / "diagram.md").read_text(), r"^```mermaid\n[\s\S]*\n```\n$")
 
     def test_no_chrome_fails_the_run_and_ships_no_brief(self) -> None:
         self.assertEqual(self.main(), 1)
@@ -224,7 +225,7 @@ class Render(unittest.TestCase):
     def test_an_answer_with_no_diagram_still_renders_without_chrome(self) -> None:
         (self.run_dir / "answer.yaml").write_text(re.sub(r"changes_diagram: \|\n(?:  .*\n)+", "", ANSWER))
         self.assertEqual(self.main(), 0)
-        self.assertNotIn("diagram.svg", self.files())
+        self.assertFalse({"diagram.md", "diagram.svg"} & self.files())
         self.assertNotIn("mermaid", json.loads((self.run_dir / "run.json").read_text()))
 
 
@@ -271,11 +272,6 @@ class DiagramTheme(unittest.TestCase):
     def test_the_properties_are_set_on_an_element_every_label_sits_under(self) -> None:
         self.assertRegex(render.DIAGRAM_STYLE, r"\.root \{ --prd-text:")
         self.assertNotRegex(render.DIAGRAM_STYLE, r"(?m)^\s*(?:#pr-diagram|&|:root) ?\{")
-
-    def test_the_standalone_page_follows_the_system_theme(self) -> None:
-        self.assertIn("github-markdown-css@5/github-markdown.css", render.PAGE)
-        self.assertNotIn("github-markdown-light.css", render.PAGE)
-        self.assertRegex(render.PAGE, r"@media \(prefers-color-scheme: dark\) \{[^@]*body, pre\.mermaid \{ background: #0d1117; \}")
 
 
 @unittest.skipUnless(shutil.which("node"), "node is needed to run the diagram's label script")

@@ -17,10 +17,8 @@ The pack is trimmed to 6000 estimated tokens by dropping whole items, callers fi
 contract and migrations, and the text says how many were left out.
 
 The mirror is a bare clone of your local checkout at `.cache/<mirror_name>` (git-ignored). `ensure_commits`
-fetches any base or head commit it lacks, for a GitHub PR from `github_url` (in a GitHub Actions job, the job's own repository when
-the config names none) through the `gh` credential helper
-and for a Forgejo PR from `source_checkout` (the commits of a Forgejo branch are normally already in your clone;
-GitHub is never asked), under an
+fetches any base or head commit it lacks from `github_url` (in a GitHub Actions job, the job's own repository when
+the config names none) through the `gh` credential helper, under an
 `fcntl` lock on `.cache/mirror.lock`, so parallel runs are safe. With several PRs, call it once for all their
 commits before starting parallel runs. When a commit still cannot be found, the callers and contract sections
 are dropped, the reason goes in `run.json`, and the run carries on.

@@ -75,8 +75,8 @@ system prompt says what to write: the rules, the shape of the answer and the rep
 the pull request itself: its title, branch, commits and diff. The model replies with a YAML answer, and `render.py`
 turns that into the brief.
 
-The system prompt has three sources: PR-Agent's `/describe` template (`vendor/pr_description_prompts.toml`), the
-variant file (`variants/brief.toml`), which adds the rules and two answer fields to that template, and the repository
+The system prompt has three sources: the template (`prompt.toml`), which asks for the diagram, the variant file
+(`variants/brief.toml`), which adds the rules and the other answer fields to that template, and the repository
 context that `context_pack.py` builds from the repository. `run.py <pr> --prompt-only` prints the real prompts for any
 pull request. The sections below show them for an invented pull request.
 
@@ -94,7 +94,7 @@ def build() -> str:
     variant: dict[str, Any] = tomllib.loads(VARIANT.read_text())
     system, user = build_prompts(variant, PR, DIFF, False, CONTEXT)
     rules: str = variant["extra_instructions"].strip("\n")
-    shape_start: int = system.index("class PRType")
+    shape_start: int = system.index("class PRBrief")
     shape: str = system[shape_start:system.index("\n=====", shape_start)].strip("\n")
     context: str = re.search(r"Repository context:\n=====\n(.*?)\n=====\n", system, re.DOTALL).group(1)
     about_context: str = re.search(r"^The Repository context section lists[^\n]*?\.(?= )", rules, re.MULTILINE).group(0)

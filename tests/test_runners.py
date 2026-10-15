@@ -137,7 +137,7 @@ class RunTest(unittest.TestCase):
         patches = [
             mock.patch.object(run, "HOME", self.home),
             mock.patch.object(run, "variant_file", lambda name: variant),
-            mock.patch.object(run, "get_host", lambda *args: FakeHost()),
+            mock.patch.object(run, "GitHub", FakeHost),
             mock.patch.object(run, "load_local", lambda: {}),
             mock.patch.object(run.subprocess, "run", fake_run),
             mock.patch.dict(run.os.environ, {"GH_TOKEN": "ghp_classic", "GITHUB_TOKEN": "ghp_other"}),
@@ -148,7 +148,7 @@ class RunTest(unittest.TestCase):
 
     def execute(self, *extra: str) -> int:
         with mock.patch.object(sys, "argv", ["run.py", "7", "--variant", "v", "--repo", "acme/widgets", *extra]):
-            return run.execute(run.Progress())
+            return run.main()
 
     def test_a_copilot_run_is_written_to_the_variant_folder_and_records_its_runner_and_model(self) -> None:
         self.assertEqual(self.execute("--runner", "copilot"), 0)
@@ -190,7 +190,7 @@ class RunTest(unittest.TestCase):
     def test_a_pr_with_no_files_stops_before_the_model_is_called(self) -> None:
         empty = FakeHost()
         empty.pr = lambda *args: {**FakeHost.pr(empty, *args), "files": []}
-        with mock.patch.object(run, "get_host", lambda *args: empty):
+        with mock.patch.object(run, "GitHub", lambda: empty):
             with self.assertRaises(SystemExit) as stopped:
                 self.execute()
         self.assertIn("lists no files for PR 7", str(stopped.exception))

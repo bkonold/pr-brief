@@ -21,8 +21,8 @@
   <rect class="bg" width="840" height="440" rx="10"/>
 
   <rect class="node" x="15" y="25" width="210" height="70" rx="6"/>
-  <text class="t" x="120" y="56">PR-Agent prompt</text>
-  <text class="s" x="120" y="79">vendored template</text>
+  <text class="t" x="120" y="56">Prompt template</text>
+  <text class="s" x="120" y="79">prompt.toml</text>
   <rect class="node" x="15" y="115" width="210" height="70" rx="6"/>
   <text class="t" x="120" y="146">Variant file</text>
   <text class="s" x="120" y="169">brief.toml</text>

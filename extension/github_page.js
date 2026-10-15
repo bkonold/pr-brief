@@ -33,10 +33,6 @@
   const PULL_PAGE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:\/|$)/;
   const CONVERSATION_PAGE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/;
 
-  // The conversation page's timeline is a sequence of .TimelineItem.js-comment-container elements inside
-  // .js-discussion, and the first is the PR's opening comment (the description).
-  const DESCRIPTION = ".js-discussion .js-comment-container";
-
   const idCache = new Map();
 
   // GitHub derives each diff block's id from the sha256 of its file path.
@@ -60,16 +56,6 @@
   function readHeadSha(doc = document) {
     const text = doc.querySelector(EMBEDDED_DATA)?.textContent ?? "";
     return HEAD_SHA.exec(text)?.[1] ?? null;
-  }
-
-  // The head commit when the page the script runs on does not show it: read from the PR's conversation page, then, only
-  // when a run server is set, asked of it. `commentSource` and `source` are loaded after this adapter, so they are
-  // looked up when the call is made.
-  async function fetchHeadSha(pr) {
-    const conversation = page.isConversationPage(pr) ? null : await ns.commentSource?.fetchConversation(page.conversationUrl(pr));
-    const shown = conversation ? readHeadSha(conversation) : null;
-    if (shown) return shown;
-    return (await ns.source?.headSha({ host: "github", owner: pr.owner, repo: pr.repo, pr: pr.pr, key: String(pr.pr) })) ?? null;
   }
 
   function findRow(anchor, root = document) {
@@ -129,11 +115,7 @@
     pullPage: PULL_PAGE,
     conversationPage: CONVERSATION_PAGE,
     conversationPath: (pr) => `/${pr.owner}/${pr.repo}/pull/${pr.pr}`,
-    filesPath: (pr) => `/${pr.owner}/${pr.repo}/pull/${pr.pr}/files`,
-    hostId: "github",
-    runKey: (pr) => String(pr.pr),
     readHeadSha,
-    fetchHeadSha,
     blockSelector: DIFF_BLOCK,
     pathOfBlock,
     // The whole entry of one file's diff, which holds the file callout above its header.
@@ -149,11 +131,8 @@
     contentSelector: DIFF_CONTENT,
     diagramHost,
     paneHost,
-    // GitHub's pane has its own divider.
-    nativeResize: true,
     treeFileSelector: TREE_FILE,
     treeDirSelector: TREE_DIR,
-    descriptionHost: () => document.querySelector(DESCRIPTION),
   });
 
   ns.githubPage = page;

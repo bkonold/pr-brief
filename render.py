@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Render a run's answer.yaml as the PR body, and as a standalone HTML page.
+"""Render a run's answer.yaml as the brief: review.json, the diagram's Mermaid text and its SVG.
 
 usage: render.py <run dir> [--config FILE]      e.g. runs/42/brief
 
 --config names a TOML to read in place of local.toml (see config.py); run.py passes its own on.
 
-Reads answer.yaml, run.json and pr.json from the run dir.
-Writes body.md and body.html, review.json and the diagram's SVG. On broken YAML it writes error.txt and an error page and exits 1.
-The body is the PR's title, the model's description, the Contract and Data sections, the diagram and a caption about its dashed boxes; the
-diagram's boxes, the walkthrough stops, the layers (the key `chunks`) and the file sets go to review.json, where the browser extension reads
-them; the body has no section for the layers.
+Reads answer.yaml, run.json and pr.json from the run dir. Writes review.json (the diagram's boxes, the walkthrough
+stops, the layers under the key `chunks`, and the file sets, which the browser extension reads), diagram.md (the
+diagram as a ```mermaid fence, for the PR comment) and diagram.svg. On broken YAML it writes error.txt and exits 1.
 """
 import argparse
 import html
@@ -32,13 +30,10 @@ import config
 config.use_config_flag(sys.argv)
 
 from config import ROOT, load_local  # noqa: E402
-import layout  # noqa: E402
 from diff_lines import file_diff_lines  # noqa: E402
 from context_pack import BlobReader, has_commit, is_test_file  # noqa: E402
-from contract_lines import CONTRACT_LEVELS, Line, Source, contract_lines  # noqa: E402
-from data_lines import DATA_LEVELS, data_lines  # noqa: E402
-from hosts import get_host  # noqa: E402
-from hosts.github import GitHub  # noqa: E402
+from contract_lines import Line, contract_lines  # noqa: E402
+from data_lines import data_lines  # noqa: E402
 from hunks import Hunk, ReadDiff, hunk_json, parse_hunks, read_diff  # noqa: E402
 from sources import SourceFinder  # noqa: E402
 
@@ -51,9 +46,6 @@ DIAGRAM_THRESHOLD = 5
 DIAGRAM_FONT_SIZE = 16
 DIAGRAM_WRAPPING_WIDTH = 280
 CONTEXT_CLASS_DEF = "classDef context stroke-dasharray:5 4,fill:#fff;"
-CONTEXT_CAPTION = "Dashed boxes are unchanged context"
-# Section headings whose name is not the key's own word.
-HEADINGS: dict[str, str] = {"contract": "API"}
 MIGRATION_GLOBS: list[str] = load_local().get("migration_globs", [])
 
 
@@ -78,20 +70,6 @@ def render_diagram(raw: Any) -> str:
 
 
 NON_EDGE_LINE = re.compile(r"\s*(?:%%|classDef\b|class\b|style\b|linkStyle\b|subgraph\b|click\b|direction\b)")
-
-
-# ---------------------------------------------------------------- file links
-
-# The host that built the run (hosts/); main() sets it from run.json, and GitHub is the default.
-LINK_HOST = GitHub()
-
-
-def diff_link(repo: str, pr: str, filename: str) -> str:
-    return LINK_HOST.diff_link(repo, pr, filename)
-
-
-def line_link(repo: str, pr: str, start: dict[str, Any]) -> str:
-    return LINK_HOST.line_link(repo, pr, start)
 
 
 # ---------------------------------------------------------------- globs
@@ -417,14 +395,7 @@ def add_context_style(diagram: str, context_nodes: list[str]) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------- contract and data block
-
-def unchecked_sides(run: dict[str, Any], contract: dict[str, Any] | None) -> list[str]:
-    """`API` when the run has no contract and did not look for one, and `database` when no migration globs are set."""
-    context: dict[str, Any] = run.get("context") or {}
-    api_checked: bool = "contract" in (context.get("sections") or {}) and "contract" not in (context.get("dropped") or {})
-    return (["API"] if contract is None and not api_checked else []) + ([] if MIGRATION_GLOBS else ["database"])
-
+# ---------------------------------------------------------------- contract and data files
 
 def migration_paths(pr: dict[str, Any]) -> list[str]:
     return [f["path"] for f in pr["files"] if matches(MIGRATION_GLOBS, f["path"]) and f.get("changeType") != "DELETED"]
@@ -462,8 +433,7 @@ def locate_sources(pr: dict[str, Any], api: list[Line], data: list[Line], diff_t
 def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Line], data: list[Line]) -> dict[str, list[str]]:
     """The files that make up the PR's contract change, its data change and its tests, each sorted without repeats. The
     contract is the spec when the PR changes it and the source of every contract line; the data is the migration files
-    and the source of every data line; the tests are the changed files `is_test_file` recognises, which the Contract
-    and Data sections never list."""
+    and the source of every data line; the tests are the changed files `is_test_file` recognises."""
     paths: list[str] = [f["path"] for f in pr["files"]]
     spec: str | None = (contract or {}).get("path") or load_local().get("openapi_path")
     migrations: set[str] = {p for p in paths if matches(MIGRATION_GLOBS, p)}
@@ -472,40 +442,14 @@ def file_sets(pr: dict[str, Any], contract: dict[str, Any] | None, api: list[Lin
             "tests": sorted({p for p in paths if is_test_file(p)})}
 
 
-def sections(run: dict[str, Any], api: list[Line], data: list[Line], unchecked: list[str],
-             files: dict[str, list[str]] | None = None) -> tuple[str, str]:
-    """The Contract and Data sections of a body, each one closed block with a table of all its lines and a list of its
-    files. A section with no lines says so, and says when its side could not be checked."""
-    repo: str = run["repo"]
-    number: str = str(run["pr"])
-    file_lists: dict[str, list[str]] = files or {}
-
-    def source_link(source: Source) -> str:
-        return line_link(repo, number, {"path": source.path, "side": source.side, "line": source.line})
-
-    def link_of(line: Line) -> str:
-        if line.loc:
-            return line_link(repo, number, {"path": line.path, "side": line.loc[0], "line": line.loc[1]})
-        return diff_link(repo, number, line.path)
-
-    def draw(side: str, none: str, levels: tuple[str, ...], kind: str, lines: list[Line]) -> str:
-        if not lines:
-            return f"{side[0].upper()}{side[1:]} changes not checked" if side in unchecked else none
-        return layout.section(kind, HEADINGS.get(kind) or kind.capitalize(), levels, lines, link_of, source_link,
-                              [(path, diff_link(repo, number, path)) for path in file_lists.get(kind, [])])
-
-    return (draw("API", "No API changes", CONTRACT_LEVELS, "contract", api),
-            draw("database", "No database changes", DATA_LEVELS, "data", data))
-
-
-# ---------------------------------------------------------------- body
+# ---------------------------------------------------------------- brief
 
 @dataclass
 class Brief:
-    """What a run's answer renders to: the body, the diagram's boxes by id (`title`, `files` and the
-    numbers of the `stops` that land on it, in diagram order), the walkthrough's stops, the file sets, and the layers
-    with the hunks they group."""
-    body: str
+    """What a run's answer renders to: the diagram as a ```mermaid fence ("" when there is none), the diagram's boxes by
+    id (`title`, `files` and the numbers of the `stops` that land on it, in diagram order), the walkthrough's stops, the
+    file sets, and the layers with the hunks they group."""
+    diagram: str
     nodes: dict[str, dict[str, Any]]
     stops: list[dict[str, Any]]
     file_sets: dict[str, list[str]] = field(default_factory=lambda: {"contract": [], "data": [], "tests": []})
@@ -513,22 +457,16 @@ class Brief:
     hunks: list[Hunk] = field(default_factory=list)
 
 
-def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], diff_lines: dict[str, list[DiffLine]],
-               notes: list[str], contract: dict[str, Any] | None = None, diff_text: str = "",
-               read_file: Callable[[str], str | None] | None = None) -> Brief:
+def build_brief(pr: dict[str, Any], data: dict[str, Any], diff_lines: dict[str, list[DiffLine]], notes: list[str],
+                contract: dict[str, Any] | None = None, diff_text: str = "",
+                read_file: Callable[[str], str | None] | None = None) -> Brief:
     paths: list[str] = [f["path"] for f in pr["files"]]
     if not paths:
         raise AnswerError("The pull request has no files, so no stop can point at one.")
 
-    ordered: dict[str, Any] = {}
-    if run["with_body"] and (pr["body"] or "").strip():
-        ordered["User Description"] = pr["body"].strip()
-    if "description" in data:
-        ordered["description"] = data["description"]
     api, rows = build_lines(pr, contract, diff_text)
     locate_sources(pr, api, rows, diff_text, read_file)
     sets: dict[str, list[str]] = file_sets(pr, contract, api, rows)
-    ordered["contract"], ordered["data"] = sections(run, api, rows, unchecked_sides(run, contract), sets)
     hunks: list[Hunk] = parse_hunks(diff_text)
     chunks: list[dict[str, Any]] | None = None
     chunk_notes: list[str] = []
@@ -550,31 +488,10 @@ def build_body(run: dict[str, Any], pr: dict[str, Any], data: dict[str, Any], di
     stops_on: dict[str, list[int]] = {node: [stop["i"] for stop in stops if stop["node"] == node] for node in node_files}
     nodes: dict[str, dict[str, Any]] = {node: {"title": titles.get(node, node), "files": files, "stops": stops_on[node]}
                                         for node, files in node_files.items()}
-    caption: str = ""
     if diagram:
         context_nodes: list[str] = [node for node, files in node_files.items() if not files]
         diagram = stop_badges(add_context_style(diagram, context_nodes), stops_on)
-        caption = CONTEXT_CAPTION if context_nodes else ""
-        ordered["changes_diagram"] = diagram
-
-    body: str = ""
-    for idx, (key, value) in enumerate(ordered.items()):
-        if key == "changes_diagram":
-            body += f"### Diagram Walkthrough\n\n{value}\n\n{caption + chr(10) * 2 if caption else ''}"
-            continue
-        if key in ("contract", "data") and value.startswith("<details"):
-            body += f"{value}\n"
-        else:
-            body += f"### {HEADINGS.get(key) or key.replace('_', ' ').capitalize()}\n"
-            if isinstance(value, list):
-                value = ", ".join(str(v).rstrip() for v in value)
-            if key == "description":
-                value = value.replace("\n-", "\n\n-").strip()
-            body += f"{value}\n"
-        if idx < len(ordered) - 1:
-            body += "\n\n" if key in ("contract", "data") else "\n\n___\n\n"
-    body += "\n\n___\n\n"
-    return Brief(f"# {pr['title']}\n\n{body}", nodes, stops, sets, chunks, hunks)
+    return Brief(diagram, nodes, stops, sets, chunks, hunks)
 
 
 # ---------------------------------------------------------------- review.json
@@ -606,6 +523,7 @@ def review_json(run: dict[str, Any], brief: Brief, has_diagram: bool) -> dict[st
 # ---------------------------------------------------------------- diagram svg
 
 DIAGRAM_SVG = "diagram.svg"
+DIAGRAM_MD = "diagram.md"
 SVG_ID = "pr-diagram"
 CHROME_TIMEOUT_SECONDS = 90
 CHROME_ENV = "PR_BRIEF_CHROME"
@@ -768,8 +686,8 @@ def render_svg(diagram_text: str) -> str:
 
 
 def write_diagram_svg(md: str, run_dir: Path) -> str | None:
-    """Writes diagram.svg for the diagram in `md` and returns the Mermaid version that drew it; None when `md` has no
-    diagram. Raises AnswerError when it can't be drawn: a brief is never kept without its diagram."""
+    """Writes diagram.svg for the diagram fenced in `md` and returns the Mermaid version that drew it; None when `md` has
+    no diagram. Raises AnswerError when it can't be drawn: a brief is never kept without its diagram."""
     fence: re.Match[str] | None = MERMAID_FENCE.search(md)
     if not fence:
         return None
@@ -778,58 +696,7 @@ def write_diagram_svg(md: str, run_dir: Path) -> str | None:
     return mermaid_version()
 
 
-# ---------------------------------------------------------------- pages
-
-PAGE = """<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__TITLE__</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.css">
-<style>
- body { background: #fff; margin: 0; }
- .markdown-body { box-sizing: border-box; max-width: 980px; margin: 0 auto; padding: 32px 16px; }
- pre.mermaid { background: #fff; text-align: center; }
- .pill { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 7px; border: 1px solid #8c959f; border-radius: 999px; white-space: nowrap; vertical-align: 1px; }
- .pill.p0 { background: #1f2328; border-color: #1f2328; color: #fff; font-weight: 600; }
- .pill.p1 { border-color: #1f2328; font-weight: 600; }
- details > summary .pill { margin: 0 4px; }
- .muted { color: #59636e; font-size: 12px; }
- @media (prefers-color-scheme: dark) {
-  body, pre.mermaid { background: #0d1117; }
-  .pill { border-color: #9198a1; }
-  .pill.p0 { background: #f0f6fc; border-color: #f0f6fc; color: #0d1117; }
-  .pill.p1 { border-color: #f0f6fc; }
-  .muted { color: #9198a1; }
- }
- .table-wrap { overflow-x: auto; margin: 4px 0 8px; }
- .table-wrap table { display: table; margin: 0; }
- .table-wrap td:first-child, .table-wrap th:first-child, .table-wrap td:last-child, .table-wrap th:last-child { white-space: nowrap; }
- .table-wrap td:last-child, .table-wrap th:last-child { width: 1%; }
- .table-wrap td:nth-child(2), .table-wrap th:nth-child(2) { min-width: 9ch; }
-</style></head><body><article class="markdown-body" id="out"></article>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>
-__DIAGRAM_STYLE__
- const md = __MD__;
- document.getElementById('out').innerHTML = marked.parse(md, { gfm: true });
- document.querySelectorAll('code.language-mermaid').forEach(c => {
-   const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = styleDiagramText(c.textContent);
-   c.parentElement.replaceWith(pre);
- });
- mermaid.initialize({ startOnLoad: false, theme: 'default', ...DIAGRAM_CONFIG });
- mermaid.run().then(() => document.querySelectorAll('pre.mermaid svg').forEach(restyleDiagramSvg));
-</script></body></html>"""
-
-ERROR_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Error</title>
-<style>body{font:14px/1.5 system-ui,sans-serif;margin:0;padding:24px;background:#fff;color:#1f2328}
-pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px}h2{color:#cf222e}</style></head><body>
-<h2>Run failed</h2><pre>__ERROR__</pre><h3>Raw answer</h3><pre>__RAW__</pre></body></html>"""
-
-
-def markdown_page(md: str) -> str:
-    title: str = html.escape(md.splitlines()[0].lstrip("# ").strip())
-    return PAGE.replace("__DIAGRAM_STYLE__", DIAGRAM_STYLE).replace("__TITLE__", title).replace("__MD__", json.dumps(md).replace("</", "<\\/"))
-
+# ---------------------------------------------------------------- answer
 
 def parse_answer(raw: str) -> dict[str, Any]:
     text: str = re.sub(r"^```(?:yaml)?\n|\n```$", "", raw.strip())
@@ -843,19 +710,17 @@ def parse_answer(raw: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    global LINK_HOST
     parser = argparse.ArgumentParser(description="Render a run's answer.yaml as its brief.")
     parser.add_argument("run_dir")
     parser.add_argument("--config", help="a TOML to read in place of local.toml (see config.py)")
     run_dir: Path = Path(parser.parse_args().run_dir).resolve()
     run: dict[str, Any] = json.loads((run_dir / "run.json").read_text())
-    LINK_HOST = get_host(run.get("host", "github"), load_local())
     pr: dict[str, Any] = json.loads((run_dir / "pr.json").read_text())
     raw: str = (run_dir / "answer.yaml").read_text()
     contract_file: Path = run_dir / "contract.json"
     contract: dict[str, Any] | None = json.loads(contract_file.read_text()) if contract_file.exists() else None
     notes: list[str] = []
-    for stale in ("body.md", "body.html", "review.json", DIAGRAM_SVG, "error.txt"):
+    for stale in ("review.json", DIAGRAM_MD, DIAGRAM_SVG, "error.txt"):
         (run_dir / stale).unlink(missing_ok=True)
 
     try:
@@ -865,20 +730,19 @@ def main() -> int:
         prompt_file: Path = run_dir / "prompt.txt"
         diff_text: str = diff_from_prompt(prompt_file.read_text()) if prompt_file.exists() else ""
         diff_lines: dict[str, list[DiffLine]] = diff_lines_by_path(diff_text)
-        brief: Brief = build_body(run, pr, data, diff_lines, notes, contract, diff_text, head_reader(run["pr_head_sha"], pr))
-        mermaid: str | None = write_diagram_svg(brief.body, run_dir)
+        brief: Brief = build_brief(pr, data, diff_lines, notes, contract, diff_text, head_reader(run["pr_head_sha"], pr))
+        mermaid: str | None = write_diagram_svg(brief.diagram, run_dir)
     except AnswerError as e:
         (run_dir / DIAGRAM_SVG).unlink(missing_ok=True)
         (run_dir / "error.txt").write_text(f"{e}\n")
-        (run_dir / "body.html").write_text(ERROR_PAGE.replace("__ERROR__", html.escape(str(e))).replace("__RAW__", html.escape(raw)))
         print(f"{run_dir}: {e}", file=sys.stderr)
         return 1
 
     if mermaid is not None:
         run["mermaid"] = mermaid
     (run_dir / "run.json").write_text(json.dumps(run, indent=2) + "\n")
-    (run_dir / "body.md").write_text(brief.body)
-    (run_dir / "body.html").write_text(markdown_page(brief.body))
+    if brief.diagram:
+        (run_dir / DIAGRAM_MD).write_text(brief.diagram.strip() + "\n")
     has_diagram: bool = mermaid is not None
     (run_dir / "review.json").write_text(json.dumps(review_json(run, brief, has_diagram), indent=2) + "\n")
     if notes:

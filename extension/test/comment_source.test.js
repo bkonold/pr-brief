@@ -39,10 +39,10 @@ test("extractPayload needs the exact summary and some text in the fence", () => 
   assert.equal(extractPayload(fakeDoc([])), null);
 });
 
-test("extractPayload looks only inside GitHub's and Forgejo's rendered markdown", () => {
+test("extractPayload looks only inside GitHub's rendered markdown", () => {
   const doc = fakeDoc([]);
   extractPayload(doc);
-  assert.deepEqual(doc.selectors, [".markdown-body details, .render-content.markup details"]);
+  assert.deepEqual(doc.selectors, [".markdown-body details"]);
 });
 
 test("inflate returns the JSON object of a gzip, with its non-ASCII text intact", async () => {
@@ -70,15 +70,23 @@ test("inflate refuses a payload that inflates past the size cap", async () => {
   assert.equal(await inflate(huge), null);
 });
 
-test("readBrief splits the posted review from the diagram and the body page", async () => {
+test("readBrief splits the posted review from the diagram", async () => {
   const review = { schema: 4, repo: "o/r", pr: 7, head_sha: "a".repeat(40), variant: "v", nodes: {}, walkthrough: [], file_sets: [{ id: "all" }] };
-  const doc = fakeDoc([{ summary: "Brief data", pre: pack({ ...review, diagram_svg: "<svg/>", body_html: "<p>hi</p>" }) }]);
-  assert.deepEqual(await readBrief(doc), { review, bodyHtml: "<p>hi</p>", diagramSvg: "<svg/>" });
+  const doc = fakeDoc([{ summary: "Brief data", pre: pack({ ...review, diagram_svg: "<svg/>" }) }]);
+  assert.deepEqual(await readBrief(doc), { review, diagramSvg: "<svg/>" });
 });
 
-test("readBrief gives null for a missing diagram or body page, and null when there is no readable block", async () => {
+test("readBrief drops the body page an older comment still carries", async () => {
+  const review = { schema: 4, repo: "o/r", pr: 7, nodes: {}, walkthrough: [] };
+  for (const body_html of ["<p>hi</p>", null]) {
+    const doc = fakeDoc([{ summary: "Brief data", pre: pack({ ...review, diagram_svg: "<svg/>", body_html }) }]);
+    assert.deepEqual(await readBrief(doc), { review, diagramSvg: "<svg/>" });
+  }
+});
+
+test("readBrief gives null for a missing diagram, and null when there is no readable block", async () => {
   const review = { schema: 4, nodes: {}, walkthrough: [] };
-  assert.deepEqual(await readBrief(fakeDoc([{ summary: "Brief data", pre: pack({ ...review, diagram_svg: null }) }])), { review, bodyHtml: null, diagramSvg: null });
+  assert.deepEqual(await readBrief(fakeDoc([{ summary: "Brief data", pre: pack({ ...review, diagram_svg: null }) }])), { review, diagramSvg: null });
   assert.equal(await readBrief(fakeDoc([])), null);
   assert.equal(await readBrief(fakeDoc([{ summary: "Brief data", pre: "garbage" }])), null);
 });

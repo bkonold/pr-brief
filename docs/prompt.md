@@ -6,8 +6,8 @@ system prompt says what to write: the rules, the shape of the answer and the rep
 the pull request itself: its title, branch, commits and diff. The model replies with a YAML answer, and `render.py`
 turns that into the brief.
 
-The system prompt has three sources: PR-Agent's `/describe` template (`vendor/pr_description_prompts.toml`), the
-variant file (`variants/brief.toml`), which adds the rules and two answer fields to that template, and the repository
+The system prompt has three sources: the template (`prompt.toml`), which asks for the diagram, the variant file
+(`variants/brief.toml`), which adds the rules and the other answer fields to that template, and the repository
 context that `context_pack.py` builds from the repository. `run.py <pr> --prompt-only` prints the real prompts for any
 pull request. The sections below show them for an invented pull request.
 
@@ -30,7 +30,7 @@ For changes_diagram:
 - Label an arrow only when the two boxes alone don't say what moves along it or why it fires. Use one to four words for one of these: a user action (`pick report type`), a condition (`flag on`, `no match`, `on POST`), the data handed over (`value or null`), a write (`insert row`), or a return to an earlier box (`redirect back`). Leave the arrow unlabelled when it is a plain call to the next box and that box's name already says what happens. Never use filler labels such as "calls", "uses" or "then". Each arrow joins two boxes that are really connected in the flow.
 - Do not number the nodes.
 
-The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each layer's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each layer's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context.
 
 For walkthrough:
 - Give a top-level `walkthrough`: 3 to 10 stops, in the order a reader should follow the change from where it enters to where it lands. Stops may return to a file or a box already visited.
@@ -54,19 +54,8 @@ For chunks (the layers of the change):
 ## The answer's shape
 
 ```python
-class PRType(str, Enum):
-    bug_fix = "Bug fix"
-    tests = "Tests"
-    enhancement = "Enhancement"
-    documentation = "Documentation"
-    other = "Other"
-
-class PRDescription(BaseModel):
-    type: List[PRType] = Field(description="one or more types that describe the PR content. Return the label member value (e.g. 'Bug fix', not 'bug_fix')")
-    description: str = Field(description="summarize the PR changes with 1-4 bullet points, each up to 8 words. For large PRs, add sub-bullets for each bullet if needed. Order bullets by importance, with each bullet highlighting a key change group.")
-    title: str = Field(description="a concise and descriptive title that captures the PR's main theme")
-    changes_diagram: str = Field(description='a horizontal diagram that represents the main PR changes, in the format of a valid mermaid LR flowchart. The diagram should be concise and easy to read. Leave empty if no diagram is relevant. To create robust Mermaid diagrams, follow this two-step process: (1) Declare the nodes: nodeID["node description"]. (2) Then define the links: nodeID1 -- "link text" --> nodeID2. Node description must always be surrounded with double quotation marks')
-'
+class PRBrief(BaseModel):
+    changes_diagram: str = Field(description='a diagram that represents the main PR changes, in the format of a valid mermaid flowchart. To create robust Mermaid diagrams, follow this two-step process: (1) Declare the nodes: nodeID["node description"]. (2) Then define the links: nodeID1 -- "link text" --> nodeID2. Node description must always be surrounded with double quotation marks')
     walkthrough: List[dict] = Field(description="3 to 10 stops, in the order a reader should follow the change. Stops may return to a file or a box already visited. Stops follow what a reviewer needs to understand. Each stop is an object with the keys: node (str: the id of the changes_diagram box the stop belongs to, normally the box whose node_files lists the stop's file); file (str: the full path of one changed file, never a generated file); title (str: at most 6 words on what this stop shows); why (str: at most 20 words on what to look at here and how it follows from the previous stop; for the first stop, why the reader begins there); line_text (str, optional: include it ONLY when a single line clearly anchors the stop, such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit line_text and the reader is pointed at the file instead).")
     node_files: Dict[str, List[str]] = Field(description="for every node id of changes_diagram, the full paths of the changed files that box covers, as an object from node id to a list of paths. Use an empty list for a box that is unchanged context. Use only paths that appear in the diff. Every changed file is listed under exactly one box; test files go with the box whose code they test.")
     chunks: List[dict] = Field(description="the diff's hunks grouped into an ordered stack of layers, 2 to 7 of them (one for a small single-purpose PR). Every hunk ID in the diff goes in exactly one layer; never invent an ID. Each layer is an object with the keys: title (str: at most 8 words, a statement of what the layer changes and never a question, such as `Soft delete for archived items`); summary (str: one sentence); hunks (list of str: the hunk IDs, such as h03); depends_on (list of int: the numbers of earlier layers it needs, counting from 1; may be empty); risk (str: low, medium or high); risk_reason (str: one line, only for medium or high risk).")
@@ -96,7 +85,7 @@ Differences between the base and head `api/openapi.json`.
 ````
 PR Info:
 
-Previous title: 'Add a nickname to the profile page'
+PR title: 'Add a nickname to the profile page'
 
 Branch: 'nickname'
 
@@ -145,14 +134,11 @@ Response (should be a valid YAML, and nothing else):
 <details><summary>Full system prompt for the example PR</summary>
 
 ````
-You are PR-Reviewer, a language model designed to review a Git Pull Request (PR).
-Your task is to provide a full description for the PR content: type, description, title, and files walkthrough.
+You are writing a reading guide for a reviewer who did not write this Git Pull Request (PR). The guide says where to read and in what order; it never judges whether the change is good.
 - Focus on the new PR code (lines starting with '+' in the 'PR Git Diff' section).
-- Keep in mind that the 'Previous title', 'Previous description' and 'Commit messages' sections may be partial, simplistic, non-informative or out of date. Hence, compare them to the PR diff code, and use them only as a reference.
-- The generated title and description should prioritize the most significant changes.
+- Keep in mind that the 'PR title', 'PR description' and 'Commit messages' sections may be partial, simplistic, non-informative or out of date. Hence, compare them to the PR diff code, and use them only as a reference.
 - If needed, each YAML output should be in block scalar indicator ('|')
 - When quoting variables, names or file paths from the code, use backticks (`) instead of single quote (').
-- When needed, use '- ' as bullets
 
 Extra instructions from the user:
 =====
@@ -170,7 +156,7 @@ For changes_diagram:
 - Label an arrow only when the two boxes alone don't say what moves along it or why it fires. Use one to four words for one of these: a user action (`pick report type`), a condition (`flag on`, `no match`, `on POST`), the data handed over (`value or null`), a write (`insert row`), or a return to an earlier box (`redirect back`). Leave the arrow unlabelled when it is a plain call to the next box and that box's name already says what happens. Never use filler labels such as "calls", "uses" or "then". Each arrow joins two boxes that are really connected in the flow.
 - Do not number the nodes.
 
-The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each layer's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context in the description.
+The Repository context section lists who calls the changed code, which apps it ships in, contract changes and destructive migration statements. Use it to judge blast radius when you write each stop's why and rate each layer's risk. The caller list is partial: every listed caller is real, but many are missing; treat listed callers as confirmed reach, and never treat a missing caller as evidence that code is unaffected. Do not summarize the Repository context.
 
 For walkthrough:
 - Give a top-level `walkthrough`: 3 to 10 stops, in the order a reader should follow the change from where it enters to where it lands. Stops may return to a file or a box already visited.
@@ -208,21 +194,10 @@ Differences between the base and head `api/openapi.json`.
 =====
 
 
-The output must be a YAML object equivalent to type $PRDescription, according to the following Pydantic definitions:
+The output must be a YAML object equivalent to type $PRBrief, according to the following Pydantic definitions:
 =====
-class PRType(str, Enum):
-    bug_fix = "Bug fix"
-    tests = "Tests"
-    enhancement = "Enhancement"
-    documentation = "Documentation"
-    other = "Other"
-
-class PRDescription(BaseModel):
-    type: List[PRType] = Field(description="one or more types that describe the PR content. Return the label member value (e.g. 'Bug fix', not 'bug_fix')")
-    description: str = Field(description="summarize the PR changes with 1-4 bullet points, each up to 8 words. For large PRs, add sub-bullets for each bullet if needed. Order bullets by importance, with each bullet highlighting a key change group.")
-    title: str = Field(description="a concise and descriptive title that captures the PR's main theme")
-    changes_diagram: str = Field(description='a horizontal diagram that represents the main PR changes, in the format of a valid mermaid LR flowchart. The diagram should be concise and easy to read. Leave empty if no diagram is relevant. To create robust Mermaid diagrams, follow this two-step process: (1) Declare the nodes: nodeID["node description"]. (2) Then define the links: nodeID1 -- "link text" --> nodeID2. Node description must always be surrounded with double quotation marks')
-'
+class PRBrief(BaseModel):
+    changes_diagram: str = Field(description='a diagram that represents the main PR changes, in the format of a valid mermaid flowchart. To create robust Mermaid diagrams, follow this two-step process: (1) Declare the nodes: nodeID["node description"]. (2) Then define the links: nodeID1 -- "link text" --> nodeID2. Node description must always be surrounded with double quotation marks')
     walkthrough: List[dict] = Field(description="3 to 10 stops, in the order a reader should follow the change. Stops may return to a file or a box already visited. Stops follow what a reviewer needs to understand. Each stop is an object with the keys: node (str: the id of the changes_diagram box the stop belongs to, normally the box whose node_files lists the stop's file); file (str: the full path of one changed file, never a generated file); title (str: at most 6 words on what this stop shows); why (str: at most 20 words on what to look at here and how it follows from the previous stop; for the first stop, why the reader begins there); line_text (str, optional: include it ONLY when a single line clearly anchors the stop, such as the endpoint, handler or method the previous stop calls into, the query, or the declaration the rest of the change builds on. Copy the line verbatim from that file's diff without its leading '+', '-' or space; it may be a removed line when that is where the stop begins. Choose a distinctive line that appears once in that file's diff; if the best line is generic such as '}' or 'return null;', choose the nearest distinctive one. When no single line clearly anchors the stop, omit line_text and the reader is pointed at the file instead).")
     node_files: Dict[str, List[str]] = Field(description="for every node id of changes_diagram, the full paths of the changed files that box covers, as an object from node id to a list of paths. Use an empty list for a box that is unchanged context. Use only paths that appear in the diff. Every changed file is listed under exactly one box; test files go with the box whose code they test.")
     chunks: List[dict] = Field(description="the diff's hunks grouped into an ordered stack of layers, 2 to 7 of them (one for a small single-purpose PR). Every hunk ID in the diff goes in exactly one layer; never invent an ID. Each layer is an object with the keys: title (str: at most 8 words, a statement of what the layer changes and never a question, such as `Soft delete for archived items`); summary (str: one sentence); hunks (list of str: the hunk IDs, such as h03); depends_on (list of int: the numbers of earlier layers it needs, counting from 1; may be empty); risk (str: low, medium or high); risk_reason (str: one line, only for medium or high risk).")
@@ -232,17 +207,9 @@ class PRDescription(BaseModel):
 Example output:
 
 ```yaml
-type:
-- ...
-- ...
-description: |
-  - ...
-  - ...
-title: |
-  ...
 changes_diagram: |
   ```mermaid
-  flowchart LR
+  flowchart TD
     ...
   ```
 node_files:

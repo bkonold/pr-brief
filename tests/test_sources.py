@@ -423,11 +423,10 @@ class ContractLines(unittest.TestCase):
 
 
 PR_PATHS = [SPEC, CUSTOMER, STATUS, CONTROLLER, ENTITY, MIGRATION, "web/Page.tsx", "app/models/frontend/Untouched.java"]
-RUN = {"repo": "acme/shop", "pr": 7, "with_body": False, "variant": "brief", "pr_head_sha": "abc",
-       "context": {"sections": {"contract": 0}, "dropped": {}}}
+RUN = {"repo": "acme/shop", "pr": 7, "variant": "brief", "pr_head_sha": "abc"}
 PR = {"title": "T", "body": "", "files": [{"path": p, "additions": 2, "deletions": 1, "changeType": "MODIFIED"} for p in PR_PATHS]}
 DIAGRAM = "```mermaid\nflowchart LR\n  A[\"1 · Customers\"] --> B[\"Table\"]\n```"
-ANSWER = {"type": "Enhancement", "description": "d", "changes_diagram": DIAGRAM, "node_files": {"A": [CUSTOMER], "B": [MIGRATION]},
+ANSWER = {"changes_diagram": DIAGRAM, "node_files": {"A": [CUSTOMER], "B": [MIGRATION]},
           "walkthrough": [{"file": CUSTOMER, "title": "Model", "why": "w", "node": "A"},
                           {"file": MIGRATION, "title": "Table", "why": "w", "node": "A"},
                           {"file": CONTROLLER, "title": "Endpoint", "why": "w", "node": "A"}]}
@@ -453,7 +452,7 @@ class FileSets(unittest.TestCase):
 
     def brief(self, paths=None, read=lambda path: {ENTITY: ENTITY_AFTER, CONTROLLER: CONTROLLER_AFTER}.get(path)):
         pr = PR if paths is None else {**PR, "files": [{"path": p, "additions": 1, "deletions": 0, "changeType": "MODIFIED"} for p in paths]}
-        return render.build_body(RUN, pr, ANSWER, {CUSTOMER: [("R", 5, "String nickname,")]}, [], contract_of(BASE, HEAD), self.diff(), read)
+        return render.build_brief(pr, ANSWER, {CUSTOMER: [("R", 5, "String nickname,")]}, [], contract_of(BASE, HEAD), self.diff(), read)
 
     def test_the_contract_set_is_the_spec_and_the_line_sources(self) -> None:
         self.assertEqual(self.brief().file_sets["contract"], sorted([SPEC, CUSTOMER, CONTROLLER]))
@@ -481,10 +480,9 @@ class FileSets(unittest.TestCase):
         with_tests = self.brief(paths=[CUSTOMER, MIGRATION, ENTITY, CONTROLLER, "web/Foo.test.ts"])
         self.assertEqual(with_tests.file_sets["contract"], plain.file_sets["contract"])
         self.assertEqual(with_tests.file_sets["data"], plain.file_sets["data"])
-        self.assertNotIn("web/Foo.test.ts", with_tests.body)
 
     def test_a_pr_with_no_such_files_has_three_empty_sets(self) -> None:
-        brief = render.build_body(RUN, {**PR, "files": [PR["files"][6]]}, {**ANSWER, "node_files": {}, "walkthrough": [
+        brief = render.build_brief({**PR, "files": [PR["files"][6]]}, {**ANSWER, "node_files": {}, "walkthrough": [
             {"file": "web/Page.tsx", "title": "t", "why": "w"}]}, {}, [], None, "")
         self.assertEqual(brief.file_sets, {"contract": [], "data": [], "tests": []})
 
@@ -496,24 +494,6 @@ class FileSets(unittest.TestCase):
         data = render.review_json(RUN, self.brief(), True)
         self.assertEqual(data["file_sets"], self.brief().file_sets)
         self.assertEqual(sorted(data["file_sets"]), ["contract", "data", "tests"])
-
-    def test_the_comment_links_a_source_with_the_spec_second_and_lists_the_files(self) -> None:
-        text = self.brief().body
-        contract = text[text.index("<summary><h3>API</h3>"):text.index("<summary><h3>Data</h3>")]
-        row = next(line for line in contract.splitlines() if "nickname" in line and line.startswith("| "))
-        self.assertRegex(row, r"\[Customer\.java:5\]\(https://github\.com/acme/shop/pull/7/changes#diff-[0-9a-f]{64}R5\) · \[spec\]\(")
-        listed = contract[contract.index("**API files**"):]
-        for name in ("openapi.json", "Customer.java", "CustomerController.java"):
-            self.assertIn(f"- [{name}](", listed)
-        self.assertNotIn("Untouched.java", listed)
-        data = text[text.index("<summary><h3>Data</h3>"):]
-        self.assertIn("**Data files**\n\n- [CustomerBE.java](", data)
-        self.assertIn("[V9__customers.sql](", data)
-
-    def test_a_section_with_no_files_has_no_list(self) -> None:
-        text = self.brief(paths=[MIGRATION]).body
-        self.assertNotIn("Contract files", text)
-        self.assertIn("**Data files**\n\n- [V9__customers.sql](", text)
 
 
 if __name__ == "__main__":

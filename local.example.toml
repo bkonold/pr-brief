@@ -2,22 +2,9 @@
 # the context-pack section that needs a missing key is skipped, and run.json records why.
 # Use paths as they appear in the repository, relative to its root, with forward slashes.
 
-# Where run.py reads pull requests from: "github" (the default, through the `gh` CLI) or "forgejo".
-# `run.py --host` overrides it. `repo` below names a repository on this host.
-# host = "github"
-
-# The repository run.py reads, as "owner/name", on the host above. Passing --repo overrides it; with
-# neither, run.py exits and asks for one. A run with --host forgejo needs its own --repo (the Forgejo
-# owner/name) unless `host = "forgejo"` is set here.
+# The GitHub repository run.py reads, as "owner/name", through the `gh` CLI. Passing --repo overrides it;
+# with neither, run.py exits and asks for one.
 repo = "example-org/example-repo"
-
-# The Forgejo (or Gitea) instance, and the file holding an API token for it (read only is enough). The
-# token is sent in an Authorization header and nowhere else. Leave both unset for GitHub only; the
-# token file may be left unset for an instance that needs no sign-in.
-# Forgejo runs are kept as runs/fj-<number>/ and commits missing from the mirror are fetched from
-# source_checkout, not from github_url.
-# forgejo_url = "http://localhost:3000"
-# forgejo_token_file = "~/.config/forgejo/token"
 
 # The Chrome or Chromium that draws diagram.svg. Without this key, render.py looks at the PR_BRIEF_CHROME environment
 # variable first, then (when this key is unset) google-chrome, google-chrome-stable, chromium and chromium-browser on PATH,
@@ -68,15 +55,8 @@ test_dirs = ["/src/integrationTest/"]
 # variant sets callers_code_only, in addition to markdown, lock and similar files.
 callers_exclude_globs = ["**/docs/**", "**/*.generated.*"]
 
-# serve.py (`serve.py`, or `pd serve` in an overlay) starts briefs on demand for the browser extension.
-# default_variant is the variant a started run uses. serve_repos is the only list of repositories a run may be
-# started for, per host, as "owner/name"; a request for any other repository is refused. Both are required to
-# start runs; without serve_repos the server still serves the runs but refuses every request to start one.
+# The variant run.py uses when --variant is not given.
 default_variant = "brief"
-
-[serve_repos]
-github = ["example-org/example-repo"]
-# forgejo = ["me/example-repo"]
 
 # The model each runner uses, by runner name; `run.py --model` overrides it. Unset runners use their pinned default
 # (claude-opus-5-5 for claude, claude-opus-5.5 for copilot), and run.json records the id a run used. Keep this table last:
